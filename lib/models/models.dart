@@ -6,6 +6,8 @@ class QuizRecord {
   final int totalQuestions;
   final DateTime completedAt;
   final String qrCode;
+  final String? term;
+  final String? assessmentType;
 
   QuizRecord({
     this.id,
@@ -15,6 +17,8 @@ class QuizRecord {
     required this.totalQuestions,
     required this.completedAt,
     required this.qrCode,
+    this.term,
+    this.assessmentType,
   });
 
   Map<String, dynamic> toMap() {
@@ -26,6 +30,8 @@ class QuizRecord {
       'totalQuestions': totalQuestions,
       'completedAt': completedAt.toIso8601String(),
       'qrCode': qrCode,
+      'term': term,
+      'assessmentType': assessmentType,
     };
   }
 
@@ -38,6 +44,8 @@ class QuizRecord {
       totalQuestions: map['totalQuestions'] as int,
       completedAt: DateTime.parse(map['completedAt'] as String),
       qrCode: map['qrCode'] as String,
+      term: map['term'] as String?,
+      assessmentType: map['assessmentType'] as String?,
     );
   }
 

@@ -1252,27 +1252,27 @@ class _DashboardState extends State<Dashboard>
           ),
           const SizedBox(height: 24),
           GestureDetector(
-            onTap: () => _showCourseActionDialog('Mathematics'),
+            onTap: () => _showCourseActionDialog('Mathematics', 'Dr. Black Jack', '4h/week'),
             child: _buildCourseCard(isDark, 'Mathematics', 'Dr. Black Jack', '4h/week', Colors.blue),
           ),
           const SizedBox(height: 12),
           GestureDetector(
-            onTap: () => _showCourseActionDialog('Physics'),
+            onTap: () => _showCourseActionDialog('Physics', 'Prof. saturn', '3.5h/week'),
             child: _buildCourseCard(isDark, 'Physics', 'Prof. saturn', '3.5h/week', Colors.purple),
           ),
           const SizedBox(height: 12),
           GestureDetector(
-            onTap: () => _showCourseActionDialog('Chemistry'),
+            onTap: () => _showCourseActionDialog('Chemistry', 'Dr. Aray mo', '4h/week'),
             child: _buildCourseCard(isDark, 'Chemistry', 'Dr. Aray mo', '4h/week', Colors.green),
           ),
           const SizedBox(height: 12),
           GestureDetector(
-            onTap: () => _showCourseActionDialog('Computer Science'),
+            onTap: () => _showCourseActionDialog('Computer Science', 'Prof. Raven', '5h/week'),
             child: _buildCourseCard(isDark, 'Computer Science', 'Prof. Raven', '5h/week', Colors.orange),
           ),
           const SizedBox(height: 12),
           GestureDetector(
-            onTap: () => _showCourseActionDialog('English Literature'),
+            onTap: () => _showCourseActionDialog('English Literature', 'Dr. Ravensu', '3h/week'),
             child: _buildCourseCard(isDark, 'English Literature', 'Dr. Ravensu', '3h/week', Colors.pink),
           ),
           const SizedBox(height: 20),
@@ -1826,28 +1826,28 @@ class _DashboardState extends State<Dashboard>
           ),
           const SizedBox(height: 24),
           GestureDetector(
-            onTap: () => _showCourseActionDialog('Mathematics'),
-            child: _buildQuizCourseCard(isDark, 'Mathematics', 'Dr. Smith', Colors.blue),
+            onTap: () => _showCourseActionDialog('Mathematics', 'Dr. Black Jack', '4h/week'),
+            child: _buildQuizCourseCard(isDark, 'Mathematics', 'Dr. Black Jack', Colors.blue),
           ),
           const SizedBox(height: 12),
           GestureDetector(
-            onTap: () => _showCourseActionDialog('Physics'),
-            child: _buildQuizCourseCard(isDark, 'Physics', 'Prof. Johnson', Colors.purple),
+            onTap: () => _showCourseActionDialog('Physics', 'Prof. saturn', '3.5h/week'),
+            child: _buildQuizCourseCard(isDark, 'Physics', 'Prof. saturn', Colors.purple),
           ),
           const SizedBox(height: 12),
           GestureDetector(
-            onTap: () => _showCourseActionDialog('Chemistry'),
-            child: _buildQuizCourseCard(isDark, 'Chemistry', 'Dr. Williams', Colors.green),
+            onTap: () => _showCourseActionDialog('Chemistry', 'Dr. Aray mo', '4h/week'),
+            child: _buildQuizCourseCard(isDark, 'Chemistry', 'Dr. Aray mo', Colors.green),
           ),
           const SizedBox(height: 12),
           GestureDetector(
-            onTap: () => _showCourseActionDialog('Computer Science'),
-            child: _buildQuizCourseCard(isDark, 'Computer Science', 'Prof. Brown', Colors.orange),
+            onTap: () => _showCourseActionDialog('Computer Science', 'Prof. Raven', '5h/week'),
+            child: _buildQuizCourseCard(isDark, 'Computer Science', 'Prof. Raven', Colors.orange),
           ),
           const SizedBox(height: 12),
           GestureDetector(
-            onTap: () => _showCourseActionDialog('English Literature'),
-            child: _buildQuizCourseCard(isDark, 'English Literature', 'Dr. Taylor', Colors.pink),
+            onTap: () => _showCourseActionDialog('English Literature', 'Dr. Ravensu', '3h/week'),
+            child: _buildQuizCourseCard(isDark, 'English Literature', 'Dr. Ravensu', Colors.pink),
           ),
           const SizedBox(height: 20),
         ],
@@ -2150,7 +2150,7 @@ class _DashboardState extends State<Dashboard>
     );
   }
 
-  void _showCourseActionDialog(String courseName) {
+  void _showCourseActionDialog(String courseName, String instructor, String hours) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     
     showDialog(
@@ -2158,103 +2158,174 @@ class _DashboardState extends State<Dashboard>
       builder: (BuildContext context) {
         return Dialog(
           backgroundColor: Colors.transparent,
+          elevation: 0,
           child: ClipRRect(
             borderRadius: BorderRadius.circular(20),
-            child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-              child: Container(
-                padding: const EdgeInsets.all(24),
-                decoration: BoxDecoration(
+            child: Container(
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                color: isDark
+                    ? const Color(0xFF6366F1).withOpacity(0.25)
+                    : Colors.white,
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(
                   color: isDark
-                      ? Colors.white.withOpacity(0.1)
-                      : Colors.black.withOpacity(0.05),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(
-                    color: isDark
-                        ? Colors.white.withOpacity(0.15)
-                        : Colors.black.withOpacity(0.1),
+                      ? const Color(0xFF6366F1).withOpacity(0.3)
+                      : const Color(0xFF6366F1).withOpacity(0.08),
+                  width: isDark ? 1.5 : 1,
+                ),
+                boxShadow: isDark
+                    ? []
+                    : [
+                        BoxShadow(
+                          color: const Color(0xFF6366F1).withOpacity(0.15),
+                          blurRadius: 20,
+                          offset: const Offset(0, 8),
+                        ),
+                      ],
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    courseName,
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: -0.3,
+                      color: isDark ? Colors.white : Colors.black,
+                    ),
                   ),
-                ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      courseName,
-                      style: const TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: -0.3,
+                  const SizedBox(height: 16),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: isDark
+                          ? const Color(0xFF6366F1).withOpacity(0.15)
+                          : const Color(0xFF6366F1).withOpacity(0.06),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: isDark
+                            ? const Color(0xFF6366F1).withOpacity(0.2)
+                            : const Color(0xFF6366F1).withOpacity(0.12),
                       ),
                     ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Choose an action',
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: isDark ? Colors.grey[400] : Colors.grey[600],
-                      ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Icon(Icons.person_outline, size: 16, color: const Color(0xFF6366F1).withOpacity(0.8)),
+                            const SizedBox(width: 8),
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Instructor',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: isDark ? Colors.grey[400] : Colors.grey[600],
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  instructor,
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w700,
+                                    color: isDark ? Colors.white : Colors.black87,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        Row(
+                          children: [
+                            Icon(Icons.schedule, size: 16, color: const Color(0xFF6366F1).withOpacity(0.8)),
+                            const SizedBox(width: 8),
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Schedule',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: isDark ? Colors.grey[400] : Colors.grey[600],
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  hours,
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w700,
+                                    color: isDark ? Colors.white : Colors.black87,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ],
                     ),
-                    const SizedBox(height: 24),
-                    SizedBox(
-                      width: double.infinity,
-                      height: 56,
-                      child: ElevatedButton.icon(
-                        onPressed: () {
-                          Navigator.of(context).pop();
-                          _showAttendanceQRCode(courseName);
-                        },
-                        icon: const Icon(Icons.qr_code_rounded, size: 20),
-                        label: const Text('Mark Attendance'),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.green.withOpacity(0.8),
-                          foregroundColor: Colors.white,
-                          elevation: 0,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
+                  ),
+                  const SizedBox(height: 20),
+                  Container(
+                    width: double.infinity,
+                    height: 56,
+                    decoration: BoxDecoration(
+                      color: Colors.green.shade500,
+                      borderRadius: BorderRadius.circular(12),
+                      boxShadow: isDark
+                          ? []
+                          : [
+                              BoxShadow(
+                                color: Colors.green.withOpacity(0.2),
+                                blurRadius: 12,
+                                offset: const Offset(0, 4),
+                              ),
+                            ],
+                    ),
+                    child: ElevatedButton.icon(
+                      onPressed: () {
+                        Navigator.of(context).pop();
+                        _showAttendanceQRCode(courseName);
+                      },
+                      icon: const Icon(Icons.qr_code_rounded, size: 20),
+                      label: const Text('Mark Attendance'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.transparent,
+                        foregroundColor: Colors.white,
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
                         ),
                       ),
                     ),
-                    const SizedBox(height: 12),
-                    SizedBox(
-                      width: double.infinity,
-                      height: 56,
-                      child: ElevatedButton.icon(
-                        onPressed: () {
-                          Navigator.of(context).pop();
-                          _showQuizScreen(courseName);
-                        },
-                        icon: const Icon(Icons.quiz_rounded, size: 20),
-                        label: const Text('Take Quiz'),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF6366F1),
-                          foregroundColor: Colors.white,
-                          elevation: 0,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
+                  ),
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 48,
+                    child: TextButton(
+                      onPressed: () {
+                        Navigator.of(context).pop();
+                      },
+                      child: Text(
+                        'Cancel',
+                        style: TextStyle(
+                          color: isDark ? Colors.grey[300] : Colors.grey[700],
+                          fontWeight: FontWeight.w600,
                         ),
                       ),
                     ),
-                    const SizedBox(height: 12),
-                    SizedBox(
-                      width: double.infinity,
-                      height: 48,
-                      child: TextButton(
-                        onPressed: () {
-                          Navigator.of(context).pop();
-                        },
-                        child: Text(
-                          'Cancel',
-                          style: TextStyle(
-                            color: isDark ? Colors.grey[400] : Colors.grey[600],
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
+                  ),
+                ],
               ),
             ),
           ),
@@ -2272,113 +2343,143 @@ class _DashboardState extends State<Dashboard>
       builder: (BuildContext context) {
         return Dialog(
           backgroundColor: Colors.transparent,
+          elevation: 0,
           child: ClipRRect(
             borderRadius: BorderRadius.circular(20),
-            child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-              child: Container(
-                padding: const EdgeInsets.all(24),
-                decoration: BoxDecoration(
+            child: Container(
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                color: isDark
+                    ? const Color(0xFF6366F1).withOpacity(0.25)
+                    : Colors.white,
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(
                   color: isDark
-                      ? Colors.white.withOpacity(0.1)
-                      : Colors.black.withOpacity(0.05),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(
-                    color: isDark
-                        ? Colors.white.withOpacity(0.15)
-                        : Colors.black.withOpacity(0.1),
+                      ? const Color(0xFF6366F1).withOpacity(0.3)
+                      : const Color(0xFF6366F1).withOpacity(0.08),
+                  width: isDark ? 1.5 : 1,
+                ),
+                boxShadow: isDark
+                    ? []
+                    : [
+                        BoxShadow(
+                          color: const Color(0xFF6366F1).withOpacity(0.15),
+                          blurRadius: 20,
+                          offset: const Offset(0, 8),
+                        ),
+                      ],
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.check_circle_rounded,
+                    size: 40,
+                    color: Colors.green.shade500,
                   ),
-                ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(
-                      Icons.check_circle_rounded,
-                      size: 40,
-                      color: Colors.green,
+                  const SizedBox(height: 16),
+                  Text(
+                    courseName,
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: -0.2,
+                      color: isDark ? Colors.white : Colors.black,
                     ),
-                    const SizedBox(height: 16),
-                    Text(
-                      '$courseName',
-                      style: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: -0.2,
-                      ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Attendance QR Code',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: isDark ? Colors.grey[400] : Colors.grey[600],
                     ),
-                    const SizedBox(height: 8),
-                    const Text(
-                      'Attendance QR Code',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-                    Container(
+                  ),
+                  const SizedBox(height: 20),
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
                       color: Colors.white,
-                      padding: const EdgeInsets.all(16),
-                      child: Center(
-                        child: Text(
-                          'ATTENDANCE|$courseName|${widget.email}|$timestamp',
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(
-                            fontSize: 10,
-                            fontFamily: 'monospace',
-                          ),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: const Color(0xFF6366F1).withOpacity(0.1),
+                      ),
+                    ),
+                    child: Center(
+                      child: Text(
+                        'ATTENDANCE|$courseName|${widget.email}|$timestamp',
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          fontSize: 10,
+                          fontFamily: 'monospace',
+                          color: Colors.black87,
                         ),
                       ),
                     ),
-                    const SizedBox(height: 16),
-                    Text(
-                      'Scan this QR code to mark attendance',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: isDark ? Colors.grey[400] : Colors.grey[600],
-                      ),
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Scan this QR code to mark attendance',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: isDark ? Colors.grey[400] : Colors.grey[600],
                     ),
-                    const SizedBox(height: 20),
-                    SizedBox(
-                      width: double.infinity,
-                      height: 48,
-                      child: ElevatedButton(
-                        onPressed: () async {
-                          Navigator.of(context).pop();
-                          final dbHelper = DatabaseHelper();
-                          final attendanceRecord = AttendanceRecord(
-                            courseName: courseName,
-                            email: widget.email,
-                            markedAt: DateTime.now(),
-                            qrCode: 'ATTENDANCE|$courseName|${widget.email}|$timestamp',
-                          );
-                          await dbHelper.insertAttendanceRecord(attendanceRecord);
-                          
-                          if (mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: const Text('Attendance marked successfully!'),
-                                backgroundColor: Colors.green,
-                                behavior: SnackBarBehavior.floating,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(10),
-                                ),
+                  ),
+                  const SizedBox(height: 20),
+                  Container(
+                    width: double.infinity,
+                    height: 48,
+                    decoration: BoxDecoration(
+                      color: Colors.green.shade500,
+                      borderRadius: BorderRadius.circular(12),
+                      boxShadow: isDark
+                          ? []
+                          : [
+                              BoxShadow(
+                                color: Colors.green.withOpacity(0.2),
+                                blurRadius: 12,
+                                offset: const Offset(0, 4),
                               ),
-                            );
-                          }
-                        },
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.green,
-                          foregroundColor: Colors.white,
-                          elevation: 0,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                        ),
-                        child: const Text('Done'),
-                      ),
+                            ],
                     ),
-                  ],
-                ),
+                    child: ElevatedButton(
+                      onPressed: () async {
+                        Navigator.of(context).pop();
+                        final dbHelper = DatabaseHelper();
+                        final attendanceRecord = AttendanceRecord(
+                          courseName: courseName,
+                          email: widget.email,
+                          markedAt: DateTime.now(),
+                          qrCode: 'ATTENDANCE|$courseName|${widget.email}|$timestamp',
+                        );
+                        await dbHelper.insertAttendanceRecord(attendanceRecord);
+                        
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: const Text('Attendance marked successfully!'),
+                              backgroundColor: Colors.green,
+                              behavior: SnackBarBehavior.floating,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                            ),
+                          );
+                        }
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.transparent,
+                        foregroundColor: Colors.white,
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      child: const Text('Done'),
+                    ),
+                  ),
+                ],
               ),
             ),
           ),

@@ -37,7 +37,9 @@ class DatabaseHelper {
         score INTEGER NOT NULL,
         totalQuestions INTEGER NOT NULL,
         completedAt TEXT NOT NULL,
-        qrCode TEXT NOT NULL
+        qrCode TEXT NOT NULL,
+        term TEXT,
+        assessmentType TEXT
       )
     ''');
 
