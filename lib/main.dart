@@ -4,6 +4,7 @@ import 'dart:ui';
 import 'package:table_calendar/table_calendar.dart';
 import 'models/models.dart';
 import 'models/database_helper.dart';
+import 'package:qr_flutter/qr_flutter.dart';
 
 bool isSameDay(DateTime a, DateTime b) {
   return a.year == b.year && a.month == b.month && a.day == b.day;
@@ -1800,7 +1801,7 @@ class _DashboardState extends State<Dashboard>
     );
   }
 
-  Widget _buildQuizPage() {
+   Widget _buildQuizPage() {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return SingleChildScrollView(
@@ -1809,7 +1810,7 @@ class _DashboardState extends State<Dashboard>
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
-            'Quiz & Attendance',
+            'Quiz & Exams',
             style: TextStyle(
               fontSize: 24,
               fontWeight: FontWeight.w700,
@@ -1826,27 +1827,27 @@ class _DashboardState extends State<Dashboard>
           ),
           const SizedBox(height: 24),
           GestureDetector(
-            onTap: () => _showCourseActionDialog('Mathematics', 'Dr. Black Jack', '4h/week'),
+            onTap: () => _showAssessmentsDialog(context, 'Mathematics', isDark),
             child: _buildQuizCourseCard(isDark, 'Mathematics', 'Dr. Black Jack', Colors.blue),
           ),
           const SizedBox(height: 12),
           GestureDetector(
-            onTap: () => _showCourseActionDialog('Physics', 'Prof. saturn', '3.5h/week'),
-            child: _buildQuizCourseCard(isDark, 'Physics', 'Prof. saturn', Colors.purple),
+            onTap: () => _showAssessmentsDialog(context, 'Physics', isDark),
+            child: _buildQuizCourseCard(isDark, 'Physics', 'Prof. Saturn', Colors.purple),
           ),
           const SizedBox(height: 12),
           GestureDetector(
-            onTap: () => _showCourseActionDialog('Chemistry', 'Dr. Aray mo', '4h/week'),
-            child: _buildQuizCourseCard(isDark, 'Chemistry', 'Dr. Aray mo', Colors.green),
+            onTap: () => _showAssessmentsDialog(context, 'Chemistry', isDark),
+            child: _buildQuizCourseCard(isDark, 'Chemistry', 'Dr. Aray Mo', Colors.green),
           ),
           const SizedBox(height: 12),
           GestureDetector(
-            onTap: () => _showCourseActionDialog('Computer Science', 'Prof. Raven', '5h/week'),
+            onTap: () => _showAssessmentsDialog(context, 'Computer Science', isDark),
             child: _buildQuizCourseCard(isDark, 'Computer Science', 'Prof. Raven', Colors.orange),
           ),
           const SizedBox(height: 12),
           GestureDetector(
-            onTap: () => _showCourseActionDialog('English Literature', 'Dr. Ravensu', '3h/week'),
+            onTap: () => _showAssessmentsDialog(context, 'English Literature', isDark),
             child: _buildQuizCourseCard(isDark, 'English Literature', 'Dr. Ravensu', Colors.pink),
           ),
           const SizedBox(height: 20),
@@ -2333,11 +2334,128 @@ class _DashboardState extends State<Dashboard>
       },
     );
   }
+  void _showAssessmentsDialog(BuildContext context, String subject, bool isDark) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          backgroundColor: isDark ? Colors.grey[900] : Colors.white,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          title: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                subject,
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 20,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Available Assessments',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.normal,
+                  color: isDark ? Colors.grey[400] : Colors.grey[600],
+                ),
+              ),
+            ],
+          ),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _buildTermSection('Prelims', isDark),
+                _buildTermSection('Midterms', isDark),
+                _buildTermSection('Pre-Finals', isDark),
+                _buildTermSection('Finals', isDark, isLast: true),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Close'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildTermSection(String term, bool isDark, {bool isLast = false}) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(top: 8.0, bottom: 12.0),
+          child: Text(
+            term,
+            style: const TextStyle(
+              fontWeight: FontWeight.w600,
+              fontSize: 16,
+            ),
+          ),
+        ),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+          children: [
+            Expanded(
+              child: ElevatedButton.icon(
+                onPressed: () {
+                  // TODO: Add logic for Quiz later
+                },
+                icon: const Icon(Icons.assignment_outlined, size: 18),
+                label: const Text('Quiz'),
+                style: ElevatedButton.styleFrom(
+                  elevation: 0,
+                  backgroundColor: isDark ? Colors.grey[800] : Colors.blue[50],
+                  foregroundColor: isDark ? Colors.white : Colors.blue[700],
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: ElevatedButton.icon(
+                onPressed: () {
+                  // TODO: Add logic for Exam later
+                },
+                icon: const Icon(Icons.school_outlined, size: 18),
+                label: const Text('Exam'),
+                style: ElevatedButton.styleFrom(
+                  elevation: 0,
+                  backgroundColor: isDark ? Colors.grey[800] : Colors.orange[50],
+                  foregroundColor: isDark ? Colors.white : Colors.orange[700],
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+        if (!isLast) ...[
+          const SizedBox(height: 12),
+          Divider(color: isDark ? Colors.grey[800] : Colors.grey[200]),
+        ],
+      ],
+    );
+  }
+
 
   void _showAttendanceQRCode(String courseName) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final timestamp = DateTime.now().toString();
     
+    // Use milliseconds timestamp to avoid spaces/colons
+    final timestamp = DateTime.now().millisecondsSinceEpoch.toString();
+    final qrData = 'ATTENDANCE|$courseName|${widget.email}|$timestamp';
+
     showDialog(
       context: context,
       builder: (BuildContext context) {
@@ -2397,6 +2515,8 @@ class _DashboardState extends State<Dashboard>
                     ),
                   ),
                   const SizedBox(height: 20),
+                  
+                  // ===== ACTUAL QR CODE =====
                   Container(
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
@@ -2406,18 +2526,16 @@ class _DashboardState extends State<Dashboard>
                         color: const Color(0xFF6366F1).withOpacity(0.1),
                       ),
                     ),
-                    child: Center(
-                      child: Text(
-                        'ATTENDANCE|$courseName|${widget.email}|$timestamp',
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(
-                          fontSize: 10,
-                          fontFamily: 'monospace',
-                          color: Colors.black87,
-                        ),
-                      ),
+                    child: QrImageView(
+                      data: qrData,
+                      version: QrVersions.auto,
+                      size: 180.0,
+                      backgroundColor: Colors.white,
+                      errorCorrectionLevel: QrErrorCorrectLevel.M,
                     ),
                   ),
+                  // ============================
+                  
                   const SizedBox(height: 16),
                   Text(
                     'Scan this QR code to mark attendance',
@@ -2445,27 +2563,45 @@ class _DashboardState extends State<Dashboard>
                     ),
                     child: ElevatedButton(
                       onPressed: () async {
-                        Navigator.of(context).pop();
-                        final dbHelper = DatabaseHelper();
-                        final attendanceRecord = AttendanceRecord(
-                          courseName: courseName,
-                          email: widget.email,
-                          markedAt: DateTime.now(),
-                          qrCode: 'ATTENDANCE|$courseName|${widget.email}|$timestamp',
-                        );
-                        await dbHelper.insertAttendanceRecord(attendanceRecord);
-                        
-                        if (mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: const Text('Attendance marked successfully!'),
-                              backgroundColor: Colors.green,
-                              behavior: SnackBarBehavior.floating,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                            ),
+                        try {
+                          Navigator.of(context).pop();
+                          
+                          final dbHelper = DatabaseHelper();
+                          final attendanceRecord = AttendanceRecord(
+                            courseName: courseName,
+                            email: widget.email,
+                            markedAt: DateTime.now(),
+                            qrCode: qrData,
                           );
+                          
+                          await dbHelper.insertAttendanceRecord(attendanceRecord);
+                          
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: const Text('Attendance marked successfully!'),
+                                backgroundColor: Colors.green,
+                                behavior: SnackBarBehavior.floating,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                              ),
+                            );
+                          }
+                        } catch (e) {
+                          // Handle error properly
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text('Error: ${e.toString()}'),
+                                backgroundColor: Colors.red,
+                                behavior: SnackBarBehavior.floating,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                              ),
+                            );
+                          }
                         }
                       },
                       style: ElevatedButton.styleFrom(
@@ -2486,300 +2622,4 @@ class _DashboardState extends State<Dashboard>
         );
       },
     );
-  }
-
-  void _showQuizScreen(String courseName) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    int currentQuestion = 0;
-    int score = 0;
-
-    final questions = [
-      {
-        'question': 'What is the capital of France?',
-        'options': ['Paris', 'London', 'Berlin', 'Madrid'],
-        'correct': 0,
-      },
-      {
-        'question': 'What is 2 + 2?',
-        'options': ['3', '4', '5', '6'],
-        'correct': 1,
-      },
-      {
-        'question': 'What is the largest planet in our solar system?',
-        'options': ['Saturn', 'Jupiter', 'Mars', 'Venus'],
-        'correct': 1,
-      },
-    ];
-
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (BuildContext dialogContext) {
-        return StatefulBuilder(
-          builder: (context, setState) {
-            return Dialog(
-              backgroundColor: Colors.transparent,
-              child: Container(
-                padding: const EdgeInsets.all(24),
-                decoration: BoxDecoration(
-                  color: isDark
-                      ? Colors.white.withOpacity(0.1)
-                      : Colors.black.withOpacity(0.05),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(
-                    color: isDark
-                        ? Colors.white.withOpacity(0.15)
-                        : Colors.black.withOpacity(0.1),
-                  ),
-                ),
-                child: SingleChildScrollView(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text(
-                            '$courseName Quiz',
-                            style: const TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                          Text(
-                            '${currentQuestion + 1}/${questions.length}',
-                            style: TextStyle(
-                              fontSize: 13,
-                              color: isDark ? Colors.grey[400] : Colors.grey[600],
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 20),
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(8),
-                        child: LinearProgressIndicator(
-                          value: (currentQuestion + 1) / questions.length,
-                          minHeight: 6,
-                          backgroundColor: Colors.grey.withOpacity(0.3),
-                          valueColor: const AlwaysStoppedAnimation<Color>(
-                            Color(0xFF6366F1),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 20),
-                      Text(
-                        questions[currentQuestion]['question'] as String,
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                          letterSpacing: -0.1,
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      Column(
-                        children: List.generate(
-                          (questions[currentQuestion]['options'] as List<String>)
-                              .length,
-                          (optionIndex) => Padding(
-                            padding: const EdgeInsets.only(bottom: 10),
-                            child: GestureDetector(
-                              onTap: () {
-                                if (optionIndex ==
-                                    questions[currentQuestion]['correct']) {
-                                  score++;
-                                }
-                                if (currentQuestion < questions.length - 1) {
-                                  setState(() {
-                                    currentQuestion++;
-                                  });
-                                } else {
-                                  Navigator.of(context).pop();
-                                  _showQuizResultQRCode(courseName, score);
-                                }
-                              },
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 16,
-                                  vertical: 12,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: isDark
-                                      ? Colors.white.withOpacity(0.05)
-                                      : Colors.black.withOpacity(0.02),
-                                  borderRadius: BorderRadius.circular(10),
-                                  border: Border.all(
-                                    color: isDark
-                                        ? Colors.white.withOpacity(0.1)
-                                        : Colors.black.withOpacity(0.08),
-                                  ),
-                                ),
-                                child: Row(
-                                  children: [
-                                    Container(
-                                      width: 20,
-                                      height: 20,
-                                      decoration: BoxDecoration(
-                                        shape: BoxShape.circle,
-                                        border: Border.all(
-                                          color: const Color(0xFF6366F1),
-                                          width: 2,
-                                        ),
-                                      ),
-                                    ),
-                                    const SizedBox(width: 12),
-                                    Text(
-                                      (questions[currentQuestion]['options']
-                                              as List<String>)[optionIndex],
-                                      style: const TextStyle(
-                                        fontSize: 13,
-                                        fontWeight: FontWeight.w500,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            );
-          },
-        );
-      },
-    );
-  }
-
-  void _showQuizResultQRCode(String courseName, int score) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final timestamp = DateTime.now().toString();
-    
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return Dialog(
-          backgroundColor: Colors.transparent,
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(20),
-            child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-              child: Container(
-                padding: const EdgeInsets.all(24),
-                decoration: BoxDecoration(
-                  color: isDark
-                      ? Colors.white.withOpacity(0.1)
-                      : Colors.black.withOpacity(0.05),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(
-                    color: isDark
-                        ? Colors.white.withOpacity(0.15)
-                        : Colors.black.withOpacity(0.1),
-                  ),
-                ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(
-                      Icons.assignment_turned_in_rounded,
-                      size: 40,
-                      color: Colors.blue,
-                    ),
-                    const SizedBox(height: 16),
-                    Text(
-                      '$courseName Quiz - Score',
-                      style: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: -0.2,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      '$score/3 (${((score / 3) * 100).toStringAsFixed(0)}%)',
-                      style: const TextStyle(
-                        fontSize: 24,
-                        fontWeight: FontWeight.w700,
-                        color: Color(0xFF6366F1),
-                        letterSpacing: -0.5,
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-                    Container(
-                      color: Colors.white,
-                      padding: const EdgeInsets.all(16),
-                      child: Center(
-                        child: Text(
-                          'QUIZ|$courseName|${widget.email}|$score/3|$timestamp',
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(
-                            fontSize: 10,
-                            fontFamily: 'monospace',
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    Text(
-                      'Share this QR code with your instructor',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: isDark ? Colors.grey[400] : Colors.grey[600],
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-                    SizedBox(
-                      width: double.infinity,
-                      height: 48,
-                      child: ElevatedButton(
-                        onPressed: () async {
-                          Navigator.of(context).pop();
-                          final dbHelper = DatabaseHelper();
-                          final quizRecord = QuizRecord(
-                            courseName: courseName,
-                            email: widget.email,
-                            score: score,
-                            totalQuestions: 3,
-                            completedAt: DateTime.now(),
-                            qrCode: 'QUIZ|$courseName|${widget.email}|$score/3|$timestamp',
-                          );
-                          await dbHelper.insertQuizRecord(quizRecord);
-                          
-                          if (mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: const Text('Quiz completed! Score submitted.'),
-                                backgroundColor: Colors.blue,
-                                behavior: SnackBarBehavior.floating,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(10),
-                                ),
-                              ),
-                            );
-                          }
-                        },
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.blue,
-                          foregroundColor: Colors.white,
-                          elevation: 0,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                        ),
-                        child: const Text('Done'),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        );
-      },
-    );
-  }}
+  } }
