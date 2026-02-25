@@ -6,6 +6,7 @@ import 'models/models.dart';
 import 'models/database_helper.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:intl/intl.dart';
+import 'screens/qr_scanner_screen.dart';
 
 bool isSameDay(DateTime a, DateTime b) {
   return a.year == b.year && a.month == b.month && a.day == b.day;
@@ -1089,7 +1090,7 @@ class _SignUpState extends State<SignUp> {
                           ),
                         ),
                         const SizedBox(height: 8),
-                        _buildQRInfoRow('Name', '${_firstNameController.text} ${_lastNameController.text}', isDark),
+                        _buildQRInfoRow('Name', '${_firstNameController.text} ${_middleNameController.text} ${_lastNameController.text}', isDark),
                         const SizedBox(height: 6),
                         _buildQRInfoRow('USN', _usnController.text, isDark),
                         const SizedBox(height: 6),
@@ -1779,60 +1780,107 @@ class _DashboardState extends State<Dashboard>
     );
   }
 
-  Widget _buildCoursesPage() {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+// DYNAMIC COURSE DATA
+List<Map<String, dynamic>> subjects = [
+  {
+    'name': 'Information Assurance Security 2',
+    'id': 'IT6205A',
+    'teacher': 'Rens Cardaña',
+    'hours': 'Wed 7:30-10:00 AM',
+    'color': Colors.blueAccent,
+  },
+  {
+    'name': 'Application Development and Emerging Technologies',
+    'id': 'ITE6220',
+    'teacher': 'Godfrey Roa',
+    'hours': 'Sat 4:00-7:30 PM',
+    'color': Colors.orangeAccent,
+  },
+  {
+    'name': 'Database Management Systems 2',
+    'id': 'IT6202',
+    'teacher': 'Rens Cardaña',
+    'hours': 'Fri 10:30-1:00 PM',
+    'color': Colors.pinkAccent,
+  },
+];
 
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Your Courses',
-            style: TextStyle(
-              fontSize: 24,
-              fontWeight: FontWeight.w700,
-              letterSpacing: -0.3,
-            ),
+ // COURSES PAGE WITH DYNAMIC COURSE CARDS
+Widget _buildCoursesPage() {
+  final isDark = Theme.of(context).brightness == Brightness.dark;
+
+  return SingleChildScrollView(
+    padding: const EdgeInsets.all(20),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Your Courses',
+          style: TextStyle(
+            fontSize: 24,
+            fontWeight: FontWeight.w700,
+            letterSpacing: -0.3,
           ),
-          const SizedBox(height: 8),
-          Text(
-            '5 active courses this semester',
-            style: TextStyle(
-              fontSize: 13,
-              color: isDark ? Colors.grey[500] : Colors.grey[600],
-            ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          '${subjects.length} active courses this semester',
+          style: TextStyle(
+            fontSize: 13,
+            color: isDark ? Colors.grey[500] : Colors.grey[600],
           ),
-          const SizedBox(height: 24),
-          GestureDetector(
-            onTap: () => _showCourseActionDialog('Mathematics', 'Dr. Black Jack', '4h/week'),
-            child: _buildCourseCard(isDark, 'Mathematics', 'Dr. Black Jack', '4h/week', Colors.blue),
-          ),
-          const SizedBox(height: 12),
-          GestureDetector(
-            onTap: () => _showCourseActionDialog('Physics', 'Prof. saturn', '3.5h/week'),
-            child: _buildCourseCard(isDark, 'Physics', 'Prof. saturn', '3.5h/week', Colors.purple),
-          ),
-          const SizedBox(height: 12),
-          GestureDetector(
-            onTap: () => _showCourseActionDialog('Chemistry', 'Dr. Aray mo', '4h/week'),
-            child: _buildCourseCard(isDark, 'Chemistry', 'Dr. Aray mo', '4h/week', Colors.green),
-          ),
-          const SizedBox(height: 12),
-          GestureDetector(
-            onTap: () => _showCourseActionDialog('Computer Science', 'Prof. Raven', '5h/week'),
-            child: _buildCourseCard(isDark, 'Computer Science', 'Prof. Raven', '5h/week', Colors.orange),
-          ),
-          const SizedBox(height: 12),
-          GestureDetector(
-            onTap: () => _showCourseActionDialog('English Literature', 'Dr. Ravensu', '3h/week'),
-            child: _buildCourseCard(isDark, 'English Literature', 'Dr. Ravensu', '3h/week', Colors.pink),
-          ),
-          const SizedBox(height: 20),
-        ],
-      ),
-    );
+        ),
+        const SizedBox(height: 24),
+
+        // ADD SUBJECT VIA QR BUTTON
+        ElevatedButton.icon(
+          onPressed: _scanQRCode,
+          icon: const Icon(Icons.qr_code_scanner),
+          label: const Text("Add Subject via QR"),
+        ),
+        const SizedBox(height: 20),
+
+        // DYNAMIC COURSE LIST
+        ...subjects.map((subject) {
+          return Column(
+            children: [
+              GestureDetector(
+                onTap: () => _showCourseActionDialog(
+                  subject['name'],
+                  subject['teacher'],
+                  subject['hours'],
+                  subject['id'],
+                ),
+                child: _buildCourseCard(
+                  isDark,
+                  subject['name'],
+                  subject['teacher'],
+                  subject['id'],
+                  subject['hours'],
+                  subject['color'],
+                ),
+              ),
+              const SizedBox(height: 12),
+            ],
+          );
+        }).toList(),
+      ],
+    ),
+  );
+}
+
+// Add this method OUTSIDE of _buildCoursesPage()
+Future<void> _scanQRCode() async {
+  final result = await Navigator.of(context).push(
+    MaterialPageRoute(
+      builder: (context) => const QRScannerScreen(),
+    ),
+  );
+
+  if (result != null) {
+    print('Scanned QR Code: $result');
   }
+}
 
   Widget _buildGradesPage() {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -2152,8 +2200,10 @@ class _DashboardState extends State<Dashboard>
     bool isDark,
     String title,
     String instructor,
+    String id,
     String hours,
     Color color,
+    
   ) {
     return ClipRRect(
       borderRadius: BorderRadius.circular(14),
@@ -2199,6 +2249,21 @@ class _DashboardState extends State<Dashboard>
                 ],
               ),
               const SizedBox(height: 8),
+                // SUBJECT CODE
+                Row(
+                  children: [
+                    Icon(Icons.badge_outlined, size: 14, color: color.withOpacity(0.7)),
+                    const SizedBox(width: 4),
+                    Text(
+                      id, // ← show subject id here
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                        color: isDark ? Colors.grey[400] : Colors.grey[700],
+                      ),
+                    ),
+                  ],
+                ),
               Row(
                 children: [
                   Icon(Icons.person_outline, size: 14, color: color.withOpacity(0.7)),
@@ -2703,7 +2768,7 @@ class _DashboardState extends State<Dashboard>
     );
   }
 
-  void _showCourseActionDialog(String courseName, String instructor, String hours) {
+  void _showCourseActionDialog(String courseName, String instructor, String hours, String id) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     
     showDialog(
