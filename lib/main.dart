@@ -976,25 +976,196 @@ class _SignUpState extends State<SignUp> {
           _isLoading = false;
         });
         
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text('Account created successfully! Please sign in.'),
-            backgroundColor: const Color(0xFF10B981), // Success green color
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-          ),
-        );
+        // Show QR Code with user information
+        _showSignUpQRCode();
+      }
+    });
+  }
 
-        // Send back to Login screen
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(
-            builder: (context) => Login(
-              themeProvider: widget.themeProvider,
+  void _showSignUpQRCode() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    
+    // Create QR data with user information
+    final qrData = 'SIGNUP|${_lastNameController.text}|${_firstNameController.text}|${_middleNameController.text}|${_usnController.text}|${_courseController.text}|${_yearSectionController.text}|${DateTime.now().millisecondsSinceEpoch}';
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return Dialog(
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(20),
+            child: Container(
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                color: isDark
+                    ? Colors.grey[900]
+                    : Colors.white,
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(
+                  color: isDark
+                      ? Colors.white.withOpacity(0.1)
+                      : Colors.black.withOpacity(0.08),
+                  width: isDark ? 1.5 : 1,
+                ),
+                boxShadow: isDark
+                    ? [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.3),
+                          blurRadius: 20,
+                          offset: const Offset(0, 10),
+                        ),
+                      ]
+                    : [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.1),
+                          blurRadius: 15,
+                          offset: const Offset(0, 5),
+                        ),
+                      ],
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    'Account Created!',
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: -0.5,
+                      color: isDark ? Colors.white : Colors.black,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Your Student QR Code',
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: isDark ? Colors.grey[400] : Colors.grey[600],
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: Colors.grey[300]!,
+                        width: 1,
+                      ),
+                    ),
+                    child: QrImageView(  // Changed from QrImage
+                      data: qrData,
+                      version: QrVersions.auto,  // Add this required parameter
+                      size: 250,
+                      backgroundColor: Colors.white,
+                      errorCorrectionLevel: QrErrorCorrectLevel.H,
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF6366F1).withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                        color: const Color(0xFF6366F1).withOpacity(0.2),
+                      ),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Student Information',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: isDark ? Colors.grey[300] : Colors.grey[700],
+                            letterSpacing: 0.2,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        _buildQRInfoRow('Name', '${_firstNameController.text} ${_lastNameController.text}', isDark),
+                        const SizedBox(height: 6),
+                        _buildQRInfoRow('USN', _usnController.text, isDark),
+                        const SizedBox(height: 6),
+                        _buildQRInfoRow('Course', _courseController.text, isDark),
+                        const SizedBox(height: 6),
+                        _buildQRInfoRow('Year/Section', _yearSectionController.text, isDark),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: ElevatedButton(
+                          onPressed: () {
+                            Navigator.of(context).pop();
+                            Navigator.of(context).pushReplacement(
+                              MaterialPageRoute(
+                                builder: (context) => Login(
+                                  themeProvider: widget.themeProvider,
+                                ),
+                              ),
+                            );
+                          },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF6366F1),
+                            foregroundColor: Colors.white,
+                            elevation: 0,
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                          ),
+                          child: const Text(
+                            'Continue to Login',
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                              letterSpacing: 0.2,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             ),
           ),
         );
-      }
-    });
+      },
+    );
+  }
+
+  Widget _buildQRInfoRow(String label, String value, bool isDark) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 11,
+            color: isDark ? Colors.grey[500] : Colors.grey[600],
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: 11,
+            color: isDark ? Colors.grey[300] : Colors.grey[800],
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ],
+    );
   }
 
   // A reusable method to build text fields with consistent styling
