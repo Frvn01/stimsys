@@ -5,6 +5,7 @@ import 'package:table_calendar/table_calendar.dart';
 import 'models/models.dart';
 import 'models/database_helper.dart';
 import 'package:qr_flutter/qr_flutter.dart';
+import 'package:intl/intl.dart';
 
 bool isSameDay(DateTime a, DateTime b) {
   return a.year == b.year && a.month == b.month && a.day == b.day;
@@ -550,20 +551,21 @@ class Login extends StatefulWidget {
 }
 
 class _LoginState extends State<Login> {
-  final _emailController = TextEditingController();
+  // Changed from email to usn controller
+  final _usnController = TextEditingController(); 
   final _passwordController = TextEditingController();
   bool _passwordVisible = false;
   bool _isLoading = false;
 
   @override
   void dispose() {
-    _emailController.dispose();
+    _usnController.dispose();
     _passwordController.dispose();
     super.dispose();
   }
 
   void _handleLogin() {
-    if (_emailController.text.isEmpty || _passwordController.text.isEmpty) {
+    if (_usnController.text.isEmpty || _passwordController.text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: const Text('Please fill in all fields'),
@@ -587,7 +589,8 @@ class _LoginState extends State<Login> {
         Navigator.of(context).pushReplacement(
           MaterialPageRoute(
             builder: (context) => Dashboard(
-              email: _emailController.text,
+              // NOTE: You may need to change 'email' to 'usn' in your Dashboard widget parameters
+              email: _usnController.text, 
               themeProvider: widget.themeProvider,
             ),
           ),
@@ -653,8 +656,10 @@ class _LoginState extends State<Login> {
                   ),
                 ),
                 const SizedBox(height: 32),
+                
+                // USN FIELD
                 Text(
-                  'Email',
+                  'USN', // Changed from Email
                   style: TextStyle(
                     fontSize: 13,
                     fontWeight: FontWeight.w600,
@@ -668,11 +673,11 @@ class _LoginState extends State<Login> {
                   child: BackdropFilter(
                     filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
                     child: TextField(
-                      controller: _emailController,
-                      keyboardType: TextInputType.emailAddress,
+                      controller: _usnController,
+                      keyboardType: TextInputType.text, // Changed keyboard type
                       style: const TextStyle(fontSize: 14),
                       decoration: InputDecoration(
-                        hintText: 'you@example.com',
+                        hintText: 'Enter your USN', // Changed hint
                         hintStyle: TextStyle(
                           color: isDark ? Colors.grey[600] : Colors.grey[400],
                         ),
@@ -706,7 +711,7 @@ class _LoginState extends State<Login> {
                           ),
                         ),
                         prefixIcon: Icon(
-                          Icons.email_rounded,
+                          Icons.badge_rounded, // Changed icon
                           size: 18,
                           color: isDark ? Colors.grey[500] : Colors.grey[400],
                         ),
@@ -719,6 +724,8 @@ class _LoginState extends State<Login> {
                   ),
                 ),
                 const SizedBox(height: 20),
+                
+                // PASSWORD FIELD
                 Text(
                   'Password',
                   style: TextStyle(
@@ -863,9 +870,10 @@ class _LoginState extends State<Login> {
                       ),
                       GestureDetector(
                         onTap: () {
+                          // ROUTE TO THE NEW SIGN UP SCREEN
                           Navigator.of(context).pushReplacement(
                             MaterialPageRoute(
-                              builder: (context) => Welcome(
+                              builder: (context) => SignUp(
                                 themeProvider: widget.themeProvider,
                               ),
                             ),
@@ -905,6 +913,379 @@ class _LoginState extends State<Login> {
   }
 }
 
+// NEW SIGN UP SCREEN
+class SignUp extends StatefulWidget {
+  final ThemeProvider themeProvider;
+
+  const SignUp({super.key, required this.themeProvider});
+
+  @override
+  State<SignUp> createState() => _SignUpState();
+}
+
+class _SignUpState extends State<SignUp> {
+  final _lastNameController = TextEditingController();
+  final _firstNameController = TextEditingController();
+  final _middleNameController = TextEditingController();
+  final _usnController = TextEditingController();
+  final _courseController = TextEditingController();
+  final _yearSectionController = TextEditingController();
+  final _passwordController = TextEditingController();
+  
+  bool _passwordVisible = false;
+  bool _isLoading = false;
+
+  @override
+  void dispose() {
+    _lastNameController.dispose();
+    _firstNameController.dispose();
+    _middleNameController.dispose();
+    _usnController.dispose();
+    _courseController.dispose();
+    _yearSectionController.dispose();
+    _passwordController.dispose();
+    super.dispose();
+  }
+
+  void _handleSignUp() {
+    if (_lastNameController.text.isEmpty || 
+        _firstNameController.text.isEmpty ||
+        _usnController.text.isEmpty ||
+        _courseController.text.isEmpty ||
+        _yearSectionController.text.isEmpty ||
+        _passwordController.text.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Please fill in all required fields'),
+          backgroundColor: const Color(0xFFEF4444),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        ),
+      );
+      return;
+    }
+
+    setState(() {
+      _isLoading = true;
+    });
+
+    // Simulate account creation logic
+    Future.delayed(const Duration(seconds: 2), () {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('Account created successfully! Please sign in.'),
+            backgroundColor: const Color(0xFF10B981), // Success green color
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          ),
+        );
+
+        // Send back to Login screen
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(
+            builder: (context) => Login(
+              themeProvider: widget.themeProvider,
+            ),
+          ),
+        );
+      }
+    });
+  }
+
+  // A reusable method to build text fields with consistent styling
+  Widget _buildTextField({
+    required String label,
+    required String hint,
+    required IconData icon,
+    required TextEditingController controller,
+    required bool isDark,
+    bool isPassword = false,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+            color: isDark ? Colors.grey[300] : Colors.grey[700],
+            letterSpacing: 0.3,
+          ),
+        ),
+        const SizedBox(height: 10),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(12),
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
+            child: TextField(
+              controller: controller,
+              obscureText: isPassword && !_passwordVisible,
+              style: const TextStyle(fontSize: 14),
+              decoration: InputDecoration(
+                hintText: hint,
+                hintStyle: TextStyle(
+                  color: isDark ? Colors.grey[600] : Colors.grey[400],
+                ),
+                filled: true,
+                fillColor: isDark
+                    ? Colors.white.withOpacity(0.05)
+                    : Colors.black.withOpacity(0.02),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(
+                    color: isDark
+                        ? Colors.white.withOpacity(0.1)
+                        : Colors.black.withOpacity(0.08),
+                    width: 1,
+                  ),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(
+                    color: isDark
+                        ? Colors.white.withOpacity(0.1)
+                        : Colors.black.withOpacity(0.08),
+                    width: 1,
+                  ),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: const BorderSide(
+                    color: Color(0xFF6366F1),
+                    width: 1.5,
+                  ),
+                ),
+                prefixIcon: Icon(
+                  icon,
+                  size: 18,
+                  color: isDark ? Colors.grey[500] : Colors.grey[400],
+                ),
+                suffixIcon: isPassword
+                    ? IconButton(
+                        icon: Icon(
+                          _passwordVisible
+                              ? Icons.visibility_rounded
+                              : Icons.visibility_off_rounded,
+                          color: isDark ? Colors.grey[500] : Colors.grey[400],
+                          size: 18,
+                        ),
+                        onPressed: () {
+                          setState(() {
+                            _passwordVisible = !_passwordVisible;
+                          });
+                        },
+                      )
+                    : null,
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 14,
+                ),
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 20),
+      ],
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return Scaffold(
+      body: SafeArea(
+        child: SingleChildScrollView(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                GestureDetector(
+                  onTap: () {
+                    // Back button takes user back to Welcome or Login screen
+                    Navigator.of(context).pushReplacement(
+                      MaterialPageRoute(
+                        builder: (context) => Welcome(
+                          themeProvider: widget.themeProvider,
+                        ),
+                      ),
+                    );
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: isDark
+                          ? Colors.white.withOpacity(0.1)
+                          : Colors.black.withOpacity(0.05),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                        color: isDark
+                            ? Colors.white.withOpacity(0.1)
+                            : Colors.black.withOpacity(0.1),
+                      ),
+                    ),
+                    child: const Icon(Icons.arrow_back_ios_rounded, size: 18),
+                  ),
+                ),
+                const SizedBox(height: 30),
+                const Text(
+                  'Create Account',
+                  style: TextStyle(
+                    fontSize: 32,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: -0.5,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Sign up as a new student',
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: isDark ? Colors.grey[400] : Colors.grey[600],
+                    fontWeight: FontWeight.w400,
+                  ),
+                ),
+                const SizedBox(height: 32),
+                
+                // Form Fields generated using the helper method
+                _buildTextField(
+                  label: 'Last Name',
+                  hint: 'Enter your last name',
+                  icon: Icons.person_outline_rounded,
+                  controller: _lastNameController,
+                  isDark: isDark,
+                ),
+                _buildTextField(
+                  label: 'First Name',
+                  hint: 'Enter your first name',
+                  icon: Icons.person_outline_rounded,
+                  controller: _firstNameController,
+                  isDark: isDark,
+                ),
+                _buildTextField(
+                  label: 'Middle Name (Optional)',
+                  hint: 'Enter your middle name',
+                  icon: Icons.person_outline_rounded,
+                  controller: _middleNameController,
+                  isDark: isDark,
+                ),
+                _buildTextField(
+                  label: 'USN',
+                  hint: 'Enter your USN',
+                  icon: Icons.badge_rounded,
+                  controller: _usnController,
+                  isDark: isDark,
+                ),
+                _buildTextField(
+                  label: 'Course',
+                  hint: 'e.g., BSCS',
+                  icon: Icons.school_rounded,
+                  controller: _courseController,
+                  isDark: isDark,
+                ),
+                _buildTextField(
+                  label: 'Year and Section',
+                  hint: 'e.g., 3-A',
+                  icon: Icons.class_rounded,
+                  controller: _yearSectionController,
+                  isDark: isDark,
+                ),
+                _buildTextField(
+                  label: 'Password',
+                  hint: '••••••••',
+                  icon: Icons.lock_rounded,
+                  controller: _passwordController,
+                  isDark: isDark,
+                  isPassword: true,
+                ),
+                
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: double.infinity,
+                  height: 52,
+                  child: ElevatedButton(
+                    onPressed: _isLoading ? null : _handleSignUp,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF6366F1),
+                      foregroundColor: Colors.white,
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    child: _isLoading
+                        ? const SizedBox(
+                            height: 20,
+                            width: 20,
+                            child: CircularProgressIndicator(
+                              valueColor: AlwaysStoppedAnimation<Color>(
+                                Colors.white,
+                              ),
+                              strokeWidth: 2,
+                            ),
+                          )
+                        : const Text(
+                            'Sign Up',
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                              letterSpacing: 0.3,
+                            ),
+                          ),
+                  ),
+                ),
+                const SizedBox(height: 24),
+                Center(
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        'Already have an account? ',
+                        style: TextStyle(
+                          color: isDark ? Colors.grey[400] : Colors.grey[600],
+                          fontSize: 12,
+                        ),
+                      ),
+                      GestureDetector(
+                        onTap: () {
+                          // ROUTE BACK TO LOGIN SCREEN
+                          Navigator.of(context).pushReplacement(
+                            MaterialPageRoute(
+                              builder: (context) => Login(
+                                themeProvider: widget.themeProvider,
+                              ),
+                            ),
+                          );
+                        },
+                        child: const Text(
+                          'Sign in',
+                          style: TextStyle(
+                            color: Color(0xFF6366F1),
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 0.2,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 24),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
 // DASHBOARD SCREEN WITH BOTTOM NAV
 class Dashboard extends StatefulWidget {
   final String email;
@@ -1116,7 +1497,7 @@ class _DashboardState extends State<Dashboard>
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const Text(
-                    'Welcome Back',
+                    'Welcome Back, Student!',
                     style: TextStyle(
                       fontSize: 24,
                       fontWeight: FontWeight.w700,
@@ -1124,14 +1505,14 @@ class _DashboardState extends State<Dashboard>
                     ),
                   ),
                   const SizedBox(height: 4),
-                  Text(
-                    'Saturday, Feb 22',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: isDark ? Colors.grey[500] : Colors.grey[600],
-                      fontWeight: FontWeight.w500,
-                    ),
+                 Text(
+                  DateFormat('EEEE, MMM d').format(DateTime.now()),
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: isDark ? Colors.grey[500] : Colors.grey[600],
+                    fontWeight: FontWeight.w500,
                   ),
+                ),
                 ],
               ),
               GestureDetector(
