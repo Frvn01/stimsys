@@ -7,6 +7,7 @@ import 'models/database_helper.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:intl/intl.dart';
 import 'screens/qr_scanner_screen.dart';
+// import 'dart:convert';
 
 bool isSameDay(DateTime a, DateTime b) {
   return a.year == b.year && a.month == b.month && a.day == b.day;
@@ -440,7 +441,7 @@ class _WelcomeState extends State<Welcome> with SingleTickerProviderStateMixin {
                   ),
                   const SizedBox(height: 16),
                   Text(
-                    'Powered by Raven and Rensusama',
+                    'Powered by Corvexis and Rensusama',
                     style: TextStyle(
                       fontSize: 11,
                       color: isDark ? Colors.grey[600] : Colors.grey[500],
@@ -896,7 +897,7 @@ class _LoginState extends State<Login> {
                 const SizedBox(height: 24),
                 Center(
                   child: Text(
-                    'Powered by Raven and Rensusama',
+                    'Powered by Corvexis and Rensusama',
                     style: TextStyle(
                       fontSize: 11,
                       color: isDark ? Colors.grey[600] : Colors.grey[500],
@@ -1733,7 +1734,7 @@ class _DashboardState extends State<Dashboard>
                 const SizedBox(height: 16),
                 _buildStatRow(isDark, 'Active Courses', '5', const Color(0xFF6366F1)),
                 const SizedBox(height: 12),
-                _buildStatRow(isDark, 'Pending Tasks', '3', const Color(0xFF8B5CF6)),
+                _buildStatRow(isDark, 'Missed Tasks', '3', const Color(0xFF8B5CF6)),
                 const SizedBox(height: 12),
                 _buildStatRow(isDark, 'Current GPA', '3.8', const Color(0xFFA855F7)),
                 const SizedBox(height: 12),
@@ -1754,7 +1755,7 @@ class _DashboardState extends State<Dashboard>
           _buildActivityCard(
             isDark,
             'Assignment Submitted',
-            'Mathematics - Problem Set 5',
+            'Information Assurance Security 2',
             '2h ago',
             Icons.assessment_rounded,
           ),
@@ -1762,7 +1763,7 @@ class _DashboardState extends State<Dashboard>
           _buildActivityCard(
             isDark,
             'Grade Posted',
-            'Physics Quiz 3: 92/100',
+            'Application Development and Emerging Technologies Quiz 2: 92/100',
             '1d ago',
             Icons.grade_rounded,
           ),
@@ -1770,7 +1771,7 @@ class _DashboardState extends State<Dashboard>
           _buildActivityCard(
             isDark,
             'Course Updated',
-            'Chemistry - New lecture notes',
+            'Database Management Systems 2',
             '3d ago',
             Icons.update_rounded,
           ),
@@ -1869,9 +1870,9 @@ Widget _buildCoursesPage() {
   );
 }
 
-// Add this method OUTSIDE of _buildCoursesPage()
-Future<void> _scanQRCode() async {
-  final result = await Navigator.of(context).push(
+// Add this method OUTSIDE
+  Future<void> _scanQRCode() async {
+  String? result = await Navigator.of(context).push(
     MaterialPageRoute(
       builder: (context) => const QRScannerScreen(),
     ),
@@ -1880,47 +1881,389 @@ Future<void> _scanQRCode() async {
   if (result != null) {
     print('Scanned QR Code: $result');
   }
+
+  result = await showDialog<String>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: const Text('Mock QR Input'),
+      content: const Text('Paste or type a valid course JSON:'),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context, null),
+          child: const Text('Cancel'),
+        ),
+        ElevatedButton(
+          onPressed: () {
+            final mockJson = '''
+        {
+          'name': 'Information Assurance Security 2',
+        'id': 'IT6205A',
+        'teacher': 'Rens Cardaña',
+        'hours': 'Wed 7:30-10:00 AM',
+        'color': Colors.blueAccent,
+        }
+        ''';
+            Navigator.pop(context, mockJson);
+          },
+          child: const Text('Use Sample'),
+        ),
+      ],
+    ),
+  );
+
+  if (result != null) {
+    print('Mock QR JSON: $result');
+  }
+}
+  // Widget _buildGradesPage() {
+  //   final isDark = Theme.of(context).brightness == Brightness.dark;
+
+  //   return SingleChildScrollView(
+  //     padding: const EdgeInsets.all(20),
+  //     child: Column(
+  //       crossAxisAlignment: CrossAxisAlignment.start,
+  //       children: [
+  //         const Text(
+  //           'Your Grades',
+  //           style: TextStyle(
+  //             fontSize: 24,
+  //             fontWeight: FontWeight.w700,
+  //             letterSpacing: -0.3,
+  //           ),
+  //         ),
+  //         const SizedBox(height: 8),
+  //         Text(
+  //           'Current semester performance',
+  //           style: TextStyle(
+  //             fontSize: 13,
+  //             color: isDark ? Colors.grey[500] : Colors.grey[600],
+  //           ),
+  //         ),
+  //         const SizedBox(height: 24),
+  //         _buildGradeCard(isDark, 'Application Development and Emerging Technologies', 'A', '92%', const Color(0xFF10B981)),
+  //         const SizedBox(height: 10),
+  //         _buildGradeCard(isDark, 'Database Management Systems 2', 'A-', '88%', const Color(0xFF3B82F6)),
+  //         const SizedBox(height: 10),
+  //         _buildGradeCard(isDark, 'Information Assurance Security 2', 'B+', '85%', const Color(0xFFF59E0B)),
+  //         const SizedBox(height: 10),
+  //         _buildGradeCard(isDark, 'Computer Science', 'A', '94%', const Color(0xFF8B5CF6)),
+  //         const SizedBox(height: 10),
+  //         _buildGradeCard(isDark, 'English Literature', 'B+', '87%', const Color(0xFFEC4899)),
+  //         const SizedBox(height: 20),
+  //       ],
+  //     ),
+  //   );
+  // }
+
+
+// Add this variable at the top of your state class
+int? _selectedSubjectIndex;
+
+Widget _buildGradesPage() {
+  final isDark = Theme.of(context).brightness == Brightness.dark;
+
+  return SingleChildScrollView(
+    padding: const EdgeInsets.all(20),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Your Grades',
+          style: TextStyle(
+            fontSize: 24,
+            fontWeight: FontWeight.w700,
+            letterSpacing: -0.3,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          'Current semester performance',
+          style: TextStyle(
+            fontSize: 13,
+            color: isDark ? Colors.grey[500] : Colors.grey[600],
+          ),
+        ),
+        const SizedBox(height: 24),
+        
+        // Subject cards
+        _buildSubjectCard(isDark, 0, 'Application Development and Emerging Technologiesematics', 'A', '92%', const Color(0xFF10B981)),
+        const SizedBox(height: 10),
+        _buildSubjectCard(isDark, 1, 'Database Management Systems 2', 'A-', '88%', const Color(0xFF3B82F6)),
+        const SizedBox(height: 10),
+        _buildSubjectCard(isDark, 2, 'Information Assurance Security 2', 'B+', '85%', const Color(0xFFF59E0B)),
+        const SizedBox(height: 10),
+        // _buildSubjectCard(isDark, 3, 'Computer Science', 'A', '94%', const Color(0xFF8B5CF6)),
+        // const SizedBox(height: 10),
+        // _buildSubjectCard(isDark, 4, 'English Literature', 'B+', '87%', const Color(0xFFEC4899)),
+        
+        // Detailed view for selected subject
+        if (_selectedSubjectIndex != null) ...[
+          const SizedBox(height: 20),
+          _buildSubjectDetails(_selectedSubjectIndex!, isDark),
+        ],
+        
+        const SizedBox(height: 20),
+      ],
+    ),
+  );
 }
 
-  Widget _buildGradesPage() {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+Widget _buildSubjectCard(bool isDark, int index, String subject, String grade, String percentage, Color color) {
+  return GestureDetector(
+    onTap: () {
+      setState(() {
+        if (_selectedSubjectIndex == index) {
+          _selectedSubjectIndex = null; // Collapse if already selected
+        } else {
+          _selectedSubjectIndex = index;
+        }
+      });
+    },
+    child: AnimatedContainer(
+      duration: const Duration(milliseconds: 300),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: isDark ? Colors.grey[800] : Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.1),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+        border: _selectedSubjectIndex == index 
+            ? Border.all(color: color, width: 2)
+            : null,
+      ),
+      child: Row(
         children: [
-          const Text(
-            'Your Grades',
-            style: TextStyle(
-              fontSize: 24,
-              fontWeight: FontWeight.w700,
-              letterSpacing: -0.3,
+          Container(
+            width: 48,
+            height: 48,
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.2),
+              shape: BoxShape.circle,
+            ),
+            child: Center(
+              child: Text(
+                grade,
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                  color: color,
+                ),
+              ),
             ),
           ),
-          const SizedBox(height: 8),
-          Text(
-            'Current semester performance',
-            style: TextStyle(
-              fontSize: 13,
-              color: isDark ? Colors.grey[500] : Colors.grey[600],
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  subject,
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: isDark ? Colors.white : Colors.black,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Grade: $grade ($percentage)',
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: isDark ? Colors.grey[400] : Colors.grey[600],
+                  ),
+                ),
+              ],
             ),
           ),
-          const SizedBox(height: 24),
-          _buildGradeCard(isDark, 'Mathematics', 'A', '92%', const Color(0xFF10B981)),
-          const SizedBox(height: 10),
-          _buildGradeCard(isDark, 'Physics', 'A-', '88%', const Color(0xFF3B82F6)),
-          const SizedBox(height: 10),
-          _buildGradeCard(isDark, 'Chemistry', 'B+', '85%', const Color(0xFFF59E0B)),
-          const SizedBox(height: 10),
-          _buildGradeCard(isDark, 'Computer Science', 'A', '94%', const Color(0xFF8B5CF6)),
-          const SizedBox(height: 10),
-          _buildGradeCard(isDark, 'English Literature', 'B+', '87%', const Color(0xFFEC4899)),
-          const SizedBox(height: 20),
+          Icon(
+            _selectedSubjectIndex == index 
+                ? Icons.expand_less 
+                : Icons.expand_more,
+            color: isDark ? Colors.grey[400] : Colors.grey[600],
+          ),
         ],
       ),
-    );
-  }
+    ),
+  );
+}
+
+Widget _buildSubjectDetails(int subjectIndex, bool isDark) {
+  // Sample data for each subject
+  final Map<int, Map<String, dynamic>> subjectData = {
+    0: {
+      'name': 'Application Development and Emerging Technologiesematics',
+      'quizzes': [
+        {'name': 'Prelim Quiz 1', 'score': '18/20', 'date': 'Feb 10'},
+        {'name': 'Prelim Quiz 2', 'score': '17/20', 'date': 'Feb 17'},
+        {'name': 'Midterm Quiz 1', 'score': '19/20', 'date': 'Mar 5'},
+        {'name': 'Midterm Quiz 2', 'score': '20/20', 'date': 'Mar 12'},
+        {'name': 'Final Quiz', 'score': '19/20', 'date': 'Apr 8'},
+      ],
+      'exams': [
+        {'name': 'Prelim Exam', 'score': '88/100', 'date': 'Feb 24'},
+        {'name': 'Midterm Exam', 'score': '92/100', 'date': 'Mar 19'},
+        {'name': 'Final Exam', 'score': '95/100', 'date': 'Apr 15'},
+      ],
+      'attendance': {'present': 38, 'total': 40, 'percentage': '95%'},
+    },
+    1: {
+      'name': 'Database Management Systems 2',
+      'quizzes': [
+        {'name': 'Prelim Quiz 1', 'score': '16/20', 'date': 'Feb 10'},
+        {'name': 'Prelim Quiz 2', 'score': '15/20', 'date': 'Feb 17'},
+        {'name': 'Midterm Quiz 1', 'score': '18/20', 'date': 'Mar 5'},
+        {'name': 'Midterm Quiz 2', 'score': '19/20', 'date': 'Mar 12'},
+        {'name': 'Final Quiz', 'score': '17/20', 'date': 'Apr 8'},
+      ],
+      'exams': [
+        {'name': 'Prelim Exam', 'score': '85/100', 'date': 'Feb 24'},
+        {'name': 'Midterm Exam', 'score':'90/100',  	'date':'Mar 19'},
+        {'name':	'Final Exam','score':'93/100','date':'Apr 15'},
+      ],
+      'attendance': {'present': 36,	'total':40,'percentage':'90%'},
+    },
+    2: {
+      'name': 'Information Assurance Security 2',
+      'quizzes': [
+        {'name': 'Prelim Quiz 1', 'score': '14/20', 'date': 'Feb 10'},
+        {'name': 'Prelim Quiz 2', 'score': '13/20', 'date': 'Feb 17'},
+        {'name': 'Midterm Quiz 1', 'score': '16/20', 'date': 'Mar 5'},
+        {'name': 'Midterm Quiz 2', 'score': '17/20', 'date': 'Mar 12'},
+        {'name': 'Final Quiz', 'score': '15/20', 'date': 'Apr 8'},
+      ],
+      'exams': [
+        {'name': 'Prelim Exam', 'score': '80/100', 'date': 'Feb 24'},
+        {'name': 'Midterm Exam', 'score':'85/100','date':'Mar 19'},
+        {'name':'Final Exam','score':'88/100','date':'Apr 15'},
+      ],
+      'attendance': {'present': 34,	'total':40,'percentage':'85%'},
+    },
+  };
+
+  final data = subjectData[subjectIndex]!;
+
+  return AnimatedContainer(
+    duration: const Duration(milliseconds: 300),
+    padding: const EdgeInsets.all(16),
+    decoration: BoxDecoration(
+      color: isDark ? Colors.grey[900] : Colors.grey[50],
+      borderRadius: BorderRadius.circular(12),
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Attendance Summary
+        _buildSectionHeader('Attendance Tracker'),
+        const SizedBox(height: 12),
+        _buildAttendanceWidget(data['attendance'], isDark),
+        
+        const SizedBox(height: 24),
+        
+        // Quiz Performance
+        _buildSectionHeader('Quiz Performance'),
+        const SizedBox(height: 12),
+        ...data['quizzes'].map<Widget>((quiz) => 
+          _buildPerformanceItem(quiz['name'], quiz['score'], quiz['date'], isDark)
+        ).toList(),
+        
+        const SizedBox(height: 16),
+        
+        // Exam Performance
+        _buildSectionHeader('Exam Performance'),
+        const SizedBox(height: 12),
+        ...data['exams'].map<Widget>((exam) => 
+          _buildPerformanceItem(exam['name'], exam['score'], exam['date'], isDark)
+        ).toList(),
+      ],
+    ),
+  );
+}
+
+Widget _buildSectionHeader(String title) {
+  return Text(
+    title,
+    style: const TextStyle(
+      fontSize: 18,
+      fontWeight: FontWeight.w600,
+    ),
+  );
+}
+
+Widget _buildAttendanceWidget(Map<String, dynamic> attendance, bool isDark) {
+  return Container(
+    padding: const EdgeInsets.all(12),
+    decoration: BoxDecoration(
+      color: isDark ? Colors.grey[800] : Colors.white,
+      borderRadius: BorderRadius.circular(8),
+    ),
+    child: Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(
+          'Classes Attended',
+          style: TextStyle(
+            fontWeight: FontWeight.w500,
+            color: isDark ? Colors.grey[300] : Colors.grey[700],
+          ),
+        ),
+        Text(
+          '${attendance['present']}/${attendance['total']} (${attendance['percentage']})',
+          style: const TextStyle(
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
+Widget _buildPerformanceItem(String name, String score, String date, bool isDark) {
+  return Container(
+    margin: const EdgeInsets.only(bottom: 8),
+    padding: const EdgeInsets.all(12),
+    decoration: BoxDecoration(
+      color: isDark ? Colors.grey[800] : Colors.white,
+      borderRadius: BorderRadius.circular(8),
+    ),
+    child: Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Expanded(
+          child: Text(
+            name,
+            style: TextStyle(
+              fontWeight: FontWeight.w500,
+              color: isDark ? Colors.grey[300] : Colors.grey[700],
+            ),
+          ),
+        ),
+        Text(
+          score,
+          style: const TextStyle(
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const SizedBox(width: 16),
+        Text(
+          date,
+          style: TextStyle(
+            color: isDark ? Colors.grey[400] : Colors.grey[600],
+            fontSize: 12,
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
+
+
+
 
   Widget _buildProfilePage() {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -2038,7 +2381,7 @@ Future<void> _scanQRCode() async {
           const SizedBox(height: 20),
           Center(
             child: Text(
-              'Powered by Raven and Rensusama',
+              'Powered by Corvexis and Rensusama',
               style: TextStyle(
                 fontSize: 11,
                 color: isDark ? Colors.grey[600] : Colors.grey[500],
@@ -2444,18 +2787,18 @@ Future<void> _scanQRCode() async {
           ),
           const SizedBox(height: 24),
           GestureDetector(
-            onTap: () => _showAssessmentsDialog(context, 'Mathematics', isDark),
-            child: _buildQuizCourseCard(isDark, 'Mathematics', 'Dr. Black Jack', Colors.blue),
+            onTap: () => _showAssessmentsDialog(context, 'Application Development and Emerging Technologies', isDark),
+            child: _buildQuizCourseCard(isDark, 'Application Development & Emerging Technologies', 'Godfrey Roa', Colors.blue),
           ),
           const SizedBox(height: 12),
           GestureDetector(
-            onTap: () => _showAssessmentsDialog(context, 'Physics', isDark),
-            child: _buildQuizCourseCard(isDark, 'Physics', 'Prof. Saturn', Colors.purple),
+            onTap: () => _showAssessmentsDialog(context, 'Database Management Systems 2', isDark),
+            child: _buildQuizCourseCard(isDark, 'Database Management Systems 2', 'Rens Cardaña', Colors.purple),
           ),
           const SizedBox(height: 12),
           GestureDetector(
-            onTap: () => _showAssessmentsDialog(context, 'Chemistry', isDark),
-            child: _buildQuizCourseCard(isDark, 'Chemistry', 'Dr. Aray Mo', Colors.green),
+            onTap: () => _showAssessmentsDialog(context, 'Information Assurance Security 2', isDark),
+            child: _buildQuizCourseCard(isDark, 'Information Assurance Security 2', 'Rens Cardaña', Colors.green),
           ),
           const SizedBox(height: 12),
           GestureDetector(
