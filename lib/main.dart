@@ -7,7 +7,9 @@ import 'models/database_helper.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:intl/intl.dart';
 import 'screens/qr_scanner_screen.dart';
-// import 'dart:convert';
+import 'models/assessment_data.dart';
+import 'screens/quiz_screen.dart';
+import 'dart:convert';
 
 bool isSameDay(DateTime a, DateTime b) {
   return a.year == b.year && a.month == b.month && a.day == b.day;
@@ -1915,6 +1917,10 @@ Widget _buildCoursesPage() {
     print('Mock QR JSON: $result');
   }
 }
+
+
+//Old BUilder for Grades Page
+
   // Widget _buildGradesPage() {
   //   final isDark = Theme.of(context).brightness == Brightness.dark;
 
@@ -1956,17 +1962,60 @@ Widget _buildCoursesPage() {
   // }
 
 
+
 // Add this variable at the top of your state class
 int? _selectedSubjectIndex;
 
+// ─── Grades Page ──────────────────────────────────────────────────────────────
+
 Widget _buildGradesPage() {
   final isDark = Theme.of(context).brightness == Brightness.dark;
+
+  final List<Map<String, dynamic>> gradeSubjects = [
+    {
+      'name': 'Application Development and Emerging Technologies',
+      'shortName': 'ADET',
+      'grade': 'A',
+      'percentage': '92%',
+      'gpa': '1.25',
+      'color': const Color(0xFF10B981),
+      'icon': Icons.code_rounded,
+      'index': 0,
+    },
+    {
+      'name': 'Database Management Systems 2',
+      'shortName': 'DBMS 2',
+      'grade': 'A-',
+      'percentage': '88%',
+      'gpa': '1.50',
+      'color': const Color(0xFF3B82F6),
+      'icon': Icons.storage_rounded,
+      'index': 1,
+    },
+    {
+      'name': 'Information Assurance Security 2',
+      'shortName': 'IAS 2',
+      'grade': 'B+',
+      'percentage': '85%',
+      'gpa': '1.75',
+      'color': const Color(0xFFF59E0B),
+      'icon': Icons.security_rounded,
+      'index': 2,
+    },
+  ];
+
+  // Compute overall GPA
+  final double overallGpa = gradeSubjects
+      .map((s) => double.parse(s['gpa']))
+      .reduce((a, b) => a + b) /
+      gradeSubjects.length;
 
   return SingleChildScrollView(
     padding: const EdgeInsets.all(20),
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        // ── Header ──────────────────────────────────────────────────────────
         const Text(
           'Your Grades',
           style: TextStyle(
@@ -1975,7 +2024,7 @@ Widget _buildGradesPage() {
             letterSpacing: -0.3,
           ),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 4),
         Text(
           'Current semester performance',
           style: TextStyle(
@@ -1983,120 +2032,146 @@ Widget _buildGradesPage() {
             color: isDark ? Colors.grey[500] : Colors.grey[600],
           ),
         ),
+        const SizedBox(height: 20),
+
+        // ── Overall GPA Banner ───────────────────────────────────────────────
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: isDark
+                  ? [
+                      const Color(0xFF6366F1).withOpacity(0.3),
+                      const Color(0xFF8B5CF6).withOpacity(0.2),
+                    ]
+                  : [
+                      const Color(0xFF6366F1),
+                      const Color(0xFF8B5CF6),
+                    ],
+            ),
+            borderRadius: BorderRadius.circular(16),
+            boxShadow: isDark
+                ? []
+                : [
+                    BoxShadow(
+                      color: const Color(0xFF6366F1).withOpacity(0.3),
+                      blurRadius: 16,
+                      offset: const Offset(0, 6),
+                    ),
+                  ],
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Overall GPA',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                        color: Colors.white.withOpacity(0.8),
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      overallGpa.toStringAsFixed(2),
+                      style: const TextStyle(
+                        fontSize: 36,
+                        fontWeight: FontWeight.w900,
+                        color: Colors.white,
+                        letterSpacing: -1,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '${gradeSubjects.length} subjects enrolled',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.white.withOpacity(0.7),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.15),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.school_rounded,
+                  color: Colors.white,
+                  size: 32,
+                ),
+              ),
+            ],
+          ),
+        ),
         const SizedBox(height: 24),
-        
-        // Subject cards
-        _buildSubjectCard(isDark, 0, 'Application Development and Emerging Technologiesematics', 'A', '92%', const Color(0xFF10B981)),
-        const SizedBox(height: 10),
-        _buildSubjectCard(isDark, 1, 'Database Management Systems 2', 'A-', '88%', const Color(0xFF3B82F6)),
-        const SizedBox(height: 10),
-        _buildSubjectCard(isDark, 2, 'Information Assurance Security 2', 'B+', '85%', const Color(0xFFF59E0B)),
-        const SizedBox(height: 10),
-        // _buildSubjectCard(isDark, 3, 'Computer Science', 'A', '94%', const Color(0xFF8B5CF6)),
-        // const SizedBox(height: 10),
-        // _buildSubjectCard(isDark, 4, 'English Literature', 'B+', '87%', const Color(0xFFEC4899)),
-        
-        // Detailed view for selected subject
-        if (_selectedSubjectIndex != null) ...[
-          const SizedBox(height: 20),
-          _buildSubjectDetails(_selectedSubjectIndex!, isDark),
-        ],
-        
+
+        // ── Subject label ────────────────────────────────────────────────────
+        Text(
+          'Subject Breakdown',
+          style: TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w700,
+            color: isDark ? Colors.grey[300] : Colors.grey[700],
+            letterSpacing: 0.2,
+          ),
+        ),
+        const SizedBox(height: 12),
+
+        // ── Subject Cards ────────────────────────────────────────────────────
+        ...gradeSubjects.map((subject) {
+          final int idx = subject['index'];
+          final bool isExpanded = _selectedSubjectIndex == idx;
+          final Color color = subject['color'];
+
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: _buildGradeSubjectCard(
+              isDark: isDark,
+              index: idx,
+              name: subject['name'],
+              shortName: subject['shortName'],
+              grade: subject['grade'],
+              percentage: subject['percentage'],
+              gpa: subject['gpa'],
+              color: color,
+              icon: subject['icon'],
+              isExpanded: isExpanded,
+            ),
+          );
+        }).toList(),
+
         const SizedBox(height: 20),
       ],
     ),
   );
 }
 
-Widget _buildSubjectCard(bool isDark, int index, String subject, String grade, String percentage, Color color) {
-  return GestureDetector(
-    onTap: () {
-      setState(() {
-        if (_selectedSubjectIndex == index) {
-          _selectedSubjectIndex = null; // Collapse if already selected
-        } else {
-          _selectedSubjectIndex = index;
-        }
-      });
-    },
-    child: AnimatedContainer(
-      duration: const Duration(milliseconds: 300),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: isDark ? Colors.grey[800] : Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.1),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-        border: _selectedSubjectIndex == index 
-            ? Border.all(color: color, width: 2)
-            : null,
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 48,
-            height: 48,
-            decoration: BoxDecoration(
-              color: color.withOpacity(0.2),
-              shape: BoxShape.circle,
-            ),
-            child: Center(
-              child: Text(
-                grade,
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w700,
-                  color: color,
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  subject,
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                    color: isDark ? Colors.white : Colors.black,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  'Grade: $grade ($percentage)',
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: isDark ? Colors.grey[400] : Colors.grey[600],
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Icon(
-            _selectedSubjectIndex == index 
-                ? Icons.expand_less 
-                : Icons.expand_more,
-            color: isDark ? Colors.grey[400] : Colors.grey[600],
-          ),
-        ],
-      ),
-    ),
-  );
-}
+// ─── Subject Card with Integrated Dropdown ────────────────────────────────────
 
-Widget _buildSubjectDetails(int subjectIndex, bool isDark) {
-  // Sample data for each subject
+Widget _buildGradeSubjectCard({
+  required bool isDark,
+  required int index,
+  required String name,
+  required String shortName,
+  required String grade,
+  required String percentage,
+  required String gpa,
+  required Color color,
+  required IconData icon,
+  required bool isExpanded,
+}) {
   final Map<int, Map<String, dynamic>> subjectData = {
     0: {
-      'name': 'Application Development and Emerging Technologiesematics',
       'quizzes': [
         {'name': 'Prelim Quiz 1', 'score': '18/20', 'date': 'Feb 10'},
         {'name': 'Prelim Quiz 2', 'score': '17/20', 'date': 'Feb 17'},
@@ -2112,7 +2187,6 @@ Widget _buildSubjectDetails(int subjectIndex, bool isDark) {
       'attendance': {'present': 38, 'total': 40, 'percentage': '95%'},
     },
     1: {
-      'name': 'Database Management Systems 2',
       'quizzes': [
         {'name': 'Prelim Quiz 1', 'score': '16/20', 'date': 'Feb 10'},
         {'name': 'Prelim Quiz 2', 'score': '15/20', 'date': 'Feb 17'},
@@ -2122,13 +2196,12 @@ Widget _buildSubjectDetails(int subjectIndex, bool isDark) {
       ],
       'exams': [
         {'name': 'Prelim Exam', 'score': '85/100', 'date': 'Feb 24'},
-        {'name': 'Midterm Exam', 'score':'90/100',  	'date':'Mar 19'},
-        {'name':	'Final Exam','score':'93/100','date':'Apr 15'},
+        {'name': 'Midterm Exam', 'score': '90/100', 'date': 'Mar 19'},
+        {'name': 'Final Exam', 'score': '93/100', 'date': 'Apr 15'},
       ],
-      'attendance': {'present': 36,	'total':40,'percentage':'90%'},
+      'attendance': {'present': 36, 'total': 40, 'percentage': '90%'},
     },
     2: {
-      'name': 'Information Assurance Security 2',
       'quizzes': [
         {'name': 'Prelim Quiz 1', 'score': '14/20', 'date': 'Feb 10'},
         {'name': 'Prelim Quiz 2', 'score': '13/20', 'date': 'Feb 17'},
@@ -2138,126 +2211,504 @@ Widget _buildSubjectDetails(int subjectIndex, bool isDark) {
       ],
       'exams': [
         {'name': 'Prelim Exam', 'score': '80/100', 'date': 'Feb 24'},
-        {'name': 'Midterm Exam', 'score':'85/100','date':'Mar 19'},
-        {'name':'Final Exam','score':'88/100','date':'Apr 15'},
+        {'name': 'Midterm Exam', 'score': '85/100', 'date': 'Mar 19'},
+        {'name': 'Final Exam', 'score': '88/100', 'date': 'Apr 15'},
       ],
-      'attendance': {'present': 34,	'total':40,'percentage':'85%'},
+      'attendance': {'present': 34, 'total': 40, 'percentage': '85%'},
     },
   };
 
-  final data = subjectData[subjectIndex]!;
+  final data = subjectData[index]!;
+  final attendance = data['attendance'] as Map<String, dynamic>;
+  final quizzes = data['quizzes'] as List;
+  final exams = data['exams'] as List;
 
-  return AnimatedContainer(
-    duration: const Duration(milliseconds: 300),
-    padding: const EdgeInsets.all(16),
+  // Parse attendance for progress bar
+  final int present = attendance['present'];
+  final int total = attendance['total'];
+  final double attendanceRatio = present / total;
+
+  return GestureDetector(
+    onTap: () {
+      setState(() {
+        _selectedSubjectIndex = isExpanded ? null : index;
+      });
+    },
+    child: AnimatedContainer(
+      duration: const Duration(milliseconds: 350),
+      curve: Curves.easeInOut,
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF1E293B) : Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: isExpanded
+              ? color.withOpacity(0.6)
+              : (isDark
+                  ? Colors.white.withOpacity(0.08)
+                  : Colors.grey.shade200),
+          width: isExpanded ? 1.5 : 1,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: isExpanded
+                ? color.withOpacity(0.15)
+                : Colors.black.withOpacity(0.05),
+            blurRadius: isExpanded ? 16 : 6,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          // ── Card Header ────────────────────────────────────────────────────
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              children: [
+                // Subject icon circle
+                Container(
+                  width: 48,
+                  height: 48,
+                  decoration: BoxDecoration(
+                    color: color.withOpacity(0.12),
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: color.withOpacity(0.3),
+                      width: 1.5,
+                    ),
+                  ),
+                  child: Icon(icon, color: color, size: 22),
+                ),
+                const SizedBox(width: 14),
+
+                // Name + short info
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        name,
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          color: isDark ? Colors.white : Colors.black87,
+                          letterSpacing: -0.2,
+                        ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 5),
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 8, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: color.withOpacity(0.12),
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: Text(
+                              shortName,
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w600,
+                                color: color,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            'GPA $gpa',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: isDark
+                                  ? Colors.grey[500]
+                                  : Colors.grey[500],
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+
+                // Grade badge + chevron
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: color.withOpacity(0.12),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(
+                          color: color.withOpacity(0.3),
+                          width: 1,
+                        ),
+                      ),
+                      child: Text(
+                        grade,
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w800,
+                          color: color,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Row(
+                      children: [
+                        Text(
+                          percentage,
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: isDark
+                                ? Colors.grey[400]
+                                : Colors.grey[600],
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        AnimatedRotation(
+                          turns: isExpanded ? 0.5 : 0,
+                          duration: const Duration(milliseconds: 300),
+                          child: Icon(
+                            Icons.keyboard_arrow_down_rounded,
+                            size: 18,
+                            color: isDark
+                                ? Colors.grey[400]
+                                : Colors.grey[500],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+
+          // ── Thin progress bar at bottom of header ──────────────────────────
+          ClipRRect(
+            borderRadius: isExpanded
+                ? BorderRadius.zero
+                : const BorderRadius.vertical(bottom: Radius.circular(16)),
+            child: LinearProgressIndicator(
+              value: double.parse(percentage.replaceAll('%', '')) / 100,
+              backgroundColor:
+                  isDark ? Colors.white.withOpacity(0.06) : Colors.grey.shade100,
+              valueColor: AlwaysStoppedAnimation<Color>(color.withOpacity(0.7)),
+              minHeight: 3,
+            ),
+          ),
+
+          // ── Expandable Details ─────────────────────────────────────────────
+          AnimatedCrossFade(
+            duration: const Duration(milliseconds: 350),
+            crossFadeState: isExpanded
+                ? CrossFadeState.showSecond
+                : CrossFadeState.showFirst,
+            firstChild: const SizedBox(width: double.infinity),
+            secondChild: Column(
+              children: [
+                // Divider with label
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Divider(
+                          color: isDark
+                              ? Colors.white.withOpacity(0.08)
+                              : Colors.grey.shade100,
+                        ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 10),
+                        child: Text(
+                          'Details',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: isDark
+                                ? Colors.grey[500]
+                                : Colors.grey[400],
+                            fontWeight: FontWeight.w600,
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                      ),
+                      Expanded(
+                        child: Divider(
+                          color: isDark
+                              ? Colors.white.withOpacity(0.08)
+                              : Colors.grey.shade100,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+
+                      // ── Attendance Row ───────────────────────────────────
+                      _buildDropdownSection(
+                        isDark: isDark,
+                        color: color,
+                        icon: Icons.how_to_reg_rounded,
+                        label: 'Attendance',
+                        child: Column(
+                          children: [
+                            Row(
+                              mainAxisAlignment:
+                                  MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text(
+                                  'Classes Attended',
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    color: isDark
+                                        ? Colors.grey[400]
+                                        : Colors.grey[600],
+                                  ),
+                                ),
+                                Text(
+                                  '$present/$total  (${attendance['percentage']})',
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w700,
+                                    color: isDark
+                                        ? Colors.white
+                                        : Colors.black87,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 10),
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(6),
+                              child: LinearProgressIndicator(
+                                value: attendanceRatio,
+                                backgroundColor: isDark
+                                    ? Colors.white.withOpacity(0.08)
+                                    : Colors.grey.shade100,
+                                valueColor:
+                                    AlwaysStoppedAnimation<Color>(color),
+                                minHeight: 8,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+
+                      // ── Quiz Performance ─────────────────────────────────
+                      _buildDropdownSection(
+                        isDark: isDark,
+                        color: const Color(0xFF6366F1),
+                        icon: Icons.assignment_outlined,
+                        label: 'Quiz Performance',
+                        child: Column(
+                          children: quizzes
+                              .asMap()
+                              .entries
+                              .map(
+                                (e) => _buildDetailRow(
+                                  isDark: isDark,
+                                  name: e.value['name'],
+                                  score: e.value['score'],
+                                  date: e.value['date'],
+                                  color: const Color(0xFF6366F1),
+                                  isLast: e.key == quizzes.length - 1,
+                                ),
+                              )
+                              .toList(),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+
+                      // ── Exam Performance ─────────────────────────────────
+                      _buildDropdownSection(
+                        isDark: isDark,
+                        color: const Color(0xFFF59E0B),
+                        icon: Icons.school_outlined,
+                        label: 'Exam Performance',
+                        child: Column(
+                          children: exams
+                              .asMap()
+                              .entries
+                              .map(
+                                (e) => _buildDetailRow(
+                                  isDark: isDark,
+                                  name: e.value['name'],
+                                  score: e.value['score'],
+                                  date: e.value['date'],
+                                  color: const Color(0xFFF59E0B),
+                                  isLast: e.key == exams.length - 1,
+                                ),
+                              )
+                              .toList(),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
+// ─── Section Block inside dropdown ───────────────────────────────────────────
+
+Widget _buildDropdownSection({
+  required bool isDark,
+  required Color color,
+  required IconData icon,
+  required String label,
+  required Widget child,
+}) {
+  return Container(
+    padding: const EdgeInsets.all(14),
     decoration: BoxDecoration(
-      color: isDark ? Colors.grey[900] : Colors.grey[50],
+      color: isDark
+          ? Colors.white.withOpacity(0.04)
+          : Colors.grey.shade50,
       borderRadius: BorderRadius.circular(12),
+      border: Border.all(
+        color: isDark
+            ? Colors.white.withOpacity(0.07)
+            : Colors.grey.shade200,
+      ),
     ),
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Attendance Summary
-        _buildSectionHeader('Attendance Tracker'),
-        const SizedBox(height: 12),
-        _buildAttendanceWidget(data['attendance'], isDark),
-        
-        const SizedBox(height: 24),
-        
-        // Quiz Performance
-        _buildSectionHeader('Quiz Performance'),
-        const SizedBox(height: 12),
-        ...data['quizzes'].map<Widget>((quiz) => 
-          _buildPerformanceItem(quiz['name'], quiz['score'], quiz['date'], isDark)
-        ).toList(),
-        
-        const SizedBox(height: 16),
-        
-        // Exam Performance
-        _buildSectionHeader('Exam Performance'),
-        const SizedBox(height: 12),
-        ...data['exams'].map<Widget>((exam) => 
-          _buildPerformanceItem(exam['name'], exam['score'], exam['date'], isDark)
-        ).toList(),
+        // Section label row
+        Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(6),
+              decoration: BoxDecoration(
+                color: color.withOpacity(0.12),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(icon, size: 14, color: color),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                color: isDark ? Colors.grey[200] : Colors.grey[800],
+                letterSpacing: 0.1,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 14),
+        child,
       ],
     ),
   );
 }
 
-Widget _buildSectionHeader(String title) {
-  return Text(
-    title,
-    style: const TextStyle(
-      fontSize: 18,
-      fontWeight: FontWeight.w600,
-    ),
-  );
-}
+// ─── Individual score row inside a section ────────────────────────────────────
 
-Widget _buildAttendanceWidget(Map<String, dynamic> attendance, bool isDark) {
-  return Container(
-    padding: const EdgeInsets.all(12),
-    decoration: BoxDecoration(
-      color: isDark ? Colors.grey[800] : Colors.white,
-      borderRadius: BorderRadius.circular(8),
-    ),
-    child: Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Text(
-          'Classes Attended',
-          style: TextStyle(
-            fontWeight: FontWeight.w500,
-            color: isDark ? Colors.grey[300] : Colors.grey[700],
-          ),
-        ),
-        Text(
-          '${attendance['present']}/${attendance['total']} (${attendance['percentage']})',
-          style: const TextStyle(
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-      ],
-    ),
-  );
-}
+Widget _buildDetailRow({
+  required bool isDark,
+  required String name,
+  required String score,
+  required String date,
+  required Color color,
+  required bool isLast,
+}) {
+  // Parse score to drive a mini bar  e.g. "18/20" → 0.9
+  double ratio = 0;
+  try {
+    final parts = score.split('/');
+    ratio = double.parse(parts[0]) / double.parse(parts[1]);
+  } catch (_) {}
 
-Widget _buildPerformanceItem(String name, String score, String date, bool isDark) {
-  return Container(
-    margin: const EdgeInsets.only(bottom: 8),
-    padding: const EdgeInsets.all(12),
-    decoration: BoxDecoration(
-      color: isDark ? Colors.grey[800] : Colors.white,
-      borderRadius: BorderRadius.circular(8),
-    ),
-    child: Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Expanded(
-          child: Text(
-            name,
-            style: TextStyle(
-              fontWeight: FontWeight.w500,
-              color: isDark ? Colors.grey[300] : Colors.grey[700],
+  return Column(
+    children: [
+      Row(
+        children: [
+          Expanded(
+            child: Text(
+              name,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+                color: isDark ? Colors.grey[300] : Colors.grey[700],
+              ),
             ),
           ),
-        ),
-        Text(
-          score,
-          style: const TextStyle(
-            fontWeight: FontWeight.w600,
+          const SizedBox(width: 8),
+          Container(
+            padding:
+                const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: Text(
+              score,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: color,
+              ),
+            ),
           ),
-        ),
-        const SizedBox(width: 16),
-        Text(
-          date,
-          style: TextStyle(
-            color: isDark ? Colors.grey[400] : Colors.grey[600],
-            fontSize: 12,
+          const SizedBox(width: 8),
+          SizedBox(
+            width: 44,
+            child: Text(
+              date,
+              style: TextStyle(
+                fontSize: 10,
+                color: isDark ? Colors.grey[500] : Colors.grey[500],
+              ),
+              textAlign: TextAlign.end,
+            ),
           ),
+        ],
+      ),
+      const SizedBox(height: 6),
+      ClipRRect(
+        borderRadius: BorderRadius.circular(4),
+        child: LinearProgressIndicator(
+          value: ratio,
+          backgroundColor:
+              isDark ? Colors.white.withOpacity(0.06) : Colors.grey.shade100,
+          valueColor: AlwaysStoppedAnimation<Color>(
+            ratio >= 0.9
+                ? Colors.green
+                : ratio >= 0.75
+                    ? color
+                    : Colors.orange,
+          ),
+          minHeight: 4,
         ),
-      ],
-    ),
+      ),
+      if (!isLast)
+        Divider(
+          height: 16,
+          color: isDark
+              ? Colors.white.withOpacity(0.05)
+              : Colors.grey.shade100,
+        ),
+    ],
   );
 }
 
@@ -2265,6 +2716,29 @@ Widget _buildPerformanceItem(String name, String score, String date, bool isDark
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+//Profile page
   Widget _buildProfilePage() {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
@@ -2761,61 +3235,86 @@ Widget _buildPerformanceItem(String name, String score, String date, bool isDark
     );
   }
 
-   Widget _buildQuizPage() {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Quiz & Exams',
-            style: TextStyle(
-              fontSize: 24,
-              fontWeight: FontWeight.w700,
-              letterSpacing: -0.3,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Select a course to take quiz or mark attendance',
-            style: TextStyle(
-              fontSize: 13,
-              color: isDark ? Colors.grey[500] : Colors.grey[600],
-            ),
-          ),
-          const SizedBox(height: 24),
-          GestureDetector(
-            onTap: () => _showAssessmentsDialog(context, 'Application Development and Emerging Technologies', isDark),
-            child: _buildQuizCourseCard(isDark, 'Application Development & Emerging Technologies', 'Godfrey Roa', Colors.blue),
-          ),
-          const SizedBox(height: 12),
-          GestureDetector(
-            onTap: () => _showAssessmentsDialog(context, 'Database Management Systems 2', isDark),
-            child: _buildQuizCourseCard(isDark, 'Database Management Systems 2', 'Rens Cardaña', Colors.purple),
-          ),
-          const SizedBox(height: 12),
-          GestureDetector(
-            onTap: () => _showAssessmentsDialog(context, 'Information Assurance Security 2', isDark),
-            child: _buildQuizCourseCard(isDark, 'Information Assurance Security 2', 'Rens Cardaña', Colors.green),
-          ),
-          const SizedBox(height: 12),
-          GestureDetector(
-            onTap: () => _showAssessmentsDialog(context, 'Computer Science', isDark),
-            child: _buildQuizCourseCard(isDark, 'Computer Science', 'Prof. Raven', Colors.orange),
-          ),
-          const SizedBox(height: 12),
-          GestureDetector(
-            onTap: () => _showAssessmentsDialog(context, 'English Literature', isDark),
-            child: _buildQuizCourseCard(isDark, 'English Literature', 'Dr. Ravensu', Colors.pink),
-          ),
-          const SizedBox(height: 20),
-        ],
-      ),
-    );
-  }
 
+
+
+
+
+
+
+
+
+
+// Old Quiz & exam
+
+  Widget _buildQuizPage() {
+  final isDark = Theme.of(context).brightness == Brightness.dark;
+
+  return SingleChildScrollView(
+    padding: const EdgeInsets.all(20),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Quiz & Exams',
+          style: TextStyle(
+            fontSize: 24,
+            fontWeight: FontWeight.w700,
+            letterSpacing: -0.3,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          'Tap a subject to view assessments',
+          style: TextStyle(
+            fontSize: 13,
+            color: isDark ? Colors.grey[500] : Colors.grey[600],
+          ),
+        ),
+        const SizedBox(height: 24),
+        GestureDetector(
+          onTap: () => _showAssessmentsDialog(
+              context,
+              'Application Development and Emerging Technologies',
+              isDark),
+          child: _buildQuizCourseCard(
+            isDark,
+            'Application Development & Emerging Technologies',
+            'Godfrey Roa',
+            Colors.blue,
+          ),
+        ),
+        const SizedBox(height: 12),
+        GestureDetector(
+          onTap: () => _showAssessmentsDialog(
+              context, 'Database Management Systems 2', isDark),
+          child: _buildQuizCourseCard(
+            isDark,
+            'Database Management Systems 2',
+            'Rens Cardaña',
+            Colors.purple,
+          ),
+        ),
+        const SizedBox(height: 12),
+        GestureDetector(
+          onTap: () => _showAssessmentsDialog(
+              context, 'Information Assurance Security 2', isDark),
+          child: _buildQuizCourseCard(
+            isDark,
+            'Information Assurance Security 2',
+            'Rens Cardaña',
+            Colors.green,
+          ),
+        ),
+        const SizedBox(height: 20),
+      ],
+    ),
+  );
+}
+
+
+//Calendar page
   Widget _buildCalendarPage() {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
@@ -3293,121 +3792,187 @@ Widget _buildPerformanceItem(String name, String score, String date, bool isDark
         );
       },
     );
-  }
-  void _showAssessmentsDialog(BuildContext context, String subject, bool isDark) {
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          backgroundColor: isDark ? Colors.grey[900] : Colors.white,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
-          title: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                subject,
-                style: const TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 20,
-                ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                'Available Assessments',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.normal,
-                  color: isDark ? Colors.grey[400] : Colors.grey[600],
-                ),
-              ),
-            ],
-          ),
-          content: SingleChildScrollView(
+   }
+
+
+
+ 
+// OLD ASSESSMENTS DIALOG (for future quiz/exam implementation)
+
+ void _showAssessmentsDialog(
+    BuildContext context, String subject, bool isDark) {
+  final assessments = AssessmentData.getAssessmentsForSubject(subject);
+
+  showModalBottomSheet(
+    context: context,
+    isScrollControlled: true,
+    backgroundColor: Colors.transparent,
+    builder: (ctx) {
+      return DraggableScrollableSheet(
+        initialChildSize: 0.75,
+        maxChildSize: 0.92,
+        minChildSize: 0.4,
+        builder: (_, scrollController) {
+          return Container(
+            decoration: BoxDecoration(
+              color: isDark ? const Color(0xFF1E293B) : Colors.white,
+              borderRadius: const BorderRadius.vertical(
+                  top: Radius.circular(24)),
+            ),
             child: Column(
-              mainAxisSize: MainAxisSize.min,
               children: [
-                _buildTermSection('Prelims', isDark),
-                _buildTermSection('Midterms', isDark),
-                _buildTermSection('Pre-Finals', isDark),
-                _buildTermSection('Finals', isDark, isLast: true),
+                // Handle bar
+                Container(
+                  margin: const EdgeInsets.only(top: 12),
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: isDark
+                        ? Colors.white.withOpacity(0.2)
+                        : Colors.grey.shade300,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        subject,
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: -0.3,
+                        ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Select an assessment to begin',
+                        style: TextStyle(
+                          fontSize: 13,
+                          color:
+                              isDark ? Colors.grey[400] : Colors.grey[600],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const Divider(),
+                Expanded(
+                  child: ListView(
+                    controller: scrollController,
+                    padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+                    children: AssessmentData.terms.map((term) {
+                      final termAssessments = assessments
+                          .where((a) => a.term == term)
+                          .toList();
+
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Padding(
+                            padding:
+                                const EdgeInsets.symmetric(vertical: 12),
+                            child: Text(
+                              term,
+                              style: TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w700,
+                                color: const Color(0xFF6366F1),
+                                letterSpacing: 0.2,
+                              ),
+                            ),
+                          ),
+                          Row(
+                            children: termAssessments.map((assessment) {
+                              final isQuiz = assessment.type == 'Quiz';
+                              final color = isQuiz
+                                  ? const Color(0xFF6366F1)
+                                  : const Color(0xFFF59E0B);
+                              return Expanded(
+                                child: GestureDetector(
+                                  onTap: () {
+                                    Navigator.of(ctx).pop();
+                                    Navigator.of(context).push(
+                                      MaterialPageRoute(
+                                        builder: (_) => QuizScreen(
+                                          assessment: assessment,
+                                          studentName: widget.email,
+                                        ),
+                                      ),
+                                    );
+                                  },
+                                  child: Container(
+                                    margin: EdgeInsets.only(
+                                      right: isQuiz ? 8 : 0,
+                                    ),
+                                    padding: const EdgeInsets.symmetric(
+                                        vertical: 16, horizontal: 12),
+                                    decoration: BoxDecoration(
+                                      color: color.withOpacity(0.08),
+                                      borderRadius:
+                                          BorderRadius.circular(12),
+                                      border: Border.all(
+                                        color: color.withOpacity(0.25),
+                                      ),
+                                    ),
+                                    child: Column(
+                                      children: [
+                                        Icon(
+                                          isQuiz
+                                              ? Icons.assignment_outlined
+                                              : Icons.school_outlined,
+                                          color: color,
+                                          size: 26,
+                                        ),
+                                        const SizedBox(height: 8),
+                                        Text(
+                                          assessment.type,
+                                          style: TextStyle(
+                                            fontSize: 13,
+                                            fontWeight: FontWeight.w600,
+                                            color: color,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          '${assessment.questions.length} items',
+                                          style: TextStyle(
+                                            fontSize: 11,
+                                            color: isDark
+                                                ? Colors.grey[400]
+                                                : Colors.grey[600],
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              );
+                            }).toList(),
+                          ),
+                          const SizedBox(height: 8),
+                          Divider(
+                            color: isDark
+                                ? Colors.white.withOpacity(0.07)
+                                : Colors.grey.shade100,
+                          ),
+                        ],
+                      );
+                    }).toList(),
+                  ),
+                ),
               ],
             ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Close'),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  Widget _buildTermSection(String term, bool isDark, {bool isLast = false}) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.only(top: 8.0, bottom: 12.0),
-          child: Text(
-            term,
-            style: const TextStyle(
-              fontWeight: FontWeight.w600,
-              fontSize: 16,
-            ),
-          ),
-        ),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-          children: [
-            Expanded(
-              child: ElevatedButton.icon(
-                onPressed: () {
-                  // TODO: Add logic for Quiz later
-                },
-                icon: const Icon(Icons.assignment_outlined, size: 18),
-                label: const Text('Quiz'),
-                style: ElevatedButton.styleFrom(
-                  elevation: 0,
-                  backgroundColor: isDark ? Colors.grey[800] : Colors.blue[50],
-                  foregroundColor: isDark ? Colors.white : Colors.blue[700],
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: ElevatedButton.icon(
-                onPressed: () {
-                  // TODO: Add logic for Exam later
-                },
-                icon: const Icon(Icons.school_outlined, size: 18),
-                label: const Text('Exam'),
-                style: ElevatedButton.styleFrom(
-                  elevation: 0,
-                  backgroundColor: isDark ? Colors.grey[800] : Colors.orange[50],
-                  foregroundColor: isDark ? Colors.white : Colors.orange[700],
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
-        if (!isLast) ...[
-          const SizedBox(height: 12),
-          Divider(color: isDark ? Colors.grey[800] : Colors.grey[200]),
-        ],
-      ],
-    );
-  }
-
+          );
+        },
+      );
+    },
+  );
+}
 
   void _showAttendanceQRCode(String courseName) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -3582,4 +4147,5 @@ Widget _buildPerformanceItem(String name, String score, String date, bool isDark
         );
       },
     );
-  } }
+  }
+}
