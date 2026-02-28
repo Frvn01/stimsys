@@ -48,11 +48,10 @@ class _ProfilePageState extends State<ProfilePage> {
     super.initState();
     // Initialize with mock data - replace with actual database fetch
     _student = Student(
-      id: '23002137800',
+      usn: '23002137800',
       lastName: 'Skirr',
       firstName: 'Raven',
       middleName: '',
-      usn: '23002137800',
       course: 'BSIT',
       year: '3',
       section: 'A',
@@ -569,11 +568,9 @@ class _ProfilePageState extends State<ProfilePage> {
             enabled: true,
           ),
         ] else ...[
-          _buildReadOnlyField(isDark, 'Student ID', _student.id ?? 'N/A'),
+          _buildReadOnlyField(isDark, 'USN', _student.usn),
           const SizedBox(height: 12),
           _buildReadOnlyField(isDark, 'Full Name', _student.fullName),
-          const SizedBox(height: 12),
-          _buildReadOnlyField(isDark, 'USN', _student.usn),
           const SizedBox(height: 12),
           _buildReadOnlyField(isDark, 'Program', _student.course),
           const SizedBox(height: 12),
