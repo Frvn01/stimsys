@@ -286,7 +286,7 @@ class _QuizScreenState extends State<QuizScreen> {
                   const EdgeInsets.symmetric(horizontal: 20),
               scrollDirection: Axis.horizontal,
               itemCount: total,
-              separatorBuilder: (_, __) =>
+              separatorBuilder: (_, _) =>
                   const SizedBox(width: 8),
               itemBuilder: (_, i) {
                 final done = _isAnswered(i);
@@ -346,7 +346,7 @@ class _QuizScreenState extends State<QuizScreen> {
               padding:
                   const EdgeInsets.fromLTRB(20, 8, 20, 100),
               itemCount: total,
-              separatorBuilder: (_, __) => Divider(
+              separatorBuilder: (_, _) => Divider(
                 height: 1,
                 color: isDark
                     ? const Color(0xFF1E293B)

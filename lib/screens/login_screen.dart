@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'dart:ui';
 import '../theme/theme_provider.dart';
 import '../widgets/common/custom_text_field.dart';
 import 'dashboard_screen.dart';
 import 'signup_screen.dart';
 import 'welcome_screen.dart';
+import 'package:http/http.dart' as http;
 
 class LoginScreen extends StatefulWidget {
   final ThemeProvider themeProvider;
@@ -33,23 +33,53 @@ class _LoginScreenState extends State<LoginScreen> {
     if (_usnController.text.isEmpty || _passwordController.text.isEmpty) {
       _showSnackBar('Please fill in all fields', isError: true);
       return;
-    }
+    }else{
 
-    setState(() => _isLoading = true);
+      // if (student_login(_usnController, _passwordController) == 'TRUE') {
+        
+      // }else{
+            //To add error dialog
+      // }
+      ///- to transfer to different logical validation
+      setState(() => _isLoading = true);
 
-    Future.delayed(const Duration(seconds: 2), () {
-      if (mounted) {
-        setState(() => _isLoading = false);
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(
-            builder: (context) => DashboardScreen(
-              email: _usnController.text,
-              themeProvider: widget.themeProvider,
+      Future.delayed(const Duration(seconds: 2), () {
+        if (mounted) {
+          setState(() => _isLoading = false);
+          Navigator.of(context).pushReplacement(
+            MaterialPageRoute(
+              builder: (context) => DashboardScreen(
+                email: _usnController.text,
+                themeProvider: widget.themeProvider,
+              ),
             ),
-          ),
-        );
+          );
+        }
+      });
+    ///- to transfer to different logical validation
+    }
+  }
+
+  void student_login(usn, password) async{
+    Uri uri = Uri.parse('http://150.0.0.24/STIMSYS-API/stimsys-reg-api.php');
+    //Change IP Address
+    Map<String, dynamic> data = {
+      'usn' : usn,
+      'password' : password,
+    };
+
+    http.Response response = await http.post(uri, body: data);
+
+    if (response.statusCode == 200) {
+      if(response.body == 'REGSUCC'){
+
+      }else{
+        // show error dialog
       }
-    });
+    }else{
+      // _showErrorDialog('No Connection to the server/db status code: ${response.statusCode}.');
+      // show error dialog
+    }
   }
 
   void _showSnackBar(String message, {bool isError = false}) {

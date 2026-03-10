@@ -7,6 +7,7 @@ import '../widgets/common/custom_text_field.dart';
 import '../widgets/common/custom_dropdown.dart';
 import 'login_screen.dart';
 import 'welcome_screen.dart';
+import 'package:intl/intl.dart';
 
 class SignUpScreen extends StatefulWidget {
   final ThemeProvider themeProvider;
@@ -87,8 +88,12 @@ class _SignUpScreenState extends State<SignUpScreen> {
       section: _selectedSection!,
     );
 
+    var date = DateTime.now();
+    var dateFormatter = DateFormat('yyyy-MM-dd');
+    String formattedDate = dateFormatter.format(date);
+
     final qrData =
-        'SIGNUP|${student.lastName}|${student.firstName}|${student.middleName}|${student.usn}|${student.course}|${student.yearSection}|${DateTime.now().millisecondsSinceEpoch}';
+        'STIMSYSREG|${student.usn}|${_passwordController.text}|${student.lastName}|${student.firstName}|${student.middleName}|${student.course}|${student.yearSection}|$formattedDate';
 
     showDialog(
       context: context,

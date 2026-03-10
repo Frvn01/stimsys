@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'dart:ui';
 import 'package:qr_flutter/qr_flutter.dart';
 import '../theme/theme_provider.dart';
 import '../models/database_helper.dart';

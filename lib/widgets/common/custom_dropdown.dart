@@ -57,7 +57,7 @@ class CustomDropdown<T> extends StatelessWidget {
                 ),
               ),
               child: DropdownButtonFormField<T>(
-                value: value,
+                initialValue: value,
                 hint: Text(
                   hint,
                   style: TextStyle(
