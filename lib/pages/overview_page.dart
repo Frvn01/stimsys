@@ -3,6 +3,8 @@ import 'package:intl/intl.dart';
 import '../theme/theme_provider.dart';
 import '../widgets/common/glass_card.dart';
 import '../widgets/cards/activity_card.dart';
+import 'package:stimsys/screens/logic_file.dart';
+import 'package:provider/provider.dart';
 
 class OverviewPage extends StatelessWidget {
   final String email;
@@ -17,13 +19,16 @@ class OverviewPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final usn = context.watch<StudentManagement>().usn; // ← get usn here
+    final lastName = context.watch<StudentManagement>().lastName;
+    
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _buildHeader(context, isDark),
+          _buildHeader(context, isDark, lastName), // ← pass usn
           const SizedBox(height: 32),
           _buildAcademicOverview(isDark),
           const SizedBox(height: 24),
@@ -34,16 +39,16 @@ class OverviewPage extends StatelessWidget {
     );
   }
 
-  Widget _buildHeader(BuildContext context, bool isDark) {
+  Widget _buildHeader(BuildContext context, bool isDark, String lastName) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
         Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'Welcome Back, Student!',
-              style: TextStyle(
+            Text(
+              'Welcome Back, $lastName',
+              style: const TextStyle(
                 fontSize: 24,
                 fontWeight: FontWeight.w700,
                 letterSpacing: -0.3,

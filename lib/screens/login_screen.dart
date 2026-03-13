@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
+import 'package:stimsys/screens/logic_file.dart';
 import '../theme/theme_provider.dart';
 import '../widgets/common/custom_text_field.dart';
 import 'dashboard_screen.dart';
@@ -29,40 +31,36 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 
-  void _handleLogin() {
+  // void _handleLogin() async {
+  //   if (_usnController.text.isEmpty || _passwordController.text.isEmpty) {
+  //     _showSnackBar('Please fill in all fields', isError: true);
+  //     return;
+  //   } else {
+  //     setState(() => _isLoading = true);  // ← show loading
+  //     await studentLogin(_usnController.text, _passwordController.text); // ← call it
+  //     setState(() => _isLoading = false); // ← hide loading
+  //   }
+  // }
+
+  void _handleLogin() async {
     if (_usnController.text.isEmpty || _passwordController.text.isEmpty) {
       _showSnackBar('Please fill in all fields', isError: true);
       return;
-    }else{
-
-      // if (student_login(_usnController, _passwordController) == 'TRUE') {
-        
-      // }else{
-            //To add error dialog
-      // }
-      ///- to transfer to different logical validation
-      setState(() => _isLoading = true);
-
-      Future.delayed(const Duration(seconds: 2), () {
-        if (mounted) {
-          setState(() => _isLoading = false);
-          Navigator.of(context).pushReplacement(
-            MaterialPageRoute(
-              builder: (context) => DashboardScreen(
-                email: _usnController.text,
-                themeProvider: widget.themeProvider,
-              ),
-            ),
-          );
-        }
-      });
-    ///- to transfer to different logical validation
+    }
+    
+    setState(() => _isLoading = true);
+    try {
+      await studentLogin(_usnController.text, _passwordController.text);
+    } catch (e) {
+      _showSnackBar('Error: $e', isError: true); // ← this will show what's failing
+    } finally {
+      if (mounted) setState(() => _isLoading = false); // ← ALWAYS runs, even on error
     }
   }
-
-  void student_login(usn, password) async{
-    Uri uri = Uri.parse('http://150.0.0.24/STIMSYS-API/stimsys-reg-api.php');
-    //Change IP Address
+  
+  Future<void> studentLogin(usn, password) async{
+    Uri uri = Uri.parse('http://150.0.0.15/STIMSYS-API/student-login-api.php');
+    //always check ip address and change
     Map<String, dynamic> data = {
       'usn' : usn,
       'password' : password,
@@ -71,14 +69,30 @@ class _LoginScreenState extends State<LoginScreen> {
     http.Response response = await http.post(uri, body: data);
 
     if (response.statusCode == 200) {
-      if(response.body == 'REGSUCC'){
+      if(int.parse(response.body) == 1){
+        context.read<StudentManagement>().setUsn(int.parse(usn));
+        // ✅ Navigate only after successful login
 
+        await context.read<StudentManagement>().getStudentInfo(int.parse(_usnController.text));
+        await context.read<StudentManagement>().getStudentCourseInfo(int.parse(_usnController.text));
+
+        if (mounted) {
+          Navigator.of(context).pushReplacement(
+            MaterialPageRoute(
+              builder: (context) => DashboardScreen(
+                email: usn,
+                themeProvider: widget.themeProvider, // ← you'll need to pass this
+              ),
+            ),
+          );
+        }
       }else{
         // show error dialog
+        _showSnackBar('Something went wrong: ${response.body}.');
       }
     }else{
-      // _showErrorDialog('No Connection to the server/db status code: ${response.statusCode}.');
       // show error dialog
+      _showSnackBar('No Connection to the server/db status code: ${response.statusCode}.');
     }
   }
 
@@ -98,7 +112,8 @@ class _LoginScreenState extends State<LoginScreen> {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    return Scaffold(
+    return Consumer<StudentManagement>(
+      builder: (context, value, child) =>Scaffold(
       body: SafeArea(
         child: SingleChildScrollView(
           child: Padding(
@@ -155,7 +170,7 @@ class _LoginScreenState extends State<LoginScreen> {
           ),
         ),
       ),
-    );
+    ));
   }
 
   Widget _buildBackButton(bool isDark) {

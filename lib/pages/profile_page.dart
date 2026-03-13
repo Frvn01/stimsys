@@ -8,6 +8,9 @@ import '../models/student_model.dart';
 import '../widgets/common/custom_text_field.dart';
 import '../widgets/common/custom_dropdown.dart';
 import '../screens/welcome_screen.dart';
+import 'package:stimsys/screens/logic_file.dart';
+import 'package:provider/provider.dart';
+import 'package:intl/intl.dart'; 
 
 class ProfilePage extends StatefulWidget {
   final String email;
@@ -42,24 +45,52 @@ class _ProfilePageState extends State<ProfilePage> {
 
   // Initial values (simulating data from database)
   late Student _student;
+  bool _isLoaded = false;
 
   @override
   void initState() {
-    super.initState();
-    // Initialize with mock data - replace with actual database fetch
-    _student = Student(
-      usn: '23002137800',
-      lastName: 'Skirr',
-      firstName: 'Raven',
-      middleName: '',
-      course: 'BSIT',
-      year: '3',
-      section: 'A',
-      phone: '+63 9944 480 1355',
-      enrollmentDate: DateTime(2022, 9, 1),
-    );
+    // super.initState();
+    // // Initialize with mock data - replace with actual database fetch
+    // _student = Student(
+    //   usn: '23002137800',
+    //   lastName: 'Skirr',
+    //   firstName: 'Raven',
+    //   middleName: '',
+    //   course: 'BSIT',
+    //   year: '3',
+    //   section: 'A',
+    //   phone: '+63 9944 480 1355',
+    //   enrollmentDate: DateTime(2022, 9, 1),
+    // );
 
-    _initControllers();
+    // _initControllers();
+
+    super.initState();
+    // get data from provider after first frame builds
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final student = context.read<StudentManagement>();
+
+      // Validate dropdown values against the actual list
+      final course = StudentConstants.courses.contains(student.course) 
+          ? student.course : null;
+      final year = StudentConstants.years.contains(student.year.toString()) 
+          ? student.year.toString() : null;
+      final section = StudentConstants.sections.contains(student.section) 
+          ? student.section : null;
+      _student = Student(
+        usn: student.usn.toString(),
+        lastName: student.lastName,
+        firstName: student.firstName,
+        middleName: student.middleName,
+        course: student.course,
+        year: student.year.toString(),
+        section: student.section,
+        phone: student.phone,
+        enrollmentDate: DateTime.tryParse(student.date),
+      );
+      _initControllers(); // reinitialize controllers with real data
+      setState(() => _isLoaded = true); // rebuild UI with new data
+    });
   }
 
   void _initControllers() {
@@ -252,6 +283,10 @@ class _ProfilePageState extends State<ProfilePage> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    if (!_isLoaded) { // ← show loading until data is ready
+    return const Center(child: CircularProgressIndicator());
+  }
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(20),
@@ -583,7 +618,8 @@ class _ProfilePageState extends State<ProfilePage> {
             isDark,
             'Enrollment',
             _student.enrollmentDate != null
-                ? '${_student.enrollmentDate!.month}/${_student.enrollmentDate!.year}'
+                // ? '${_student.enrollmentDate!.month}/${_student.enrollmentDate!.year}'
+                ? DateFormat('MMMM d, yyyy').format(_student.enrollmentDate!)
                 : 'N/A',
           ),
         ],
