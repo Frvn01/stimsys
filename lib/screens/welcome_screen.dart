@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../theme/theme_provider.dart';
 import '../widgets/cards/feature_card.dart';
 import 'login_screen.dart';
+import 'admin/admin_login_screen.dart';
 
 class WelcomeScreen extends StatefulWidget {
   final ThemeProvider themeProvider;
@@ -16,6 +17,10 @@ class _WelcomeScreenState extends State<WelcomeScreen>
     with SingleTickerProviderStateMixin {
   late AnimationController _animationController;
   late Animation<double> _scaleAnimation;
+
+  // Secret admin passage state
+  int _secretTapCount = 0;
+  DateTime? _firstTapTime;
 
   @override
   void initState() {
@@ -36,6 +41,31 @@ class _WelcomeScreenState extends State<WelcomeScreen>
   void dispose() {
     _animationController.dispose();
     super.dispose();
+  }
+
+  /// Hidden admin passage: long-press the footer text 5 times within 10 seconds
+  void _handleSecretTap() {
+    final now = DateTime.now();
+
+    if (_firstTapTime == null ||
+        now.difference(_firstTapTime!).inSeconds > 10) {
+      // Reset counter if too much time has passed
+      _secretTapCount = 0;
+      _firstTapTime = now;
+    }
+
+    _secretTapCount++;
+
+    if (_secretTapCount >= 5) {
+      _secretTapCount = 0;
+      _firstTapTime = null;
+      // Show admin PIN dialog
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (context) => const AdminLoginScreen(),
+        ),
+      );
+    }
   }
 
   @override
@@ -80,13 +110,13 @@ class _WelcomeScreenState extends State<WelcomeScreen>
             padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
               color: isDark
-                  ? Colors.white.withOpacity(0.1)
-                  : Colors.black.withOpacity(0.05),
+                  ? Colors.white.withValues(alpha: 0.1)
+                  : Colors.black.withValues(alpha: 0.05),
               borderRadius: BorderRadius.circular(12),
               border: Border.all(
                 color: isDark
-                    ? Colors.white.withOpacity(0.1)
-                    : Colors.black.withOpacity(0.1),
+                    ? Colors.white.withValues(alpha: 0.1)
+                    : Colors.black.withValues(alpha: 0.1),
               ),
             ),
             child: Icon(
@@ -107,9 +137,9 @@ class _WelcomeScreenState extends State<WelcomeScreen>
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
           shape: BoxShape.circle,
-          color: const Color(0xFF6366F1).withOpacity(0.1),
+          color: const Color(0xFF6366F1).withValues(alpha: 0.1),
           border: Border.all(
-            color: const Color(0xFF6366F1).withOpacity(0.3),
+            color: const Color(0xFF6366F1).withValues(alpha: 0.3),
             width: 2,
           ),
         ),
@@ -150,8 +180,8 @@ class _WelcomeScreenState extends State<WelcomeScreen>
   }
 
   Widget _buildFeatures() {
-    return Column(
-      children: const [
+    return const Column(
+      children: [
         FeatureCard(
           icon: Icons.dashboard_rounded,
           title: 'Smart Dashboard',
@@ -219,13 +249,17 @@ class _WelcomeScreenState extends State<WelcomeScreen>
             ],
           ),
           const SizedBox(height: 16),
-          Text(
-            'Powered by Corvexis and Rensusama',
-            style: TextStyle(
-              fontSize: 11,
-              color: isDark ? Colors.grey[600] : Colors.grey[500],
-              fontWeight: FontWeight.w400,
-              letterSpacing: 0.2,
+          // SECRET ADMIN PASSAGE — long-press 5× to access admin
+          GestureDetector(
+            onTap: _handleSecretTap,
+            child: Text(
+              'Powered by Corvexis and Rensusama',
+              style: TextStyle(
+                fontSize: 11,
+                color: isDark ? Colors.grey[600] : Colors.grey[500],
+                fontWeight: FontWeight.w400,
+                letterSpacing: 0.2,
+              ),
             ),
           ),
         ],

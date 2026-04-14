@@ -3,7 +3,7 @@ import 'package:intl/intl.dart';
 import '../theme/theme_provider.dart';
 import '../widgets/common/glass_card.dart';
 import '../widgets/cards/activity_card.dart';
-import 'package:stimsys/screens/logic_file.dart';
+import '../providers/student_provider.dart';
 import 'package:provider/provider.dart';
 
 class OverviewPage extends StatelessWidget {
@@ -19,18 +19,18 @@ class OverviewPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final usn = context.watch<StudentManagement>().usn; // ← get usn here
-    final lastName = context.watch<StudentManagement>().lastName;
-    
+    final provider = context.watch<StudentProvider>();
+    final lastName = provider.currentStudent?.lastName ?? '-';
+    final enrollmentCount = provider.enrollments.length;
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _buildHeader(context, isDark, lastName), // ← pass usn
+          _buildHeader(context, isDark, lastName),
           const SizedBox(height: 32),
-          _buildAcademicOverview(isDark),
+          _buildAcademicOverview(isDark, enrollmentCount),
           const SizedBox(height: 24),
           _buildRecentActivity(isDark),
           const SizedBox(height: 20),
@@ -71,13 +71,13 @@ class OverviewPage extends StatelessWidget {
             padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
               color: isDark
-                  ? Colors.white.withOpacity(0.1)
-                  : Colors.black.withOpacity(0.05),
+                  ? Colors.white.withValues(alpha: 0.1)
+                  : Colors.black.withValues(alpha: 0.05),
               borderRadius: BorderRadius.circular(12),
               border: Border.all(
                 color: isDark
-                    ? Colors.white.withOpacity(0.1)
-                    : Colors.black.withOpacity(0.08),
+                    ? Colors.white.withValues(alpha: 0.1)
+                    : Colors.black.withValues(alpha: 0.08),
               ),
             ),
             child: Icon(
@@ -91,7 +91,7 @@ class OverviewPage extends StatelessWidget {
     );
   }
 
-  Widget _buildAcademicOverview(bool isDark) {
+  Widget _buildAcademicOverview(bool isDark, int enrollmentCount) {
     return GlassCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -106,13 +106,11 @@ class OverviewPage extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 16),
-          _buildStatRow(isDark, 'Active Courses', '5', const Color(0xFF6366F1)),
+          _buildStatRow(isDark, 'Active Courses', '$enrollmentCount', const Color(0xFF6366F1)),
           const SizedBox(height: 12),
-          _buildStatRow(isDark, 'Missed Tasks', '3', const Color(0xFF8B5CF6)),
+          _buildStatRow(isDark, 'Current GPA', '-', const Color(0xFFA855F7)),
           const SizedBox(height: 12),
-          _buildStatRow(isDark, 'Current GPA', '3.8', const Color(0xFFA855F7)),
-          const SizedBox(height: 12),
-          _buildStatRow(isDark, 'Attendance', '95%', const Color(0xFF10B981)),
+          _buildStatRow(isDark, 'Attendance', '-', const Color(0xFF10B981)),
         ],
       ),
     );
@@ -127,9 +125,9 @@ class OverviewPage extends StatelessWidget {
             Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: color.withOpacity(0.1),
+                color: color.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: color.withOpacity(0.2)),
+                border: Border.all(color: color.withValues(alpha: 0.2)),
               ),
               child: Icon(Icons.check_circle, color: color, size: 16),
             ),

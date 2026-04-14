@@ -1,28 +1,30 @@
 class Student {
   final String? id;
+  final String usn;
   final String lastName;
   final String firstName;
   final String? middleName;
-  final String usn;
   final String course;
-  final String year;
+  final String yearLevel;
   final String section;
   final String? phone;
-  final String? imagePath;
-  final DateTime? enrollmentDate;
+  final String? profileImageUrl;
+  final bool isConfirmed;
+  final DateTime? createdAt;
 
   Student({
     this.id,
+    required this.usn,
     required this.lastName,
     required this.firstName,
     this.middleName,
-    required this.usn,
     required this.course,
-    required this.year,
+    required this.yearLevel,
     required this.section,
     this.phone,
-    this.imagePath,
-    this.enrollmentDate,
+    this.profileImageUrl,
+    this.isConfirmed = false,
+    this.createdAt,
   });
 
   String get fullName {
@@ -32,72 +34,73 @@ class Student {
     return '$firstName $lastName';
   }
 
-  String get yearSection => '$year-$section';
+  String get yearSection => '$yearLevel-$section';
 
-  Map<String, dynamic> toMap() {
+  Map<String, dynamic> toSupabase() {
     return {
-      'id': id,
-      'lastName': lastName,
-      'firstName': firstName,
-      'middleName': middleName,
       'usn': usn,
+      'last_name': lastName,
+      'first_name': firstName,
+      'middle_name': middleName,
       'course': course,
-      'year': year,
+      'year_level': yearLevel,
       'section': section,
       'phone': phone,
-      'imagePath': imagePath,
-      'enrollmentDate': enrollmentDate?.toIso8601String(),
+      'profile_image_url': profileImageUrl,
+      'is_confirmed': isConfirmed,
     };
   }
 
-  factory Student.fromMap(Map<String, dynamic> map) {
+  factory Student.fromSupabase(Map<String, dynamic> map) {
     return Student(
       id: map['id'],
-      lastName: map['lastName'] ?? '',
-      firstName: map['firstName'] ?? '',
-      middleName: map['middleName'],
       usn: map['usn'] ?? '',
+      lastName: map['last_name'] ?? '',
+      firstName: map['first_name'] ?? '',
+      middleName: map['middle_name'],
       course: map['course'] ?? '',
-      year: map['year'] ?? '',
+      yearLevel: map['year_level'] ?? '',
       section: map['section'] ?? '',
       phone: map['phone'],
-      imagePath: map['imagePath'],
-      enrollmentDate: map['enrollmentDate'] != null
-          ? DateTime.parse(map['enrollmentDate'])
+      profileImageUrl: map['profile_image_url'],
+      isConfirmed: map['is_confirmed'] ?? false,
+      createdAt: map['created_at'] != null
+          ? DateTime.parse(map['created_at'])
           : null,
     );
   }
 
   Student copyWith({
     String? id,
+    String? usn,
     String? lastName,
     String? firstName,
     String? middleName,
-    String? usn,
     String? course,
-    String? year,
+    String? yearLevel,
     String? section,
     String? phone,
-    String? imagePath,
-    DateTime? enrollmentDate,
+    String? profileImageUrl,
+    bool? isConfirmed,
+    DateTime? createdAt,
   }) {
     return Student(
       id: id ?? this.id,
+      usn: usn ?? this.usn,
       lastName: lastName ?? this.lastName,
       firstName: firstName ?? this.firstName,
       middleName: middleName ?? this.middleName,
-      usn: usn ?? this.usn,
       course: course ?? this.course,
-      year: year ?? this.year,
+      yearLevel: yearLevel ?? this.yearLevel,
       section: section ?? this.section,
       phone: phone ?? this.phone,
-      imagePath: imagePath ?? this.imagePath,
-      enrollmentDate: enrollmentDate ?? this.enrollmentDate,
+      profileImageUrl: profileImageUrl ?? this.profileImageUrl,
+      isConfirmed: isConfirmed ?? this.isConfirmed,
+      createdAt: createdAt ?? this.createdAt,
     );
   }
 }
 
-// Constants for dropdowns
 class StudentConstants {
   static const List<String> courses = ['BSIT', 'BSCS', 'BSBA', 'BSA', 'WAD'];
   static const List<String> years = ['1', '2', '3', '4'];

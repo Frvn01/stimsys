@@ -1,16 +1,16 @@
 import 'package:flutter/material.dart';
 import 'dart:ui';
+import 'package:provider/provider.dart';
 import '../theme/theme_provider.dart';
-import '../models/assessment_data.dart';
-import '../screens/quiz_screen.dart';
+import '../providers/student_provider.dart';
+import '../models/enrollment_model.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 class QuizPage extends StatelessWidget {
-  final String email;
   final ThemeProvider themeProvider;
 
   const QuizPage({
     super.key,
-    required this.email,
     required this.themeProvider,
   });
 
@@ -18,37 +18,70 @@ class QuizPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(20),
+    return Consumer<StudentProvider>(
+      builder: (context, provider, _) {
+        final enrollments = provider.enrollments;
+
+        return SingleChildScrollView(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildHeader(isDark),
+              const SizedBox(height: 24),
+              if (provider.isLoading)
+                const Center(
+                  child: Padding(
+                    padding: EdgeInsets.all(40),
+                    child: CircularProgressIndicator(color: Color(0xFF6366F1)),
+                  ),
+                )
+              else if (enrollments.isEmpty)
+                _buildEmptyState(isDark)
+              else
+                ...enrollments.map((enrollment) {
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: _buildCourseCard(
+                      context,
+                      isDark,
+                      enrollment,
+                    ),
+                  );
+                }),
+              const SizedBox(height: 20),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildEmptyState(bool isDark) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(40),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF1E293B) : Colors.grey.shade50,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+            color: isDark
+                ? Colors.white.withValues(alpha: 0.06)
+                : Colors.grey.shade200),
+      ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _buildHeader(isDark),
-          const SizedBox(height: 24),
-          _buildCourseCard(
-            context,
-            isDark,
-            'Application Development & Emerging Technologies',
-            'Godfrey Roa',
-            Colors.blue,
-          ),
+          Icon(Icons.quiz_outlined, color: Colors.grey[400], size: 40),
           const SizedBox(height: 12),
-          _buildCourseCard(
-            context,
-            isDark,
-            'Database Management Systems 2',
-            'Rens Cardaña',
-            Colors.purple,
+          Text(
+            'No subjects enrolled',
+            style: TextStyle(color: Colors.grey[500], fontSize: 14),
           ),
-          const SizedBox(height: 12),
-          _buildCourseCard(
-            context,
-            isDark,
-            'Information Assurance Security 2',
-            'Rens Cardaña',
-            Colors.green,
+          const SizedBox(height: 4),
+          Text(
+            'Enroll in subjects to view assessments',
+            style: TextStyle(color: Colors.grey[600], fontSize: 12),
           ),
-          const SizedBox(height: 20),
         ],
       ),
     );
@@ -58,12 +91,12 @@ class QuizPage extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
+        Text(
           'Quiz & Exams',
-          style: TextStyle(
+          style: GoogleFonts.inter(
             fontSize: 24,
-            fontWeight: FontWeight.w700,
-            letterSpacing: -0.3,
+            fontWeight: FontWeight.w800,
+            letterSpacing: -0.5,
           ),
         ),
         const SizedBox(height: 8),
@@ -78,54 +111,125 @@ class QuizPage extends StatelessWidget {
     );
   }
 
+  static const _cardColors = [
+    Color(0xFF6366F1),
+    Color(0xFF10B981),
+    Color(0xFFF59E0B),
+    Color(0xFF8B5CF6),
+    Color(0xFF3B82F6),
+    Color(0xFFEF4444),
+  ];
+
+  Color _getColorForSubject(String code) {
+    final idx = code.hashCode.abs() % _cardColors.length;
+    return _cardColors[idx];
+  }
+
   Widget _buildCourseCard(
     BuildContext context,
     bool isDark,
-    String title,
-    String instructor,
-    Color color,
+    Enrollment enrollment,
   ) {
+    final title = enrollment.subjectTitle ?? 'Unknown Subject';
+    final instructor =
+        enrollment.subject?.instructorName ?? 'Unknown Instructor';
+    final code = enrollment.subjectCode ?? '';
+    final color = _getColorForSubject(code);
+
     return GestureDetector(
       onTap: () => _showAssessmentsDialog(context, title, isDark),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(16),
         child: BackdropFilter(
           filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
           child: Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
               color: isDark
-                  ? Colors.white.withOpacity(0.05)
-                  : Colors.black.withOpacity(0.02),
-              borderRadius: BorderRadius.circular(14),
+                  ? Colors.white.withValues(alpha: 0.04)
+                  : Colors.white,
+              borderRadius: BorderRadius.circular(16),
               border: Border.all(
                 color: isDark
-                    ? Colors.white.withOpacity(0.1)
-                    : Colors.black.withOpacity(0.08),
+                    ? Colors.white.withValues(alpha: 0.08)
+                    : Colors.grey.shade200,
               ),
+              boxShadow: isDark
+                  ? []
+                  : [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.02),
+                        blurRadius: 10,
+                        offset: const Offset(0, 4),
+                      )
+                    ],
             ),
             child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
+                Container(
+                  width: 48,
+                  height: 48,
+                  decoration: BoxDecoration(
+                    color: color.withValues(alpha: 0.12),
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: color.withValues(alpha: 0.3),
+                      width: 1.5,
+                    ),
+                  ),
+                  child: Icon(Icons.book_rounded, color: color, size: 22),
+                ),
+                const SizedBox(width: 14),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
                         title,
-                        style: const TextStyle(
+                        style: GoogleFonts.inter(
                           fontSize: 14,
                           fontWeight: FontWeight.w700,
                           letterSpacing: -0.2,
+                          color: isDark ? Colors.white : Colors.black87,
                         ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
                       ),
                       const SizedBox(height: 6),
-                      Text(
-                        instructor,
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: isDark ? Colors.grey[500] : Colors.grey[600],
-                        ),
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 2,
+                            ),
+                            decoration: BoxDecoration(
+                              color: color.withValues(alpha: 0.1),
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: Text(
+                              code,
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w700,
+                                color: color,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              instructor,
+                              style: TextStyle(
+                                fontSize: 12,
+                                color:
+                                    isDark ? Colors.grey[500] : Colors.grey[600],
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),
@@ -133,7 +237,7 @@ class QuizPage extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: color.withOpacity(0.1),
+                    color: color.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(10),
                   ),
                   child: Icon(
@@ -155,7 +259,7 @@ class QuizPage extends StatelessWidget {
     String subject,
     bool isDark,
   ) {
-    final assessments = AssessmentData.getAssessmentsForSubject(subject);
+    final terms = ['Prelim', 'Midterm', 'Pre-Finals', 'Finals'];
 
     showModalBottomSheet(
       context: context,
@@ -163,9 +267,9 @@ class QuizPage extends StatelessWidget {
       backgroundColor: Colors.transparent,
       builder: (ctx) {
         return DraggableScrollableSheet(
-          initialChildSize: 0.75,
-          maxChildSize: 0.92,
-          minChildSize: 0.4,
+          initialChildSize: 0.85,
+          maxChildSize: 0.95,
+          minChildSize: 0.5,
           builder: (_, scrollController) {
             return Container(
               decoration: BoxDecoration(
@@ -182,7 +286,7 @@ class QuizPage extends StatelessWidget {
                     height: 4,
                     decoration: BoxDecoration(
                       color: isDark
-                          ? Colors.white.withOpacity(0.2)
+                          ? Colors.white.withValues(alpha: 0.2)
                           : Colors.grey.shade300,
                       borderRadius: BorderRadius.circular(2),
                     ),
@@ -194,7 +298,7 @@ class QuizPage extends StatelessWidget {
                       children: [
                         Text(
                           subject,
-                          style: const TextStyle(
+                          style: GoogleFonts.inter(
                             fontSize: 18,
                             fontWeight: FontWeight.w700,
                             letterSpacing: -0.3,
@@ -213,20 +317,19 @@ class QuizPage extends StatelessWidget {
                       ],
                     ),
                   ),
-                  const Divider(),
+                  Divider(
+                    color: isDark
+                        ? Colors.white.withValues(alpha: 0.08)
+                        : Colors.grey.shade200,
+                  ),
                   Expanded(
                     child: ListView(
                       controller: scrollController,
                       padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
-                      children: AssessmentData.terms.map((term) {
-                        final termAssessments = assessments
-                            .where((a) => a.term == term)
-                            .toList();
-
+                      children: terms.map((term) {
                         return _buildTermSection(
                           ctx,
                           term,
-                          termAssessments,
                           isDark,
                         );
                       }).toList(),
@@ -244,9 +347,14 @@ class QuizPage extends StatelessWidget {
   Widget _buildTermSection(
     BuildContext context,
     String term,
-    List<dynamic> assessments,
     bool isDark,
   ) {
+    const items = [
+      {'name': 'Module', 'icon': Icons.menu_book_rounded, 'color': Color(0xFF3B82F6)},
+      {'name': 'Quiz', 'icon': Icons.assignment_rounded, 'color': Color(0xFF6366F1)},
+      {'name': 'Exam', 'icon': Icons.school_rounded, 'color': Color(0xFFF59E0B)},
+    ];
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -254,68 +362,73 @@ class QuizPage extends StatelessWidget {
           padding: const EdgeInsets.symmetric(vertical: 12),
           child: Text(
             term,
-            style: const TextStyle(
+            style: GoogleFonts.inter(
               fontSize: 15,
-              fontWeight: FontWeight.w700,
-              color: Color(0xFF6366F1),
+              fontWeight: FontWeight.w800,
+              color: isDark ? Colors.white : Colors.black87,
               letterSpacing: 0.2,
             ),
           ),
         ),
         Row(
-          children: assessments.map((assessment) {
-            final isQuiz = assessment.type == 'Quiz';
-            final color =
-                isQuiz ? const Color(0xFF6366F1) : const Color(0xFFF59E0B);
+          children: items.map((item) {
+            final name = item['name'] as String;
+            final icon = item['icon'] as IconData;
+            final color = item['color'] as Color;
 
             return Expanded(
               child: GestureDetector(
                 onTap: () {
-                  Navigator.of(context).pop();
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => QuizScreen(
-                        assessment: assessment,
-                        studentName: email,
+                  // Show 'Coming Soon' feedback
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        '$term $name limit reached or not yet available.',
+                        style: GoogleFonts.inter(fontWeight: FontWeight.w600),
                       ),
+                      backgroundColor: const Color(0xFF6366F1),
+                      behavior: SnackBarBehavior.floating,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      duration: const Duration(seconds: 2),
                     ),
                   );
                 },
                 child: Container(
-                  margin: EdgeInsets.only(right: isQuiz ? 8 : 0),
+                  margin: EdgeInsets.only(
+                    right: name != 'Exam' ? 8 : 0,
+                  ),
                   padding: const EdgeInsets.symmetric(
                     vertical: 16,
-                    horizontal: 12,
+                    horizontal: 8,
                   ),
                   decoration: BoxDecoration(
-                    color: color.withOpacity(0.08),
+                    color: color.withValues(alpha: 0.08),
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: color.withOpacity(0.25)),
+                    border: Border.all(
+                      color: color.withValues(alpha: 0.25),
+                    ),
                   ),
                   child: Column(
                     children: [
-                      Icon(
-                        isQuiz
-                            ? Icons.assignment_outlined
-                            : Icons.school_outlined,
-                        color: color,
-                        size: 26,
-                      ),
+                      Icon(icon, color: color, size: 26),
                       const SizedBox(height: 8),
                       Text(
-                        assessment.type,
-                        style: TextStyle(
+                        name,
+                        style: GoogleFonts.inter(
                           fontSize: 13,
-                          fontWeight: FontWeight.w600,
+                          fontWeight: FontWeight.w700,
                           color: color,
                         ),
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        '${assessment.questions.length} items',
+                        '0/1 Items',
                         style: TextStyle(
-                          fontSize: 11,
+                          fontSize: 10,
                           color: isDark ? Colors.grey[400] : Colors.grey[600],
+                          fontWeight: FontWeight.w500,
                         ),
                       ),
                     ],
@@ -325,10 +438,10 @@ class QuizPage extends StatelessWidget {
             );
           }).toList(),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 12),
         Divider(
           color: isDark
-              ? Colors.white.withOpacity(0.07)
+              ? Colors.white.withValues(alpha: 0.05)
               : Colors.grey.shade100,
         ),
       ],

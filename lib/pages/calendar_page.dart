@@ -2,9 +2,6 @@ import 'package:flutter/material.dart';
 import 'dart:ui';
 import 'package:table_calendar/table_calendar.dart';
 import '../theme/theme_provider.dart';
-import '../models/database_helper.dart';
-import '../models/models.dart';
-// import '../utils/helpers.dart';
 
 class CalendarPage extends StatelessWidget {
   final ThemeProvider themeProvider;
@@ -146,51 +143,7 @@ class CalendarPage extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 12),
-        FutureBuilder<List<EventRecord>>(
-          future: DatabaseHelper().getUpcomingEvents(),
-          builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting) {
-              return const Center(
-                child: Padding(
-                  padding: EdgeInsets.all(20),
-                  child: CircularProgressIndicator(),
-                ),
-              );
-            }
-
-            if (!snapshot.hasData || snapshot.data!.isEmpty) {
-              return Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(20),
-                  child: Text(
-                    'No upcoming events',
-                    style: TextStyle(
-                      color: isDark ? Colors.grey[500] : Colors.grey[600],
-                    ),
-                  ),
-                ),
-              );
-            }
-
-            final events = snapshot.data!;
-            return Column(
-              children: events.map((event) {
-                final daysUntil =
-                    event.eventDate.difference(DateTime.now()).inDays;
-                String timeStr = daysUntil == 0
-                    ? 'Today'
-                    : daysUntil == 1
-                        ? 'Tomorrow'
-                        : 'In $daysUntil days';
-
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: 10),
-                  child: _buildEventCard(isDark, event.title, timeStr),
-                );
-              }).toList(),
-            );
-          },
-        ),
+        _buildEventCard(isDark, 'No upcoming events yet', 'Coming soon'),
       ],
     );
   }

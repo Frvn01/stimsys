@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import '../theme/theme_provider.dart';
 import '../models/student_model.dart';
+import '../providers/student_provider.dart';
 import '../widgets/common/custom_text_field.dart';
 import '../widgets/common/custom_dropdown.dart';
 import 'login_screen.dart';
@@ -43,7 +45,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
     super.dispose();
   }
 
-  void _handleSignUp() {
+  void _handleSignUp() async {
     if (!_formKey.currentState!.validate()) return;
 
     if (_selectedCourse == null ||
@@ -55,12 +57,35 @@ class _SignUpScreenState extends State<SignUpScreen> {
 
     setState(() => _isLoading = true);
 
-    Future.delayed(const Duration(seconds: 2), () {
-      if (mounted) {
-        setState(() => _isLoading = false);
-        _showSignUpQRCode();
+    try {
+      final student = await context.read<StudentProvider>().register(
+            usn: _usnController.text.trim(),
+            password: _passwordController.text,
+            lastName: _lastNameController.text.trim(),
+            firstName: _firstNameController.text.trim(),
+            middleName: _middleNameController.text.trim().isEmpty
+                ? null
+                : _middleNameController.text.trim(),
+            course: _selectedCourse!,
+            yearLevel: _selectedYear!,
+            section: _selectedSection!,
+          );
+
+      if (student != null && mounted) {
+        _showSignUpQRCode(student);
       }
-    });
+    } catch (e) {
+      if (mounted) {
+        String errorMsg = 'Registration failed';
+        if (e.toString().contains('duplicate') ||
+            e.toString().contains('unique')) {
+          errorMsg = 'USN already registered';
+        }
+        _showSnackBar(errorMsg, isError: true);
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
   }
 
   void _showSnackBar(String message, {bool isError = false}) {
@@ -75,25 +100,12 @@ class _SignUpScreenState extends State<SignUpScreen> {
     );
   }
 
-  void _showSignUpQRCode() {
+  void _showSignUpQRCode(Student student) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-
-    final student = Student(
-      lastName: _lastNameController.text.trim(),
-      firstName: _firstNameController.text.trim(),
-      middleName: _middleNameController.text.trim(),
-      usn: _usnController.text.trim(),
-      course: _selectedCourse!,
-      year: _selectedYear!,
-      section: _selectedSection!,
-    );
-
-    var date = DateTime.now();
-    var dateFormatter = DateFormat('yyyy-MM-dd');
-    String formattedDate = dateFormatter.format(date);
+    final formattedDate = DateFormat('yyyy-MM-dd').format(DateTime.now());
 
     final qrData =
-        'STIMSYSREG|${student.usn}|${_passwordController.text}|${student.lastName}|${student.firstName}|${student.middleName}|${student.course}|${student.yearSection}|$formattedDate';
+        'STIMSYSREG|${student.usn}|${student.lastName}|${student.firstName}|${student.middleName ?? ''}|${student.course}|${student.yearSection}|$formattedDate';
 
     showDialog(
       context: context,
@@ -109,13 +121,13 @@ class _SignUpScreenState extends State<SignUpScreen> {
               borderRadius: BorderRadius.circular(20),
               border: Border.all(
                 color: isDark
-                    ? Colors.white.withOpacity(0.1)
-                    : Colors.black.withOpacity(0.08),
+                    ? Colors.white.withValues(alpha: 0.1)
+                    : Colors.black.withValues(alpha: 0.08),
                 width: isDark ? 1.5 : 1,
               ),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(isDark ? 0.3 : 0.1),
+                  color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.1),
                   blurRadius: isDark ? 20 : 15,
                   offset: Offset(0, isDark ? 10 : 5),
                 ),
@@ -124,6 +136,12 @@ class _SignUpScreenState extends State<SignUpScreen> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
+                Icon(
+                  Icons.check_circle_rounded,
+                  size: 48,
+                  color: Colors.green.shade500,
+                ),
+                const SizedBox(height: 12),
                 Text(
                   'Account Created!',
                   style: TextStyle(
@@ -188,10 +206,10 @@ class _SignUpScreenState extends State<SignUpScreen> {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: const Color(0xFF6366F1).withOpacity(0.1),
+        color: const Color(0xFF6366F1).withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(10),
         border: Border.all(
-          color: const Color(0xFF6366F1).withOpacity(0.2),
+          color: const Color(0xFF6366F1).withValues(alpha: 0.2),
         ),
       ),
       child: Column(
@@ -292,13 +310,13 @@ class _SignUpScreenState extends State<SignUpScreen> {
         padding: const EdgeInsets.all(10),
         decoration: BoxDecoration(
           color: isDark
-              ? Colors.white.withOpacity(0.1)
-              : Colors.black.withOpacity(0.05),
+              ? Colors.white.withValues(alpha: 0.1)
+              : Colors.black.withValues(alpha: 0.05),
           borderRadius: BorderRadius.circular(10),
           border: Border.all(
             color: isDark
-                ? Colors.white.withOpacity(0.1)
-                : Colors.black.withOpacity(0.1),
+                ? Colors.white.withValues(alpha: 0.1)
+                : Colors.black.withValues(alpha: 0.1),
           ),
         ),
         child: const Icon(Icons.arrow_back_ios_rounded, size: 18),

@@ -1,16 +1,21 @@
 import 'package:flutter/material.dart';
-import 'package:stimsys/app.dart'; // <-- must import app.dart
-import 'package:provider/provider.dart'; // ← add this
-import 'package:stimsys/screens/logic_file.dart';
+import 'package:provider/provider.dart';
+import 'core/supabase_config.dart';
+import 'providers/student_provider.dart';
+import 'providers/admin_provider.dart';
+import 'app.dart';
 
-export 'app.dart'; // add this line
-
-void main() {
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-    runApp(
-    ChangeNotifierProvider(
-      create: (context) => StudentManagement(),
-      child: MyApp(),
+  await SupabaseConfig.initialize();
+
+  runApp(
+    MultiProvider(
+      providers: [
+        ChangeNotifierProvider(create: (_) => StudentProvider()),
+        ChangeNotifierProvider(create: (_) => AdminProvider()),
+      ],
+      child: const MyApp(),
     ),
   );
 }

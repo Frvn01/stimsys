@@ -8,7 +8,7 @@ import '../models/student_model.dart';
 import '../widgets/common/custom_text_field.dart';
 import '../widgets/common/custom_dropdown.dart';
 import '../screens/welcome_screen.dart';
-import 'package:stimsys/screens/logic_file.dart';
+import '../providers/student_provider.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart'; 
 
@@ -32,7 +32,6 @@ class _ProfilePageState extends State<ProfilePage> {
   File? _imageFile;
   final ImagePicker _picker = ImagePicker();
 
-  // Controllers for editable fields
   late TextEditingController _lastNameController;
   late TextEditingController _firstNameController;
   late TextEditingController _middleNameController;
@@ -43,65 +42,37 @@ class _ProfilePageState extends State<ProfilePage> {
   String? _selectedYear;
   String? _selectedSection;
 
-  // Initial values (simulating data from database)
-  late Student _student;
   bool _isLoaded = false;
 
   @override
   void initState() {
-    // super.initState();
-    // // Initialize with mock data - replace with actual database fetch
-    // _student = Student(
-    //   usn: '23002137800',
-    //   lastName: 'Skirr',
-    //   firstName: 'Raven',
-    //   middleName: '',
-    //   course: 'BSIT',
-    //   year: '3',
-    //   section: 'A',
-    //   phone: '+63 9944 480 1355',
-    //   enrollmentDate: DateTime(2022, 9, 1),
-    // );
-
-    // _initControllers();
-
     super.initState();
-    // get data from provider after first frame builds
+    _lastNameController = TextEditingController();
+    _firstNameController = TextEditingController();
+    _middleNameController = TextEditingController();
+    _usnController = TextEditingController();
+    _phoneController = TextEditingController();
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      final student = context.read<StudentManagement>();
+      final provider = context.read<StudentProvider>();
+      final student = provider.currentStudent;
 
-      // Validate dropdown values against the actual list
-      final course = StudentConstants.courses.contains(student.course) 
-          ? student.course : null;
-      final year = StudentConstants.years.contains(student.year.toString()) 
-          ? student.year.toString() : null;
-      final section = StudentConstants.sections.contains(student.section) 
-          ? student.section : null;
-      _student = Student(
-        usn: student.usn.toString(),
-        lastName: student.lastName,
-        firstName: student.firstName,
-        middleName: student.middleName,
-        course: student.course,
-        year: student.year.toString(),
-        section: student.section,
-        phone: student.phone,
-        enrollmentDate: DateTime.tryParse(student.date),
-      );
-      _initControllers(); // reinitialize controllers with real data
-      setState(() => _isLoaded = true); // rebuild UI with new data
+      if (student != null) {
+        _lastNameController.text = student.lastName;
+        _firstNameController.text = student.firstName;
+        _middleNameController.text = student.middleName ?? '';
+        _usnController.text = student.usn;
+        _phoneController.text = student.phone ?? '';
+
+        _selectedCourse = StudentConstants.courses.contains(student.course) 
+            ? student.course : null;
+        _selectedYear = StudentConstants.years.contains(student.yearLevel) 
+            ? student.yearLevel : null;
+        _selectedSection = StudentConstants.sections.contains(student.section) 
+            ? student.section : null;
+      }
+      setState(() => _isLoaded = true);
     });
-  }
-
-  void _initControllers() {
-    _lastNameController = TextEditingController(text: _student.lastName);
-    _firstNameController = TextEditingController(text: _student.firstName);
-    _middleNameController = TextEditingController(text: _student.middleName);
-    _usnController = TextEditingController(text: _student.usn);
-    _phoneController = TextEditingController(text: _student.phone);
-    _selectedCourse = _student.course;
-    _selectedYear = _student.year;
-    _selectedSection = _student.section;
   }
 
   @override
@@ -183,10 +154,10 @@ class _ProfilePageState extends State<ProfilePage> {
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 20),
         decoration: BoxDecoration(
-          color: const Color(0xFF6366F1).withOpacity(0.1),
+          color: const Color(0xFF6366F1).withValues(alpha: 0.1),
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
-            color: const Color(0xFF6366F1).withOpacity(0.2),
+            color: const Color(0xFF6366F1).withValues(alpha: 0.2),
           ),
         ),
         child: Column(
@@ -236,34 +207,29 @@ class _ProfilePageState extends State<ProfilePage> {
 
   Future<void> _saveProfile() async {
     setState(() => _isSaving = true);
-
-    // Simulate API call
     await Future.delayed(const Duration(seconds: 1));
-
-    // Update student data
-    _student = _student.copyWith(
-      lastName: _lastNameController.text.trim(),
-      firstName: _firstNameController.text.trim(),
-      middleName: _middleNameController.text.trim(),
-      usn: _usnController.text.trim(),
-      course: _selectedCourse,
-      year: _selectedYear,
-      section: _selectedSection,
-      phone: _phoneController.text.trim(),
-    );
-
     setState(() {
       _isEditing = false;
       _isSaving = false;
     });
-
     _showSnackBar('Profile updated successfully!');
   }
 
   void _cancelEdit() {
+    final provider = context.read<StudentProvider>();
+    final student = provider.currentStudent;
     setState(() {
       _isEditing = false;
-      _initControllers(); // Reset to original values
+      if (student != null) {
+        _lastNameController.text = student.lastName;
+        _firstNameController.text = student.firstName;
+        _middleNameController.text = student.middleName ?? '';
+        _usnController.text = student.usn;
+        _phoneController.text = student.phone ?? '';
+        _selectedCourse = student.course;
+        _selectedYear = student.yearLevel;
+        _selectedSection = student.section;
+      }
       _imageFile = null;
     });
   }
@@ -283,10 +249,12 @@ class _ProfilePageState extends State<ProfilePage> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final provider = context.watch<StudentProvider>();
+    final student = provider.currentStudent;
 
-    if (!_isLoaded) { // ← show loading until data is ready
-    return const Center(child: CircularProgressIndicator());
-  }
+    if (!_isLoaded || student == null) {
+      return const Center(child: CircularProgressIndicator());
+    }
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(20),
@@ -295,9 +263,9 @@ class _ProfilePageState extends State<ProfilePage> {
         children: [
           _buildHeader(isDark),
           const SizedBox(height: 24),
-          _buildProfileImage(isDark),
+          _buildProfileImage(isDark, student),
           const SizedBox(height: 32),
-          _buildPersonalInfoSection(isDark),
+          _buildPersonalInfoSection(isDark, student),
           const SizedBox(height: 32),
           _buildLogoutButton(),
           const SizedBox(height: 20),
@@ -342,9 +310,9 @@ class _ProfilePageState extends State<ProfilePage> {
                       const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                   margin: const EdgeInsets.only(right: 8),
                   decoration: BoxDecoration(
-                    color: Colors.red.withOpacity(0.1),
+                    color: Colors.red.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: Colors.red.withOpacity(0.3)),
+                    border: Border.all(color: Colors.red.withValues(alpha: 0.3)),
                   ),
                   child: Text(
                     'Cancel',
@@ -362,10 +330,10 @@ class _ProfilePageState extends State<ProfilePage> {
                 padding:
                     const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF6366F1).withOpacity(0.1),
+                  color: const Color(0xFF6366F1).withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(10),
                   border: Border.all(
-                    color: const Color(0xFF6366F1).withOpacity(0.3),
+                    color: const Color(0xFF6366F1).withValues(alpha: 0.3),
                   ),
                 ),
                 child: Row(
@@ -407,7 +375,7 @@ class _ProfilePageState extends State<ProfilePage> {
     );
   }
 
-  Widget _buildProfileImage(bool isDark) {
+  Widget _buildProfileImage(bool isDark, Student student) {
     return Center(
       child: Column(
         children: [
@@ -422,10 +390,10 @@ class _ProfilePageState extends State<ProfilePage> {
                     child: Container(
                       padding: const EdgeInsets.all(24),
                       decoration: BoxDecoration(
-                        color: const Color(0xFF6366F1).withOpacity(0.1),
+                        color: const Color(0xFF6366F1).withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(20),
                         border: Border.all(
-                          color: const Color(0xFF6366F1).withOpacity(0.2),
+                          color: const Color(0xFF6366F1).withValues(alpha: 0.2),
                         ),
                       ),
                       child: ClipRRect(
@@ -441,7 +409,7 @@ class _ProfilePageState extends State<ProfilePage> {
                                 width: 100,
                                 height: 100,
                                 color:
-                                    const Color(0xFF6366F1).withOpacity(0.1),
+                                    const Color(0xFF6366F1).withValues(alpha: 0.1),
                                 child: const Icon(
                                   Icons.person_rounded,
                                   size: 60,
@@ -480,7 +448,7 @@ class _ProfilePageState extends State<ProfilePage> {
           ),
           const SizedBox(height: 20),
           Text(
-            _student.fullName,
+            student.fullName,
             style: const TextStyle(
               fontSize: 22,
               fontWeight: FontWeight.w700,
@@ -490,15 +458,15 @@ class _ProfilePageState extends State<ProfilePage> {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
             decoration: BoxDecoration(
-              color: const Color(0xFF6366F1).withOpacity(0.1),
+              color: const Color(0xFF6366F1).withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(20),
             ),
             child: Text(
-              '${_student.course} | Year ${_student.year}-${_student.section}',
-              style: TextStyle(
+              '${student.course} | Year ${student.yearLevel}-${student.section}',
+              style: const TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.w600,
-                color: const Color(0xFF6366F1),
+                color: Color(0xFF6366F1),
               ),
             ),
           ),
@@ -507,7 +475,7 @@ class _ProfilePageState extends State<ProfilePage> {
     );
   }
 
-  Widget _buildPersonalInfoSection(bool isDark) {
+  Widget _buildPersonalInfoSection(bool isDark, Student student) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -603,23 +571,21 @@ class _ProfilePageState extends State<ProfilePage> {
             enabled: true,
           ),
         ] else ...[
-          _buildReadOnlyField(isDark, 'USN', _student.usn),
+          _buildReadOnlyField(isDark, 'USN', student.usn),
           const SizedBox(height: 12),
-          _buildReadOnlyField(isDark, 'Full Name', _student.fullName),
+          _buildReadOnlyField(isDark, 'Full Name', student.fullName),
           const SizedBox(height: 12),
-          _buildReadOnlyField(isDark, 'Program', _student.course),
+          _buildReadOnlyField(isDark, 'Program', student.course),
           const SizedBox(height: 12),
-          _buildReadOnlyField(
-              isDark, 'Year & Section', _student.yearSection),
+          _buildReadOnlyField(isDark, 'Year & Section', student.yearSection),
           const SizedBox(height: 12),
-          _buildReadOnlyField(isDark, 'Phone', _student.phone ?? 'Not set'),
+          _buildReadOnlyField(isDark, 'Phone', student.phone ?? 'Not set'),
           const SizedBox(height: 12),
           _buildReadOnlyField(
             isDark,
-            'Enrollment',
-            _student.enrollmentDate != null
-                // ? '${_student.enrollmentDate!.month}/${_student.enrollmentDate!.year}'
-                ? DateFormat('MMMM d, yyyy').format(_student.enrollmentDate!)
+            'Registered',
+            student.createdAt != null
+                ? DateFormat('MMMM d, yyyy').format(student.createdAt!)
                 : 'N/A',
           ),
         ],
@@ -647,17 +613,16 @@ class _ProfilePageState extends State<ProfilePage> {
             filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
             child: Container(
               width: double.infinity,
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
               decoration: BoxDecoration(
                 color: isDark
-                    ? Colors.white.withOpacity(0.05)
-                    : Colors.black.withOpacity(0.02),
+                    ? Colors.white.withValues(alpha: 0.05)
+                    : Colors.black.withValues(alpha: 0.02),
                 borderRadius: BorderRadius.circular(10),
                 border: Border.all(
                   color: isDark
-                      ? Colors.white.withOpacity(0.1)
-                      : Colors.black.withOpacity(0.08),
+                      ? Colors.white.withValues(alpha: 0.1)
+                      : Colors.black.withValues(alpha: 0.08),
                 ),
               ),
               child: Text(
@@ -681,6 +646,7 @@ class _ProfilePageState extends State<ProfilePage> {
       height: 48,
       child: ElevatedButton.icon(
         onPressed: () {
+          context.read<StudentProvider>().logout();
           Navigator.of(context).pushReplacement(
             MaterialPageRoute(
               builder: (context) =>

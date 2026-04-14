@@ -1,0 +1,586 @@
+import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'package:provider/provider.dart';
+import '../../providers/admin_provider.dart';
+import '../../models/subject_model.dart';
+import '../../models/student_model.dart';
+import '../../models/enrollment_model.dart';
+
+class SubjectManagementScreen extends StatefulWidget {
+  const SubjectManagementScreen({super.key});
+
+  @override
+  State<SubjectManagementScreen> createState() => _SubjectManagementScreenState();
+}
+
+class _SubjectManagementScreenState extends State<SubjectManagementScreen> {
+
+  void _createSubject(AdminProvider provider) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _CreateSubjectSheet(provider: provider),
+    );
+  }
+
+  void _enrollStudents(AdminProvider provider, Subject subject) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _EnrollSheet(provider: provider, subject: subject),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Consumer<AdminProvider>(
+      builder: (context, provider, _) => Scaffold(
+        backgroundColor: const Color(0xFF0A0E21),
+        body: SafeArea(
+          child: Column(children: [
+
+            // ── Header ──
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 20, 24, 16),
+              child: Row(children: [
+                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text('Subjects', style: GoogleFonts.inter(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w800)),
+                  Text('${provider.totalSubjects} subject${provider.totalSubjects != 1 ? 's' : ''} created',
+                    style: GoogleFonts.inter(color: Colors.grey[500], fontSize: 12)),
+                ])),
+                GestureDetector(
+                  onTap: () => _createSubject(provider),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF6366F1),
+                      borderRadius: BorderRadius.circular(12),
+                      boxShadow: [BoxShadow(color: const Color(0xFF6366F1).withValues(alpha: 0.4), blurRadius: 12, offset: const Offset(0, 4))],
+                    ),
+                    child: Row(mainAxisSize: MainAxisSize.min, children: [
+                      const Icon(Icons.add_rounded, color: Colors.white, size: 18),
+                      const SizedBox(width: 6),
+                      Text('New Subject', style: GoogleFonts.inter(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700)),
+                    ]),
+                  ),
+                ),
+              ]),
+            ),
+
+            // ── List ──
+            Expanded(
+              child: provider.subjects.isEmpty
+                ? Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
+                    Icon(Icons.book_outlined, color: Colors.grey[700], size: 52),
+                    const SizedBox(height: 12),
+                    Text('No subjects yet', style: GoogleFonts.inter(color: Colors.grey[500], fontSize: 14)),
+                    const SizedBox(height: 4),
+                    Text('Tap "New Subject" to create one', style: GoogleFonts.inter(color: Colors.grey[600], fontSize: 12)),
+                  ]))
+                : RefreshIndicator(
+                    color: const Color(0xFF6366F1),
+                    backgroundColor: const Color(0xFF111633),
+                    onRefresh: () => provider.loadSubjects(),
+                    child: ListView.separated(
+                      padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+                      itemCount: provider.subjects.length,
+                      separatorBuilder: (_, __) => const SizedBox(height: 12),
+                      itemBuilder: (_, i) => _SubjectCard(
+                        subject: provider.subjects[i],
+                        onEnroll: () => _enrollStudents(provider, provider.subjects[i]),
+                        onDelete: () => _confirmDelete(context, provider, provider.subjects[i]),
+                      ),
+                    ),
+                  ),
+            ),
+          ]),
+        ),
+      ),
+    );
+  }
+
+  void _confirmDelete(BuildContext context, AdminProvider provider, Subject s) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF111633),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Text('Delete Subject', style: GoogleFonts.inter(color: Colors.white, fontWeight: FontWeight.w700)),
+        content: Text('Delete "${s.subjectTitle}" (${s.subjectCode})? All enrollments and attendance will be removed.',
+          style: GoogleFonts.inter(color: Colors.grey[400], fontSize: 13)),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: Text('Cancel', style: GoogleFonts.inter(color: Colors.grey[500]))),
+          TextButton(
+            onPressed: () { provider.deleteSubject(s.id!); Navigator.pop(ctx); },
+            child: Text('Delete', style: GoogleFonts.inter(color: const Color(0xFFEF4444), fontWeight: FontWeight.w700)),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Subject Card ──
+class _SubjectCard extends StatefulWidget {
+  final Subject subject;
+  final VoidCallback onEnroll, onDelete;
+  const _SubjectCard({required this.subject, required this.onEnroll, required this.onDelete});
+
+  @override
+  State<_SubjectCard> createState() => _SubjectCardState();
+}
+
+class _SubjectCardState extends State<_SubjectCard> {
+  List<Enrollment> _enrollments = [];
+  bool _loadedEnrollments = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadEnrollments();
+  }
+
+  Future<void> _loadEnrollments() async {
+    final provider = context.read<AdminProvider>();
+    final list = await provider.getSubjectEnrollments(widget.subject.id!);
+    if (mounted) setState(() { _enrollments = list; _loadedEnrollments = true; });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final s = widget.subject;
+    return Container(
+      decoration: BoxDecoration(
+        color: const Color(0xFF111633),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFF6366F1).withValues(alpha: 0.2)),
+        boxShadow: [BoxShadow(color: const Color(0xFF6366F1).withValues(alpha: 0.06), blurRadius: 12, offset: const Offset(0, 4))],
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        // Top accent bar
+        Container(
+          height: 4,
+          decoration: const BoxDecoration(
+            borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
+            gradient: LinearGradient(colors: [Color(0xFF6366F1), Color(0xFF8B5CF6)]),
+          ),
+        ),
+
+        Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            // Code + actions row
+            Row(children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF6366F1).withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: const Color(0xFF6366F1).withValues(alpha: 0.3)),
+                ),
+                child: Text(s.subjectCode, style: GoogleFonts.inter(color: const Color(0xFF6366F1), fontSize: 12, fontWeight: FontWeight.w800)),
+              ),
+              Container(
+                margin: const EdgeInsets.only(left: 8),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.05),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text('${s.units} units', style: GoogleFonts.inter(color: Colors.grey[500], fontSize: 11)),
+              ),
+              const Spacer(),
+              _iconBtn(Icons.person_add_rounded, const Color(0xFF10B981), widget.onEnroll),
+              const SizedBox(width: 8),
+              _iconBtn(Icons.delete_outline_rounded, const Color(0xFFEF4444), widget.onDelete),
+            ]),
+
+            const SizedBox(height: 12),
+
+            // Title
+            Text(s.subjectTitle, style: GoogleFonts.inter(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w800)),
+            const SizedBox(height: 4),
+            Text(s.instructorName ?? 'Rens Joshua Cardaña',
+              style: GoogleFonts.inter(color: const Color(0xFF818CF8), fontSize: 12, fontWeight: FontWeight.w600)),
+
+            const SizedBox(height: 12),
+
+            // Info chips
+            Wrap(spacing: 10, runSpacing: 6, children: [
+              _chip(Icons.schedule_rounded, '${s.scheduleDay} • ${s.scheduleStartTime}–${s.scheduleEndTime}'),
+              _chip(Icons.room_rounded, s.room),
+              _chip(Icons.timer_outlined, '${s.lateThresholdMinutes}min grace'),
+              _chip(Icons.people_rounded, _loadedEnrollments ? '${_enrollments.length} enrolled' : '...'),
+            ]),
+          ]),
+        ),
+      ]),
+    );
+  }
+
+  Widget _iconBtn(IconData icon, Color color, VoidCallback onTap) => GestureDetector(
+    onTap: onTap,
+    child: Container(
+      padding: const EdgeInsets.all(7),
+      decoration: BoxDecoration(color: color.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)),
+      child: Icon(icon, color: color, size: 17),
+    ),
+  );
+
+  Widget _chip(IconData icon, String text) => Row(
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      Icon(icon, size: 13, color: Colors.grey[600]),
+      const SizedBox(width: 4),
+      Text(text, style: GoogleFonts.inter(color: Colors.grey[500], fontSize: 11)),
+    ],
+  );
+}
+
+// ── Create Subject Bottom Sheet ──
+class _CreateSubjectSheet extends StatefulWidget {
+  final AdminProvider provider;
+  const _CreateSubjectSheet({required this.provider});
+
+  @override
+  State<_CreateSubjectSheet> createState() => _CreateSubjectSheetState();
+}
+
+class _CreateSubjectSheetState extends State<_CreateSubjectSheet> {
+  final _codeCtrl = TextEditingController();
+  final _titleCtrl = TextEditingController();
+  final _unitsCtrl = TextEditingController(text: '3');
+  final _roomCtrl = TextEditingController();
+  String? _selectedDay;
+  TimeOfDay _startTime = const TimeOfDay(hour: 7, minute: 30);
+  TimeOfDay _endTime = const TimeOfDay(hour: 10, minute: 0);
+  int _threshold = 15;
+  bool _isLoading = false;
+
+  final _days = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'MWF', 'TTH', 'MTWTHF'];
+
+  @override
+  void dispose() {
+    _codeCtrl.dispose(); _titleCtrl.dispose(); _unitsCtrl.dispose(); _roomCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    if (_codeCtrl.text.isEmpty || _titleCtrl.text.isEmpty || _roomCtrl.text.isEmpty || _selectedDay == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please fill all required fields')));
+      return;
+    }
+    final instructor = widget.provider.instructors.isNotEmpty ? widget.provider.instructors.first : null;
+    if (instructor == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No instructor found. Run the SQL schema first.')));
+      return;
+    }
+
+    setState(() => _isLoading = true);
+    try {
+      final fmtTime = (TimeOfDay t) => '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
+      await widget.provider.createSubject(
+        subjectCode: _codeCtrl.text,
+        subjectTitle: _titleCtrl.text,
+        units: int.tryParse(_unitsCtrl.text) ?? 3,
+        scheduleStartTime: fmtTime(_startTime),
+        scheduleEndTime: fmtTime(_endTime),
+        scheduleDay: _selectedDay!,
+        room: _roomCtrl.text,
+        instructorId: instructor.id!,
+        lateThresholdMinutes: _threshold,
+      );
+      if (mounted) Navigator.pop(context);
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+    }
+    if (mounted) setState(() => _isLoading = false);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bottom = MediaQuery.of(context).viewInsets.bottom;
+    return Container(
+      padding: EdgeInsets.fromLTRB(24, 24, 24, 24 + bottom),
+      decoration: const BoxDecoration(
+        color: Color(0xFF111633),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      child: SingleChildScrollView(
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+          // Handle
+          Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(2)))),
+          const SizedBox(height: 20),
+
+          Text('Create New Subject', style: GoogleFonts.inter(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w800)),
+          const SizedBox(height: 4),
+          Text('Instructor: Rens Joshua Cardaña', style: GoogleFonts.inter(color: const Color(0xFF818CF8), fontSize: 12, fontWeight: FontWeight.w600)),
+          const SizedBox(height: 20),
+
+          _sheetField(_codeCtrl, 'Subject Code *', 'e.g. IT6205A'),
+          const SizedBox(height: 12),
+          _sheetField(_titleCtrl, 'Subject Title *', 'e.g. Information Assurance'),
+          const SizedBox(height: 12),
+          Row(children: [
+            Expanded(child: _sheetField(_unitsCtrl, 'Units', '3', keyboard: TextInputType.number)),
+            const SizedBox(width: 12),
+            Expanded(child: _sheetField(_roomCtrl, 'Room *', 'e.g. CL3')),
+          ]),
+          const SizedBox(height: 12),
+
+          // Day picker
+          DropdownButtonFormField<String>(
+            value: _selectedDay,
+            dropdownColor: const Color(0xFF1A2140),
+            decoration: _sheetDeco('Schedule Day *'),
+            style: GoogleFonts.inter(color: Colors.white, fontSize: 14),
+            items: _days.map((d) => DropdownMenuItem(value: d, child: Text(d))).toList(),
+            onChanged: (v) => setState(() => _selectedDay = v),
+          ),
+          const SizedBox(height: 12),
+
+          // Time pickers
+          Row(children: [
+            Expanded(child: _timePicker('Start', _startTime, (t) => setState(() => _startTime = t))),
+            const SizedBox(width: 12),
+            Expanded(child: _timePicker('End', _endTime, (t) => setState(() => _endTime = t))),
+          ]),
+          const SizedBox(height: 12),
+
+          // Late threshold
+          Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+            Text('Late after (minutes)', style: GoogleFonts.inter(color: Colors.grey[400], fontSize: 13)),
+            Row(children: [
+              _threshBtn(Icons.remove_rounded, () => setState(() => _threshold = (_threshold - 5).clamp(5, 60))),
+              const SizedBox(width: 8),
+              Container(
+                width: 44, height: 36,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.05), borderRadius: BorderRadius.circular(8)),
+                child: Text('$_threshold', style: GoogleFonts.inter(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w700)),
+              ),
+              const SizedBox(width: 8),
+              _threshBtn(Icons.add_rounded, () => setState(() => _threshold = (_threshold + 5).clamp(5, 60))),
+            ]),
+          ]),
+          const SizedBox(height: 24),
+
+          SizedBox(
+            width: double.infinity,
+            height: 50,
+            child: ElevatedButton(
+              onPressed: _isLoading ? null : _submit,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF6366F1),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                elevation: 0,
+              ),
+              child: _isLoading
+                ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                : Text('Create Subject', style: GoogleFonts.inter(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w700)),
+            ),
+          ),
+        ]),
+      ),
+    );
+  }
+
+  Widget _sheetField(TextEditingController ctrl, String label, String hint, {TextInputType? keyboard}) {
+    return TextField(
+      controller: ctrl,
+      keyboardType: keyboard,
+      style: GoogleFonts.inter(color: Colors.white, fontSize: 14),
+      decoration: _sheetDeco(label).copyWith(hintText: hint, hintStyle: GoogleFonts.inter(color: Colors.grey[700], fontSize: 13)),
+    );
+  }
+
+  InputDecoration _sheetDeco(String label) => InputDecoration(
+    labelText: label,
+    labelStyle: GoogleFonts.inter(color: Colors.grey[500], fontSize: 12),
+    filled: true,
+    fillColor: Colors.white.withValues(alpha: 0.05),
+    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+    contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+  );
+
+  Widget _timePicker(String label, TimeOfDay time, ValueChanged<TimeOfDay> onPick) {
+    return GestureDetector(
+      onTap: () async {
+        final picked = await showTimePicker(context: context, initialTime: time,
+          builder: (ctx, child) => Theme(data: ThemeData.dark().copyWith(colorScheme: const ColorScheme.dark(primary: Color(0xFF6366F1))), child: child!));
+        if (picked != null) onPick(picked);
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+        decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.05), borderRadius: BorderRadius.circular(12)),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(label, style: GoogleFonts.inter(color: Colors.grey[500], fontSize: 11)),
+          const SizedBox(height: 4),
+          Row(children: [
+            const Icon(Icons.access_time_rounded, color: Color(0xFF6366F1), size: 16),
+            const SizedBox(width: 6),
+            Text(time.format(context), style: GoogleFonts.inter(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w700)),
+          ]),
+        ]),
+      ),
+    );
+  }
+
+  Widget _threshBtn(IconData icon, VoidCallback onTap) => GestureDetector(
+    onTap: onTap,
+    child: Container(
+      width: 32, height: 32,
+      decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(8)),
+      child: Icon(icon, color: Colors.white, size: 16),
+    ),
+  );
+}
+
+// ── Enroll Student Sheet ──
+class _EnrollSheet extends StatefulWidget {
+  final AdminProvider provider;
+  final Subject subject;
+  const _EnrollSheet({required this.provider, required this.subject});
+
+  @override
+  State<_EnrollSheet> createState() => _EnrollSheetState();
+}
+
+class _EnrollSheetState extends State<_EnrollSheet> {
+  String _search = '';
+  final Set<String> _enrolling = {};
+
+  @override
+  Widget build(BuildContext context) {
+    var students = widget.provider.students.where((s) => s.isConfirmed).toList();
+    if (_search.isNotEmpty) {
+      students = students.where((s) =>
+        s.fullName.toLowerCase().contains(_search.toLowerCase()) ||
+        s.usn.contains(_search)).toList();
+    }
+
+    return DraggableScrollableSheet(
+      initialChildSize: 0.75,
+      maxChildSize: 0.92,
+      minChildSize: 0.5,
+      builder: (_, ctrl) => Container(
+        decoration: const BoxDecoration(
+          color: Color(0xFF111633),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        child: Column(children: [
+          // Handle
+          Padding(
+            padding: const EdgeInsets.only(top: 12),
+            child: Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(2)))),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(24, 16, 24, 12),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [
+                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text('Enroll Students', style: GoogleFonts.inter(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w800)),
+                  Text(widget.subject.subjectCode, style: GoogleFonts.inter(color: const Color(0xFF818CF8), fontSize: 12)),
+                ])),
+                GestureDetector(
+                  onTap: () => Navigator.pop(context),
+                  child: const Icon(Icons.close_rounded, color: Colors.white54),
+                ),
+              ]),
+              const SizedBox(height: 12),
+              TextField(
+                onChanged: (v) => setState(() => _search = v),
+                style: GoogleFonts.inter(color: Colors.white, fontSize: 13),
+                decoration: InputDecoration(
+                  hintText: 'Search confirmed students...',
+                  hintStyle: GoogleFonts.inter(color: Colors.grey[600], fontSize: 13),
+                  prefixIcon: Icon(Icons.search, color: Colors.grey[600], size: 20),
+                  filled: true,
+                  fillColor: Colors.white.withValues(alpha: 0.05),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                ),
+              ),
+            ]),
+          ),
+
+          Expanded(
+            child: students.isEmpty
+              ? Center(child: Text('No confirmed students found', style: GoogleFonts.inter(color: Colors.grey[500])))
+              : ListView.separated(
+                  controller: ctrl,
+                  padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+                  itemCount: students.length,
+                  separatorBuilder: (_, __) => const SizedBox(height: 8),
+                  itemBuilder: (_, i) {
+                    final s = students[i];
+                    final isEnrolling = _enrolling.contains(s.id);
+                    return Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF0D1226),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.white.withValues(alpha: 0.07)),
+                      ),
+                      child: Row(children: [
+                        Container(
+                          width: 38, height: 38,
+                          decoration: BoxDecoration(color: const Color(0xFF6366F1).withValues(alpha: 0.12), borderRadius: BorderRadius.circular(10)),
+                          child: Center(child: Text(s.firstName[0].toUpperCase(),
+                            style: GoogleFonts.inter(color: const Color(0xFF6366F1), fontSize: 16, fontWeight: FontWeight.w700))),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                          Text(s.fullName, style: GoogleFonts.inter(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600)),
+                          Text('${s.usn} • ${s.course} ${s.yearSection}',
+                            style: GoogleFonts.inter(color: Colors.grey[500], fontSize: 11)),
+                        ])),
+                        GestureDetector(
+                          onTap: isEnrolling ? null : () async {
+                            setState(() => _enrolling.add(s.id!));
+                            try {
+                              await widget.provider.enrollStudent(s.id!, widget.subject.id!);
+                              if (context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                                  content: Text('${s.fullName} enrolled!'),
+                                  backgroundColor: const Color(0xFF10B981),
+                                  behavior: SnackBarBehavior.floating,
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                ));
+                              }
+                            } catch (e) {
+                              if (context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                                  content: Text(e.toString().contains('duplicate') ? 'Already enrolled' : 'Error: $e'),
+                                  backgroundColor: const Color(0xFFEF4444),
+                                  behavior: SnackBarBehavior.floating,
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                ));
+                              }
+                            }
+                            if (mounted) setState(() => _enrolling.remove(s.id));
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF10B981).withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(color: const Color(0xFF10B981).withValues(alpha: 0.3)),
+                            ),
+                            child: isEnrolling
+                              ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(color: Color(0xFF10B981), strokeWidth: 2))
+                              : Text('Enroll', style: GoogleFonts.inter(color: const Color(0xFF10B981), fontSize: 12, fontWeight: FontWeight.w700)),
+                          ),
+                        ),
+                      ]),
+                    );
+                  },
+                ),
+          ),
+        ]),
+      ),
+    );
+  }
+}
