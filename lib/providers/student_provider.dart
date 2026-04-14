@@ -3,6 +3,7 @@ import '../models/student_model.dart';
 import '../models/enrollment_model.dart';
 import '../models/attendance_model.dart';
 import '../services/supabase_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class StudentProvider extends ChangeNotifier {
   final SupabaseService _service = SupabaseService();
@@ -58,6 +59,7 @@ class StudentProvider extends ChangeNotifier {
     required String course,
     required String yearLevel,
     required String section,
+    String? phone,
   }) async {
     _setLoading(true);
     try {
@@ -70,6 +72,7 @@ class StudentProvider extends ChangeNotifier {
         course: course,
         yearLevel: yearLevel,
         section: section,
+        phone: phone,
       );
       return student;
     } catch (e) {
@@ -108,10 +111,32 @@ class StudentProvider extends ChangeNotifier {
         .toList();
   }
 
-  void logout() {
+  Future<bool> restoreSession() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final savedUsn = prefs.getString('usn');
+      final savedPassword = prefs.getString('password');
+      if (savedUsn != null && savedPassword != null) {
+        final student = await login(savedUsn, savedPassword);
+        return student != null;
+      }
+    } catch (e) {
+      debugPrint('Restore session error: $e');
+    }
+    return false;
+  }
+
+  Future<void> logout() async {
     _currentStudent = null;
     _enrollments = [];
     _attendanceRecords = [];
     notifyListeners();
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('usn');
+      await prefs.remove('password');
+    } catch (e) {
+      debugPrint('Logout prefs error: $e');
+    }
   }
 }

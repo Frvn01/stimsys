@@ -8,6 +8,8 @@ import 'dashboard_screen.dart';
 import 'signup_screen.dart';
 import 'welcome_screen.dart';
 
+import 'package:shared_preferences/shared_preferences.dart';
+
 class LoginScreen extends StatefulWidget {
   final ThemeProvider themeProvider;
 
@@ -43,6 +45,11 @@ class _LoginScreenState extends State<LoginScreen> {
           .login(_usnController.text.trim(), _passwordController.text);
 
       if (student != null && mounted) {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setBool('hasRegistered', true);
+        await prefs.setString('usn', _usnController.text.trim());
+        await prefs.setString('password', _passwordController.text);
+        
         Navigator.of(context).pushReplacement(
           MaterialPageRoute(
             builder: (context) => DashboardScreen(
@@ -114,7 +121,9 @@ class _LoginScreenState extends State<LoginScreen> {
                 Align(
                   alignment: Alignment.centerRight,
                   child: TextButton(
-                    onPressed: () {},
+                    onPressed: () {
+                      _showSnackBar('Coming Soon');
+                    },
                     child: const Text(
                       'Forgot password?',
                       style: TextStyle(

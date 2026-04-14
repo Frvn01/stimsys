@@ -85,7 +85,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
               themeProvider: widget.themeProvider,
             ),
             QuizPage(
-              email: widget.email,
               themeProvider: widget.themeProvider,
             ),
             CalendarPage(

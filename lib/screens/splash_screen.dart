@@ -2,7 +2,12 @@ import 'package:flutter/material.dart';
 import 'dart:async';
 import 'dart:ui';
 import '../theme/theme_provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:provider/provider.dart';
+import '../providers/student_provider.dart';
 import 'welcome_screen.dart';
+import 'login_screen.dart';
+import 'dashboard_screen.dart';
 
 class SplashScreen extends StatefulWidget {
   final ThemeProvider themeProvider;
@@ -39,14 +44,32 @@ class _SplashScreenState extends State<SplashScreen>
 
     _animationController.forward();
 
-    Timer(const Duration(seconds: 3), () {
+    Timer(const Duration(seconds: 3), () async {
+      final provider = context.read<StudentProvider>();
+      final isRestored = await provider.restoreSession();
+
       if (mounted) {
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(
-            builder: (context) =>
-                WelcomeScreen(themeProvider: widget.themeProvider),
-          ),
-        );
+        if (isRestored && provider.currentStudent != null) {
+          Navigator.of(context).pushReplacement(
+            MaterialPageRoute(
+              builder: (context) => DashboardScreen(
+                email: provider.currentStudent!.usn,
+                themeProvider: widget.themeProvider,
+              ),
+            ),
+          );
+        } else {
+          final prefs = await SharedPreferences.getInstance();
+          final hasRegistered = prefs.getBool('hasRegistered') ?? false;
+
+          Navigator.of(context).pushReplacement(
+            MaterialPageRoute(
+              builder: (context) => hasRegistered
+                  ? LoginScreen(themeProvider: widget.themeProvider)
+                  : WelcomeScreen(themeProvider: widget.themeProvider),
+            ),
+          );
+        }
       }
     });
   }

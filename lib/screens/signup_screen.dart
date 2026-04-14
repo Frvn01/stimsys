@@ -11,6 +11,8 @@ import 'login_screen.dart';
 import 'welcome_screen.dart';
 import 'package:intl/intl.dart';
 
+import 'package:shared_preferences/shared_preferences.dart';
+
 class SignUpScreen extends StatefulWidget {
   final ThemeProvider themeProvider;
 
@@ -27,6 +29,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
   final _middleNameController = TextEditingController();
   final _usnController = TextEditingController();
   final _passwordController = TextEditingController();
+  final _phoneController = TextEditingController();
 
   String? _selectedCourse;
   String? _selectedYear;
@@ -42,6 +45,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
     _middleNameController.dispose();
     _usnController.dispose();
     _passwordController.dispose();
+    _phoneController.dispose();
     super.dispose();
   }
 
@@ -69,9 +73,14 @@ class _SignUpScreenState extends State<SignUpScreen> {
             course: _selectedCourse!,
             yearLevel: _selectedYear!,
             section: _selectedSection!,
+            phone: _phoneController.text.trim().isEmpty 
+                ? null 
+                : _phoneController.text.trim(),
           );
 
       if (student != null && mounted) {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setBool('hasRegistered', true);
         _showSignUpQRCode(student);
       }
     } catch (e) {
@@ -421,6 +430,15 @@ class _SignUpScreenState extends State<SignUpScreen> {
         ),
         const SizedBox(height: 20),
         CustomTextField(
+          label: 'Phone Number (Optional)',
+          hint: '0910-061-1026',
+          icon: Icons.phone_rounded,
+          controller: _phoneController,
+          keyboardType: TextInputType.phone,
+          inputFormatters: [_PhoneInputFormatter()],
+        ),
+        const SizedBox(height: 20),
+        CustomTextField(
           label: 'Password *',
           hint: '••••••••',
           icon: Icons.lock_rounded,
@@ -499,6 +517,26 @@ class _SignUpScreenState extends State<SignUpScreen> {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _PhoneInputFormatter extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(
+      TextEditingValue oldValue, TextEditingValue newValue) {
+    if (newValue.text.isEmpty) return newValue;
+    final text = newValue.text.replaceAll(RegExp(r'\D'), '');
+    String formatted = '';
+    for (int i = 0; i < text.length; i++) {
+        if (i == 4) formatted += '-';
+        if (i == 7) formatted += '-';
+        formatted += text[i];
+    }
+    if (formatted.length > 13) formatted = formatted.substring(0, 13);
+    return TextEditingValue(
+      text: formatted,
+      selection: TextSelection.collapsed(offset: formatted.length),
     );
   }
 }

@@ -32,7 +32,7 @@ class OverviewPage extends StatelessWidget {
           const SizedBox(height: 32),
           _buildAcademicOverview(isDark, enrollmentCount),
           const SizedBox(height: 24),
-          _buildRecentActivity(isDark),
+          _buildRecentActivity(isDark, provider),
           const SizedBox(height: 20),
         ],
       ),
@@ -154,7 +154,48 @@ class OverviewPage extends StatelessWidget {
     );
   }
 
-  Widget _buildRecentActivity(bool isDark) {
+  Widget _buildRecentActivity(bool isDark, StudentProvider provider) {
+    // Collect all activities
+    final List<Map<String, dynamic>> activities = [];
+
+    // 1. Account Created
+    if (provider.currentStudent?.createdAt != null) {
+      activities.add({
+        'title': 'Account Created',
+        'description': provider.currentStudent!.isConfirmed 
+            ? 'Registered and confirmed' 
+            : 'Registered (Pending confirmation)',
+        'date': provider.currentStudent!.createdAt!,
+        'icon': Icons.person_add_rounded,
+      });
+    }
+
+    // 2. Enrollments
+    for (var enrollment in provider.enrollments) {
+      if (enrollment.enrolledAt != null) {
+        activities.add({
+          'title': 'Enrolled in Subject',
+          'description': enrollment.subjectTitle ?? 'Unknown Subject',
+          'date': enrollment.enrolledAt!,
+          'icon': Icons.bookmark_added_rounded,
+        });
+      }
+    }
+
+    // 3. Attendance
+    for (var record in provider.attendanceRecords) {
+      final date = record.markedAt ?? record.date;
+      activities.add({
+        'title': 'Attendance Marked',
+        'description': '${record.statusLabel} for ${record.subjectTitle ?? record.subjectCode ?? "Subject"}',
+        'date': date,
+        'icon': Icons.how_to_reg_rounded,
+      });
+    }
+
+    // Sort by date descending
+    activities.sort((a, b) => (b['date'] as DateTime).compareTo(a['date'] as DateTime));
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -167,27 +208,39 @@ class OverviewPage extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 12),
-        ActivityCard(
-          title: 'Assignment Submitted',
-          description: 'Information Assurance Security 2',
-          time: '2h ago',
-          icon: Icons.assessment_rounded,
-        ),
-        const SizedBox(height: 10),
-        ActivityCard(
-          title: 'Grade Posted',
-          description: 'ADET Quiz 2: 92/100',
-          time: '1d ago',
-          icon: Icons.grade_rounded,
-        ),
-        const SizedBox(height: 10),
-        ActivityCard(
-          title: 'Course Updated',
-          description: 'Database Management Systems 2',
-          time: '3d ago',
-          icon: Icons.update_rounded,
-        ),
+        if (activities.isEmpty)
+          Center(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 20),
+              child: Text(
+                'No recent activity',
+                style: TextStyle(color: isDark ? Colors.grey[500] : Colors.grey[500]),
+              ),
+            ),
+          )
+        else
+          ...activities.take(5).map((activity) {
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: ActivityCard(
+                title: activity['title'],
+                description: activity['description'],
+                time: _formatTimeAgo(activity['date'] as DateTime),
+                icon: activity['icon'],
+              ),
+            );
+          }),
       ],
     );
+  }
+
+  String _formatTimeAgo(DateTime date) {
+    final difference = DateTime.now().difference(date);
+    if (difference.inDays > 365) return '${(difference.inDays / 365).floor()}y ago';
+    if (difference.inDays > 30) return '${(difference.inDays / 30).floor()}mo ago';
+    if (difference.inDays > 0) return '${difference.inDays}d ago';
+    if (difference.inHours > 0) return '${difference.inHours}h ago';
+    if (difference.inMinutes > 0) return '${difference.inMinutes}m ago';
+    return 'Just now';
   }
 }

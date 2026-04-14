@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../theme/theme_provider.dart';
 import '../widgets/cards/feature_card.dart';
 import 'login_screen.dart';
+import 'signup_screen.dart';
 import 'admin/admin_login_screen.dart';
 
 class WelcomeScreen extends StatefulWidget {
@@ -212,7 +213,13 @@ class _WelcomeScreenState extends State<WelcomeScreen>
             width: double.infinity,
             height: 56,
             child: ElevatedButton(
-              onPressed: () => _navigateToLogin(),
+              onPressed: () {
+                Navigator.of(context).pushReplacement(
+                  MaterialPageRoute(
+                    builder: (context) => SignUpScreen(themeProvider: widget.themeProvider),
+                  ),
+                );
+              },
               child: const Text(
                 'Get Started',
                 style: TextStyle(

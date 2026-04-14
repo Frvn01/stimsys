@@ -470,7 +470,41 @@ class _ProfilePageState extends State<ProfilePage> {
               ),
             ),
           ),
+
+          //The Raven Privilage
+          if (student.usn == '23002137800') ...[
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              alignment: WrapAlignment.center,
+              children: [
+                _buildCustomBadge(isDark, 'Core Developer', const Color(0xFFEF4444)),
+                _buildCustomBadge(isDark, 'The Corvexis', const Color(0xFFA855F7)),
+                _buildCustomBadge(isDark, 'Full-Stack Developer', const Color(0xFF10B981)),
+              ],
+            ),
+          ],
         ],
+      ),
+    );
+  }
+
+  Widget _buildCustomBadge(bool isDark, String label, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.15),
+        border: Border.all(color: color.withValues(alpha: 0.3)),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          fontSize: 10,
+          fontWeight: FontWeight.w700,
+          color: color,
+        ),
       ),
     );
   }
