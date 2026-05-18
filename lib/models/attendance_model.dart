@@ -2,7 +2,7 @@ class AttendanceRecord {
   final String? id;
   final String enrollmentId;
   final DateTime date;
-  final String status; // 'present', 'late', 'absent'
+  final String status; // 'present', 'late', 'absent', 'excused'
   final DateTime? scannedAt;
   final int minutesLate;
   final DateTime? markedAt;
@@ -13,6 +13,13 @@ class AttendanceRecord {
   final String? studentUsn;
   final String? subjectCode;
   final String? subjectTitle;
+
+  // Extra joined fields for section grouping in tracker
+  final String? studentCourse;
+  final String? studentYearLevel;
+  final String? studentSection;
+  final String? studentLastName;
+  final String? studentFirstName;
 
   AttendanceRecord({
     this.id,
@@ -27,11 +34,26 @@ class AttendanceRecord {
     this.studentUsn,
     this.subjectCode,
     this.subjectTitle,
+    this.studentCourse,
+    this.studentYearLevel,
+    this.studentSection,
+    this.studentLastName,
+    this.studentFirstName,
   });
 
   bool get isPresent => status == 'present';
   bool get isLate => status == 'late';
   bool get isAbsent => status == 'absent';
+  bool get isExcused => status == 'excused';
+
+  /// e.g. "BSIT 2 A" or "WAD 1 AB"
+  String get sectionLabel {
+    final c = studentCourse ?? '';
+    final y = studentYearLevel ?? '';
+    final s = studentSection ?? '';
+    if (c.isEmpty && y.isEmpty && s.isEmpty) return 'Unknown Section';
+    return '$c $y $s'.trim();
+  }
 
   String get statusLabel {
     switch (status) {
@@ -41,6 +63,8 @@ class AttendanceRecord {
         return 'Late ($minutesLate min)';
       case 'absent':
         return 'Absent';
+      case 'excused':
+        return 'Excused';
       default:
         return status;
     }
@@ -63,13 +87,23 @@ class AttendanceRecord {
     String? studentUsn;
     String? subjectCode;
     String? subjectTitle;
+    String? studentCourse;
+    String? studentYearLevel;
+    String? studentSection;
+    String? studentLastName;
+    String? studentFirstName;
 
     if (map['enrollments'] != null) {
       final enrollment = map['enrollments'];
       if (enrollment['students'] != null) {
         final student = enrollment['students'];
+        studentFirstName = student['first_name'];
+        studentLastName = student['last_name'];
         studentName = '${student['first_name']} ${student['last_name']}';
         studentUsn = student['usn'];
+        studentCourse = student['course'];
+        studentYearLevel = student['year_level'];
+        studentSection = student['section'];
       }
       if (enrollment['subjects'] != null) {
         final subject = enrollment['subjects'];
@@ -95,6 +129,11 @@ class AttendanceRecord {
       studentUsn: studentUsn,
       subjectCode: subjectCode,
       subjectTitle: subjectTitle,
+      studentCourse: studentCourse,
+      studentYearLevel: studentYearLevel,
+      studentSection: studentSection,
+      studentLastName: studentLastName,
+      studentFirstName: studentFirstName,
     );
   }
 }

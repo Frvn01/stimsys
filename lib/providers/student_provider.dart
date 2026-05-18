@@ -1,3 +1,4 @@
+import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import '../models/student_model.dart';
 import '../models/enrollment_model.dart';
@@ -139,4 +140,60 @@ class StudentProvider extends ChangeNotifier {
       debugPrint('Logout prefs error: $e');
     }
   }
+
+  Future<(bool, String)> enrollBySubjectQR(String subjectId) async {
+    if (_currentStudent?.id == null) return (false, 'Not logged in');
+    try {
+      final enrollment = await _service.enrollStudentBySubjectId(
+          _currentStudent!.id!, subjectId);
+      // Refresh enrollments list
+      await loadEnrollments();
+      final subjectName = enrollment.subject?.subjectTitle ?? 'subject';
+      final subjectCode = enrollment.subject?.subjectCode ?? '';
+      return (true, 'Enrolled in $subjectName ($subjectCode)!');
+    } catch (e) {
+      final msg = e.toString();
+      if (msg.contains('duplicate') || msg.contains('already')) {
+        return (false, 'You are already enrolled in this subject.');
+      }
+      return (false, 'Enrollment failed: $e');
+    }
+  }
+
+  /// Upload a profile image (compressed bytes) to Supabase and update the student record.
+  Future<(bool, String)> uploadProfileImage(
+      Uint8List imageBytes, String extension) async {
+    if (_currentStudent?.id == null) return (false, 'Not logged in');
+    try {
+      final url = await _service.uploadStudentProfileImage(
+          _currentStudent!.id!, imageBytes, extension);
+      // Update local state
+      _currentStudent = _currentStudent!.copyWith(profileImageUrl: url);
+      notifyListeners();
+      return (true, url);
+    } catch (e) {
+      debugPrint('Upload profile image error: $e');
+      return (false, 'Upload failed: $e');
+    }
+  }
+
+  /// Delete the current student's profile image from Supabase and update local state.
+  Future<(bool, String)> deleteProfileImage() async {
+    if (_currentStudent?.id == null) return (false, 'Not logged in');
+    if (_currentStudent?.profileImageUrl == null) return (false, 'No profile image to delete');
+    
+    try {
+      await _service.deleteStudentProfileImage(
+          _currentStudent!.id!, _currentStudent!.profileImageUrl!);
+      // Update local state
+      _currentStudent = _currentStudent!.copyWith(profileImageUrl: null);
+      notifyListeners();
+      return (true, 'Profile image deleted successfully');
+    } catch (e) {
+      debugPrint('Delete profile image error: $e');
+      return (false, 'Failed to delete profile image: $e');
+    }
+  }
 }
+
+

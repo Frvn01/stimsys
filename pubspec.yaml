@@ -44,8 +44,9 @@ flutter:
   uses-material-design: true
   assets:
     - assets/ST1MSYS.jpg
+    - assets/SIMSLOGO.png
 
 flutter_icons:
   android: true
   ios: true
-  image_path: "assets/ST1MSYS.jpg"
+  image_path: "assets/SIMSLOGO.png"

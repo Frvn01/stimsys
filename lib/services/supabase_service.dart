@@ -1,12 +1,41 @@
 import 'dart:convert';
+import 'dart:io';
+import 'dart:typed_data';
 import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../core/supabase_config.dart';
 import '../models/student_model.dart';
 import '../models/subject_model.dart';
 import '../models/enrollment_model.dart';
 import '../models/attendance_model.dart';
 import '../models/instructor_model.dart';
+import '../models/grade_capture_model.dart';
+
+/// Thrown when a QR scan happens outside the subject's valid schedule window.
+class ScheduleValidationException implements Exception {
+  final String message;
+  const ScheduleValidationException(this.message);
+  @override
+  String toString() => message;
+}
+
+/// Maps a scheduleDay code to the list of Dart weekday integers (1=Mon … 7=Sun).
+List<int> _scheduleDayToWeekdays(String scheduleDay) {
+  switch (scheduleDay.toUpperCase().trim()) {
+    case 'MON':    return [DateTime.monday];
+    case 'TUE':    return [DateTime.tuesday];
+    case 'WED':    return [DateTime.wednesday];
+    case 'THU':    return [DateTime.thursday];
+    case 'FRI':    return [DateTime.friday];
+    case 'SAT':    return [DateTime.saturday];
+    case 'SUN':    return [DateTime.sunday];
+    case 'MWF':    return [DateTime.monday, DateTime.wednesday, DateTime.friday];
+    case 'TTH':    return [DateTime.tuesday, DateTime.thursday];
+    case 'MTWTHF': return [DateTime.monday, DateTime.tuesday, DateTime.wednesday, DateTime.thursday, DateTime.friday];
+    default:       return [];
+  }
+}
 
 class SupabaseService {
   static final SupabaseService _instance = SupabaseService._internal();
@@ -14,6 +43,9 @@ class SupabaseService {
   SupabaseService._internal();
 
   final _client = SupabaseConfig.client;
+
+  /// Expose client for advanced queries.
+  get client => _client;
 
   // ═══════════════════════════════════════════════════
   // PASSWORD HASHING
@@ -301,12 +333,40 @@ class SupabaseService {
     }
   }
 
+  /// Enroll a student by subject ID (used when student scans enrollment QR).
+  /// Returns existing enrollment if already enrolled (no error).
+  Future<Enrollment> enrollStudentBySubjectId(
+      String studentId, String subjectId) async {
+    try {
+      final existing = await _client
+          .from('enrollments')
+          .select('*, subjects(*, instructors(full_name))')
+          .eq('student_id', studentId)
+          .eq('subject_id', subjectId)
+          .maybeSingle();
+
+      if (existing != null) return Enrollment.fromSupabase(existing);
+
+      final response = await _client
+          .from('enrollments')
+          .insert({'student_id': studentId, 'subject_id': subjectId})
+          .select('*, subjects(*, instructors(full_name))')
+          .single();
+
+      return Enrollment.fromSupabase(response);
+    } catch (e) {
+      debugPrint('Enroll by subject QR error: $e');
+      rethrow;
+    }
+  }
+
   // ═══════════════════════════════════════════════════
   // ATTENDANCE — SMART MARKING
   // ═══════════════════════════════════════════════════
 
   /// Mark attendance for a student with smart late detection.
-  /// Compares scan time to subject's schedule_start_time.
+  /// Validates that the scan happens on the correct schedule day and within the
+  /// allowed time window (30 min before start → end time).
   Future<AttendanceRecord?> markAttendance({
     required String enrollmentId,
     required Subject subject,
@@ -315,7 +375,29 @@ class SupabaseService {
       final now = DateTime.now();
       final today = DateTime(now.year, now.month, now.day);
 
-      // Check for duplicate
+      // ── Schedule Day Validation ──────────────────────────────────
+      final validDays = _scheduleDayToWeekdays(subject.scheduleDay);
+      if (validDays.isNotEmpty && !validDays.contains(now.weekday)) {
+        throw const ScheduleValidationException(
+            'No class scheduled today for this subject.');
+      }
+
+      // ── Time Window Validation ───────────────────────────────────
+      final startTime = subject.startTimeToday;
+      final endTime = subject.endTimeToday;
+      final openTime = startTime.subtract(const Duration(minutes: 30));
+
+      if (now.isBefore(openTime)) {
+        final diff = openTime.difference(now).inMinutes;
+        throw ScheduleValidationException(
+            "Class hasn't started yet — opens in $diff min.");
+      }
+      if (now.isAfter(endTime)) {
+        throw const ScheduleValidationException(
+            'Class session has already ended.');
+      }
+
+      // ── Duplicate Check ──────────────────────────────────────────
       final existing = await _client
           .from('attendance')
           .select()
@@ -327,10 +409,9 @@ class SupabaseService {
         return AttendanceRecord.fromSupabase(existing);
       }
 
-      // Calculate late status
-      final startTime = subject.startTimeToday;
-      final lateThreshold = startTime.add(
-          Duration(minutes: subject.lateThresholdMinutes));
+      // ── Late vs Present Determination ────────────────────────────
+      final lateThreshold =
+          startTime.add(Duration(minutes: subject.lateThresholdMinutes));
 
       String status;
       int minutesLate = 0;
@@ -361,6 +442,8 @@ class SupabaseService {
           .single();
 
       return AttendanceRecord.fromSupabase(response);
+    } on ScheduleValidationException {
+      rethrow;
     } catch (e) {
       debugPrint('Mark attendance error: $e');
       rethrow;
@@ -376,7 +459,6 @@ class SupabaseService {
           .split('T')
           .first;
 
-      // Get all enrollments for this subject
       final enrollments = await _client
           .from('enrollments')
           .select('id')
@@ -387,7 +469,6 @@ class SupabaseService {
       for (final enrollment in enrollments) {
         final enrollmentId = enrollment['id'] as String;
 
-        // Check if already has attendance for today
         final existing = await _client
             .from('attendance')
             .select('id')
@@ -396,7 +477,6 @@ class SupabaseService {
             .maybeSingle();
 
         if (existing == null) {
-          // Mark as absent
           await _client.from('attendance').insert({
             'enrollment_id': enrollmentId,
             'date': dateStr,
@@ -425,7 +505,6 @@ class SupabaseService {
           .split('T')
           .first;
 
-      // Get enrollment IDs for this subject
       final enrollments = await _client
           .from('enrollments')
           .select('id')
@@ -522,4 +601,301 @@ class SupabaseService {
       return null;
     }
   }
+
+  // ═══════════════════════════════════════════════════
+  // ATTENDANCE — ADMIN EDIT
+  // ═══════════════════════════════════════════════════
+
+  /// Admin manually updates an attendance record's status.
+  Future<void> updateAttendanceStatus(
+      String attendanceId, String newStatus, {String? remarks}) async {
+    try {
+      final data = <String, dynamic>{'status': newStatus};
+      if (remarks != null) data['remarks'] = remarks;
+      await _client.from('attendance').update(data).eq('id', attendanceId);
+    } catch (e) {
+      debugPrint('Update attendance status error: $e');
+      rethrow;
+    }
+  }
+
+  /// Admin manually creates an attendance record for a student who has no entry.
+  Future<AttendanceRecord?> createManualAttendance({
+    required String enrollmentId,
+    required String status,
+    required DateTime date,
+    String? remarks,
+  }) async {
+    try {
+      final dateStr = date.toIso8601String().split('T').first;
+      final existing = await _client
+          .from('attendance')
+          .select()
+          .eq('enrollment_id', enrollmentId)
+          .eq('date', dateStr)
+          .maybeSingle();
+      if (existing != null) {
+        await updateAttendanceStatus(existing['id'], status, remarks: remarks);
+        final updated = await _client
+            .from('attendance')
+            .select('*, enrollments(*, students(*), subjects(*))')
+            .eq('id', existing['id'])
+            .single();
+        return AttendanceRecord.fromSupabase(updated);
+      }
+      final response = await _client
+          .from('attendance')
+          .insert({
+            'enrollment_id': enrollmentId,
+            'date': dateStr,
+            'status': status,
+            'minutes_late': 0,
+            'remarks': remarks ?? 'Manually recorded',
+          })
+          .select('*, enrollments(*, students(*), subjects(*))')
+          .single();
+      return AttendanceRecord.fromSupabase(response);
+    } catch (e) {
+      debugPrint('Create manual attendance error: $e');
+      rethrow;
+    }
+  }
+
+  // ═══════════════════════════════════════════════════
+  // ATTENDANCE — FULL ROSTER (for spreadsheet tracker)
+  // ═══════════════════════════════════════════════════
+
+  /// Returns ALL enrolled students for a subject with their attendance record
+  /// for [date] (or null if they haven't been marked yet).
+  Future<List<RosterEntry>> getSubjectRoster(
+      String subjectId, {DateTime? date}) async {
+    try {
+      final dateStr = (date ?? DateTime.now())
+          .toIso8601String()
+          .split('T')
+          .first;
+
+      final enrollments = await _client
+          .from('enrollments')
+          .select('*, students(*)')
+          .eq('subject_id', subjectId);
+
+      final List<RosterEntry> roster = [];
+
+      for (final e in (enrollments as List)) {
+        final enrollmentId = e['id'] as String;
+        final studentMap = e['students'] as Map<String, dynamic>?;
+
+        final attMap = await _client
+            .from('attendance')
+            .select()
+            .eq('enrollment_id', enrollmentId)
+            .eq('date', dateStr)
+            .maybeSingle();
+
+        AttendanceRecord? record;
+        if (attMap != null) {
+          final merged = {
+            ...attMap,
+            'enrollments': {
+              'id': enrollmentId,
+              'students': studentMap,
+              'subjects': null,
+            },
+          };
+          record = AttendanceRecord.fromSupabase(merged);
+        }
+
+        roster.add(RosterEntry(
+          enrollmentId: enrollmentId,
+          studentId: studentMap?['id'] ?? '',
+          lastName: studentMap?['last_name'] ?? '',
+          firstName: studentMap?['first_name'] ?? '',
+          usn: studentMap?['usn'] ?? '',
+          course: studentMap?['course'] ?? '',
+          yearLevel: studentMap?['year_level'] ?? '',
+          section: studentMap?['section'] ?? '',
+          attendanceRecord: record,
+        ));
+      }
+
+      roster.sort((a, b) {
+        final last = a.lastName.compareTo(b.lastName);
+        return last != 0 ? last : a.firstName.compareTo(b.firstName);
+      });
+
+      return roster;
+    } catch (e) {
+      debugPrint('Get subject roster error: $e');
+      return [];
+    }
+  }
+
+  // ═══════════════════════════════════════════════════
+  // GRADE CAPTURES
+  // ═══════════════════════════════════════════════════
+
+  /// Upload a file to Supabase Storage and return the public URL.
+  Future<String> uploadGradeCaptureFile(File file, String fileName) async {
+    final bucket = _client.storage.from('grade-captures');
+    await bucket.upload(fileName, file,
+        fileOptions: const FileOptions(upsert: true));
+    return bucket.getPublicUrl(fileName);
+  }
+
+  /// Insert a grade capture record into the DB.
+  Future<GradeCapture?> createGradeCapture({
+    required String fileUrl,
+    required String fileType,
+    String? studentNote,
+    String? subjectId,
+    String? studentName,
+    String? section,
+  }) async {
+    final data = GradeCapture(
+      fileUrl: fileUrl,
+      fileType: fileType,
+      studentNote: studentNote,
+      subjectId: subjectId,
+      studentName: studentName,
+      section: section,
+    ).toSupabase();
+
+    final res = await _client
+        .from('grade_captures')
+        .insert(data)
+        .select('*, subjects(subject_code)')
+        .single();
+    return GradeCapture.fromSupabase(res);
+  }
+
+  /// Fetch grade captures, optionally filtered by subject.
+  Future<List<GradeCapture>> getGradeCaptures({String? subjectId}) async {
+    var query = _client
+        .from('grade_captures')
+        .select('*, subjects(subject_code)');
+    if (subjectId != null && subjectId.isNotEmpty) {
+      query = query.eq('subject_id', subjectId);
+    }
+    final res = await query.order('captured_at', ascending: false);
+    return (res as List).map((e) => GradeCapture.fromSupabase(e)).toList();
+  }
+
+  /// Delete a grade capture — removes from DB and Storage.
+  Future<void> deleteGradeCapture(String id, String fileUrl) async {
+    try {
+      final uri = Uri.parse(fileUrl);
+      final segments = uri.pathSegments;
+      // URL format: .../storage/v1/object/public/grade-captures/<fileName>
+      final bucketIdx = segments.indexOf('grade-captures');
+      if (bucketIdx != -1 && bucketIdx + 1 < segments.length) {
+        final filePath = segments.sublist(bucketIdx + 1).join('/');
+        await _client.storage.from('grade-captures').remove([filePath]);
+      }
+    } catch (e) {
+      debugPrint('Storage delete warning: $e');
+    }
+    await _client.from('grade_captures').delete().eq('id', id);
+  }
+
+  /// Delete all expired captures (expires_at < now).
+  Future<int> cleanupExpiredCaptures() async {
+    final now = DateTime.now().toIso8601String();
+    final expired = await _client
+        .from('grade_captures')
+        .select('id, file_url')
+        .lt('expires_at', now);
+
+    if ((expired as List).isEmpty) return 0;
+
+    for (final rec in expired) {
+      try {
+        final uri = Uri.parse(rec['file_url'] ?? '');
+        final segments = uri.pathSegments;
+        final bucketIdx = segments.indexOf('grade-captures');
+        if (bucketIdx != -1 && bucketIdx + 1 < segments.length) {
+          final filePath = segments.sublist(bucketIdx + 1).join('/');
+          await _client.storage.from('grade-captures').remove([filePath]);
+        }
+      } catch (_) {}
+    }
+
+    await _client.from('grade_captures').delete().lt('expires_at', now);
+    return expired.length;
+  }
+
+  // ═══════════════════════════════════════════════════
+  // STUDENT PROFILE IMAGE
+  // ═══════════════════════════════════════════════════
+
+  /// Uploads a profile image to Supabase Storage and updates the student record.
+  /// Returns the public URL of the uploaded image.
+  Future<String> uploadStudentProfileImage(
+      String studentId, Uint8List imageBytes, String extension) async {
+    final bucket = _client.storage.from('student-profiles');
+    final fileName = '$studentId.$extension';
+    await bucket.uploadBinary(
+      fileName,
+      imageBytes,
+      fileOptions: const FileOptions(upsert: true, contentType: 'image/jpeg'),
+    );
+    final url = bucket.getPublicUrl(fileName);
+    // Update the student record
+    await _client
+        .from('students')
+        .update({'profile_image_url': url})
+        .eq('id', studentId);
+    return url;
+  }
+
+  /// Deletes a student profile image from Supabase Storage and clears the DB URL.
+  Future<void> deleteStudentProfileImage(String studentId, String fileUrl) async {
+    try {
+      final uri = Uri.parse(fileUrl);
+      final segments = uri.pathSegments;
+      final bucketIdx = segments.indexOf('student-profiles');
+      if (bucketIdx != -1 && bucketIdx + 1 < segments.length) {
+        final filePath = segments.sublist(bucketIdx + 1).join('/');
+        await _client.storage.from('student-profiles').remove([filePath]);
+      }
+      await _client
+          .from('students')
+          .update({'profile_image_url': null})
+          .eq('id', studentId);
+    } catch (e) {
+      debugPrint('Delete profile image error: $e');
+      rethrow;
+    }
+  }
+}
+
+// ═══════════════════════════════════════════════════
+// ROSTER ENTRY DATA CLASS
+// ═══════════════════════════════════════════════════
+
+class RosterEntry {
+  final String enrollmentId;
+  final String studentId;
+  final String lastName;
+  final String firstName;
+  final String usn;
+  final String course;
+  final String yearLevel;
+  final String section;
+  final AttendanceRecord? attendanceRecord;
+
+  const RosterEntry({
+    required this.enrollmentId,
+    required this.studentId,
+    required this.lastName,
+    required this.firstName,
+    required this.usn,
+    required this.course,
+    required this.yearLevel,
+    required this.section,
+    this.attendanceRecord,
+  });
+
+  String get fullName => '$firstName $lastName';
+  String get sectionLabel => '$course $yearLevel $section'.trim();
 }

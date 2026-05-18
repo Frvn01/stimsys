@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 import '../../providers/admin_provider.dart';
 import '../../models/subject_model.dart';
 import '../../models/attendance_model.dart';
+import '../../services/supabase_service.dart';
 
 class AttendanceScannerScreen extends StatefulWidget {
   const AttendanceScannerScreen({super.key});
@@ -20,6 +21,7 @@ class _AttendanceScannerScreenState extends State<AttendanceScannerScreen>
   Subject? _selectedSubject;
   bool _isScanning = false;
   bool _isProcessing = false;
+  String? _scheduleError;
   final List<AttendanceRecord> _scannedRecords = [];
   MobileScannerController? _scanCtrl;
   late AnimationController _pulseCtrl;
@@ -87,7 +89,6 @@ class _AttendanceScannerScreenState extends State<AttendanceScannerScreen>
       );
 
       if (record != null && mounted) {
-        // Look up full name from already-loaded students list
         final matchedStudent = provider.students
             .where((s) => s.usn == usn)
             .firstOrNull;
@@ -111,6 +112,14 @@ class _AttendanceScannerScreenState extends State<AttendanceScannerScreen>
         });
         HapticFeedback.lightImpact();
       }
+    } on ScheduleValidationException catch (e) {
+      // Show the schedule rejection overlay
+      HapticFeedback.heavyImpact();
+      if (mounted) setState(() => _scheduleError = e.message);
+      await Future.delayed(const Duration(seconds: 3));
+      if (mounted) setState(() { _scheduleError = null; _isProcessing = false; });
+      _scanCtrl?.start();
+      return;
     } catch (e) {
       _showFeedback(success: false, message: 'Error marking attendance');
     }
@@ -289,6 +298,8 @@ class _AttendanceScannerScreenState extends State<AttendanceScannerScreen>
               // Processing overlay
               if (_isProcessing)
                 _buildScanStatus(),
+              if (_scheduleError != null)
+                _buildScheduleRejection(_scheduleError!),
             ]),
           ),
         ),
@@ -333,6 +344,27 @@ class _AttendanceScannerScreenState extends State<AttendanceScannerScreen>
           Text(s!.studentName!, style: GoogleFonts.inter(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w700)),
         if (s?.studentUsn != null)
           Text('USN: ${s!.studentUsn}', style: GoogleFonts.inter(color: Colors.white54, fontSize: 12)),
+      ])),
+    );
+  }
+
+  Widget _buildScheduleRejection(String message) {
+    return Container(
+      color: Colors.black.withValues(alpha: 0.85),
+      child: Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(color: const Color(0xFFEF4444).withValues(alpha: 0.15),
+            shape: BoxShape.circle, border: Border.all(color: const Color(0xFFEF4444).withValues(alpha: 0.4), width: 2)),
+          child: const Icon(Icons.event_busy_rounded, color: Color(0xFFEF4444), size: 48),
+        ),
+        const SizedBox(height: 14),
+        Text('INVALID SCAN', style: GoogleFonts.inter(color: const Color(0xFFEF4444), fontSize: 18, fontWeight: FontWeight.w900, letterSpacing: 1)),
+        const SizedBox(height: 8),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 32),
+          child: Text(message, style: GoogleFonts.inter(color: Colors.white70, fontSize: 13, height: 1.4), textAlign: TextAlign.center),
+        ),
       ])),
     );
   }

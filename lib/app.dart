@@ -1,7 +1,9 @@
+import 'dart:io' show Platform;
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'theme/theme_provider.dart';
 import 'screens/splash_screen.dart';
+import 'screens/admin/desktop_admin_login_screen.dart';
 
 class MyApp extends StatefulWidget {
   const MyApp({super.key});
@@ -12,6 +14,9 @@ class MyApp extends StatefulWidget {
 
 class _MyAppState extends State<MyApp> {
   late ThemeProvider _themeProvider;
+
+  bool get _isDesktop =>
+      Platform.isWindows || Platform.isMacOS || Platform.isLinux;
 
   @override
   void initState() {
@@ -30,7 +35,9 @@ class _MyAppState extends State<MyApp> {
           theme: _buildLightTheme(),
           darkTheme: _buildDarkTheme(),
           themeMode: _themeProvider.isDarkMode ? ThemeMode.dark : ThemeMode.light,
-          home: SplashScreen(themeProvider: _themeProvider),
+          home: _isDesktop
+              ? const DesktopAdminLoginScreen()
+              : SplashScreen(themeProvider: _themeProvider),
         );
       },
     );

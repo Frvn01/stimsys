@@ -260,7 +260,7 @@ class _WelcomeScreenState extends State<WelcomeScreen>
           GestureDetector(
             onTap: _handleSecretTap,
             child: Text(
-              'Powered by Corvexis and Rensusama',
+              'Powered by krepsusenpai and Rensusama',
               style: TextStyle(
                 fontSize: 11,
                 color: isDark ? Colors.grey[600] : Colors.grey[500],

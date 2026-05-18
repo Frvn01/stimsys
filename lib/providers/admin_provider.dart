@@ -1,9 +1,12 @@
+import 'dart:io';
 import 'package:flutter/foundation.dart';
+import 'package:path/path.dart' as p;
 import '../models/student_model.dart';
 import '../models/subject_model.dart';
 import '../models/enrollment_model.dart';
 import '../models/attendance_model.dart';
 import '../models/instructor_model.dart';
+import '../models/grade_capture_model.dart';
 import '../services/supabase_service.dart';
 
 class AdminProvider extends ChangeNotifier {
@@ -12,12 +15,14 @@ class AdminProvider extends ChangeNotifier {
   List<Student> _students = [];
   List<Subject> _subjects = [];
   List<Instructor> _instructors = [];
+  List<GradeCapture> _captures = [];
   bool _isLoading = false;
   bool _isAuthenticated = false;
 
   List<Student> get students => _students;
   List<Subject> get subjects => _subjects;
   List<Instructor> get instructors => _instructors;
+  List<GradeCapture> get captures => _captures;
   bool get isLoading => _isLoading;
   bool get isAuthenticated => _isAuthenticated;
 
@@ -25,7 +30,10 @@ class AdminProvider extends ChangeNotifier {
   int get confirmedStudents => _students.where((s) => s.isConfirmed).length;
   int get totalSubjects => _subjects.length;
 
-  // Admin PIN
+  // ═══════════════════════════════════════════════════
+  // ADMIN AUTH
+  // ═══════════════════════════════════════════════════
+
   static const String _adminPin = '1337';
 
   bool authenticatePin(String pin) {
@@ -38,6 +46,7 @@ class AdminProvider extends ChangeNotifier {
     _isAuthenticated = false;
     _students = [];
     _subjects = [];
+    _captures = [];
     notifyListeners();
   }
 
@@ -251,6 +260,112 @@ class AdminProvider extends ChangeNotifier {
     } catch (e) {
       debugPrint('Find enrollment error: $e');
       return null;
+    }
+  }
+
+  // ═══════════════════════════════════════════════════
+  // ADMIN ATTENDANCE EDITING
+  // ═══════════════════════════════════════════════════
+
+  Future<void> updateAttendanceStatus(
+      String attendanceId, String newStatus, {String? remarks}) async {
+    try {
+      await _service.updateAttendanceStatus(
+          attendanceId, newStatus, remarks: remarks);
+    } catch (e) {
+      debugPrint('Update attendance status error: $e');
+      rethrow;
+    }
+  }
+
+  Future<AttendanceRecord?> createManualAttendance({
+    required String enrollmentId,
+    required String status,
+    required DateTime date,
+    String? remarks,
+  }) async {
+    try {
+      return await _service.createManualAttendance(
+        enrollmentId: enrollmentId,
+        status: status,
+        date: date,
+        remarks: remarks,
+      );
+    } catch (e) {
+      debugPrint('Create manual attendance error: $e');
+      rethrow;
+    }
+  }
+
+  Future<List<RosterEntry>> getSubjectRoster(
+      String subjectId, {DateTime? date}) async {
+    try {
+      return await _service.getSubjectRoster(subjectId, date: date);
+    } catch (e) {
+      debugPrint('Get subject roster error: $e');
+      return [];
+    }
+  }
+
+  // ═══════════════════════════════════════════════════
+  // GRADE CAPTURES
+  // ═══════════════════════════════════════════════════
+
+  Future<void> loadCaptures({String? subjectId}) async {
+    try {
+      await _service.cleanupExpiredCaptures();
+      _captures = await _service.getGradeCaptures(subjectId: subjectId);
+      notifyListeners();
+    } catch (e) {
+      debugPrint('Load captures error: $e');
+    }
+  }
+
+  Future<GradeCapture?> captureAndUpload({
+    required File file,
+    required String fileType,
+    String? studentNote,
+    String? subjectId,
+    String? studentName,
+    String? section,
+  }) async {
+    try {
+      final ext = p.extension(file.path).isNotEmpty
+          ? p.extension(file.path)
+          : '.jpg';
+      final fileName =
+          '${DateTime.now().millisecondsSinceEpoch}_${_captures.length}$ext';
+
+      final url = await _service.uploadGradeCaptureFile(file, fileName);
+
+      final capture = await _service.createGradeCapture(
+        fileUrl: url,
+        fileType: fileType,
+        studentNote: studentNote,
+        subjectId: subjectId,
+        studentName: studentName,
+        section: section,
+      );
+
+      if (capture != null) {
+        _captures.insert(0, capture);
+        notifyListeners();
+      }
+      return capture;
+    } catch (e) {
+      debugPrint('Capture upload error: $e');
+      rethrow;
+    }
+  }
+
+  Future<void> deleteCapture(String id, String fileUrl) async {
+    try {
+      await _service.deleteGradeCapture(id, fileUrl);
+      _captures.removeWhere((c) => c.id == id);
+      notifyListeners();
+    } catch (e) {
+      debugPrint('Delete capture error: $e');
+      rethrow;
     }
   }
 }

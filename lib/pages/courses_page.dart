@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:qr_flutter/qr_flutter.dart';
+import 'package:mobile_scanner/mobile_scanner.dart';
 import '../theme/theme_provider.dart';
 import '../providers/student_provider.dart';
 import '../models/enrollment_model.dart';
@@ -15,12 +16,62 @@ class CoursesPage extends StatefulWidget {
 }
 
 class _CoursesPageState extends State<CoursesPage> {
+  bool _scannerOpen = false;
+  bool _enrolling = false;
+  MobileScannerController? _scanCtrl;
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<StudentProvider>().loadEnrollments();
     });
+  }
+
+  @override
+  void dispose() {
+    _scanCtrl?.dispose();
+    super.dispose();
+  }
+
+  void _toggleScanner() {
+    setState(() {
+      _scannerOpen = !_scannerOpen;
+      if (_scannerOpen) {
+        _scanCtrl = MobileScannerController();
+      } else {
+        _scanCtrl?.dispose();
+        _scanCtrl = null;
+      }
+    });
+  }
+
+  Future<void> _handleEnrollScan(BarcodeCapture capture) async {
+    if (_enrolling) return;
+    final raw = capture.barcodes.firstOrNull?.rawValue;
+    if (raw == null || !raw.startsWith('STIMSYSENROLL|')) return;
+    final parts = raw.split('|');
+    if (parts.length < 2) return;
+    final subjectId = parts[1];
+
+    setState(() => _enrolling = true);
+    _scanCtrl?.stop();
+
+    final provider = context.read<StudentProvider>();
+    final (success, message) = await provider.enrollBySubjectQR(subjectId);
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(message, style: const TextStyle(fontWeight: FontWeight.w600)),
+        backgroundColor: success ? const Color(0xFF10B981) : const Color(0xFFF59E0B),
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        duration: const Duration(seconds: 3),
+      ));
+      setState(() { _enrolling = false; _scannerOpen = false; });
+      _scanCtrl?.dispose();
+      _scanCtrl = null;
+    }
   }
 
   final List<Color> _subjectColors = [
@@ -49,7 +100,9 @@ class _CoursesPageState extends State<CoursesPage> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 _buildHeader(isDark, enrollments.length),
-                const SizedBox(height: 24),
+                const SizedBox(height: 16),
+                _buildScanBanner(isDark),
+                const SizedBox(height: 16),
                 if (enrollments.isEmpty)
                   _buildEmptyState(isDark)
                 else
@@ -66,24 +119,90 @@ class _CoursesPageState extends State<CoursesPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
-          'Your Courses',
-          style: TextStyle(
-            fontSize: 24,
-            fontWeight: FontWeight.w700,
-            letterSpacing: -0.3,
+        Row(children: [
+          const Expanded(child: Text('Your Courses',
+            style: TextStyle(fontSize: 24, fontWeight: FontWeight.w700, letterSpacing: -0.3))),
+          GestureDetector(
+            onTap: _toggleScanner,
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              decoration: BoxDecoration(
+                color: _scannerOpen
+                    ? const Color(0xFFEF4444).withValues(alpha: 0.15)
+                    : const Color(0xFF10B981).withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: _scannerOpen
+                      ? const Color(0xFFEF4444).withValues(alpha: 0.35)
+                      : const Color(0xFF10B981).withValues(alpha: 0.3)),
+              ),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                Icon(_scannerOpen ? Icons.close_rounded : Icons.qr_code_scanner_rounded,
+                  color: _scannerOpen ? const Color(0xFFEF4444) : const Color(0xFF10B981), size: 18),
+                const SizedBox(width: 6),
+                Text(_scannerOpen ? 'Cancel' : 'Scan to Enroll',
+                  style: TextStyle(
+                    color: _scannerOpen ? const Color(0xFFEF4444) : const Color(0xFF10B981),
+                    fontSize: 12, fontWeight: FontWeight.w700)),
+              ]),
+            ),
           ),
-        ),
-        const SizedBox(height: 8),
-        Text(
-          '$count enrolled course${count == 1 ? '' : 's'} this semester',
-          style: TextStyle(
-            fontSize: 13,
-            color: isDark ? Colors.grey[500] : Colors.grey[600],
-          ),
-        ),
+        ]),
+        const SizedBox(height: 6),
+        Text('$count enrolled course${count == 1 ? '' : 's'} this semester',
+          style: TextStyle(fontSize: 13, color: isDark ? Colors.grey[500] : Colors.grey[600])),
       ],
     );
+  }
+
+  Widget _buildScanBanner(bool isDark) {
+    if (!_scannerOpen) return const SizedBox.shrink();
+    return Column(children: [
+      ClipRRect(
+        borderRadius: BorderRadius.circular(16),
+        child: SizedBox(
+          height: 240,
+          child: Stack(children: [
+            MobileScanner(
+              controller: _scanCtrl!,
+              onDetect: _handleEnrollScan,
+            ),
+            // Overlay frame
+            Container(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: const Color(0xFF10B981).withValues(alpha: 0.6), width: 2),
+              ),
+            ),
+            if (_enrolling)
+              Container(
+                color: Colors.black.withValues(alpha: 0.75),
+                child: const Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
+                  CircularProgressIndicator(color: Color(0xFF10B981)),
+                  SizedBox(height: 12),
+                  Text('Enrolling...', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+                ])),
+              ),
+          ]),
+        ),
+      ),
+      const SizedBox(height: 10),
+      Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        decoration: BoxDecoration(
+          color: const Color(0xFF10B981).withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: const Color(0xFF10B981).withValues(alpha: 0.2)),
+        ),
+        child: Row(children: [
+          const Icon(Icons.info_outline_rounded, color: Color(0xFF10B981), size: 16),
+          const SizedBox(width: 8),
+          const Expanded(child: Text('Point camera at the subject enrollment QR shown by your instructor',
+            style: TextStyle(color: Color(0xFF10B981), fontSize: 11, fontWeight: FontWeight.w600))),
+        ]),
+      ),
+    ]);
   }
 
   Widget _buildEmptyState(bool isDark) {

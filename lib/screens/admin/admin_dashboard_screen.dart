@@ -6,7 +6,7 @@ import '../../providers/admin_provider.dart';
 import 'student_registry_screen.dart';
 import 'subject_management_screen.dart';
 import 'attendance_scanner_screen.dart';
-import 'attendance_tracker_screen.dart';
+import 'grade_capture_screen.dart';
 
 class AdminDashboardScreen extends StatefulWidget {
   const AdminDashboardScreen({super.key});
@@ -23,7 +23,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     StudentRegistryScreen(),
     SubjectManagementScreen(),
     AttendanceScannerScreen(),
-    AttendanceTrackerScreen(),
+    GradeCaptureScreen(),
   ];
 
   @override
@@ -41,7 +41,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       (icon: Icons.people_rounded, label: 'Students'),
       (icon: Icons.book_rounded, label: 'Subjects'),
       (icon: Icons.qr_code_scanner_rounded, label: 'Scan'),
-      (icon: Icons.bar_chart_rounded, label: 'Tracker'),
+      (icon: Icons.photo_camera_rounded, label: 'Captures'),
     ];
 
     return Container(
@@ -250,16 +250,6 @@ class _AdminHomeTabState extends State<_AdminHomeTab> {
                 onTap: () {
                   context.findAncestorStateOfType<_AdminDashboardScreenState>()
                     ?.setState(() => context.findAncestorStateOfType<_AdminDashboardScreenState>()?._currentIndex = 2);
-                },
-              ),
-              const SizedBox(height: 10),
-              _QuickAction(
-                icon: Icons.bar_chart_rounded, label: 'View Attendance Log',
-                subtitle: 'Track present, late and absent per subject',
-                color: const Color(0xFF8B5CF6),
-                onTap: () {
-                  context.findAncestorStateOfType<_AdminDashboardScreenState>()
-                    ?.setState(() => context.findAncestorStateOfType<_AdminDashboardScreenState>()?._currentIndex = 4);
                 },
               ),
               const SizedBox(height: 8),

@@ -1,6 +1,11 @@
+import 'dart:io';
+import 'dart:typed_data';
+import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
+import 'package:qr_flutter/qr_flutter.dart';
+import 'package:path_provider/path_provider.dart';
 import '../../providers/admin_provider.dart';
 import '../../models/subject_model.dart';
 import '../../models/student_model.dart';
@@ -192,9 +197,12 @@ class _SubjectCardState extends State<_SubjectCard> {
                 child: Text('${s.units} units', style: GoogleFonts.inter(color: Colors.grey[500], fontSize: 11)),
               ),
               const Spacer(),
+              _iconBtn(Icons.qr_code_rounded, const Color(0xFF6366F1), () => _showSubjectQR(context, s)),
+              const SizedBox(width: 8),
               _iconBtn(Icons.person_add_rounded, const Color(0xFF10B981), widget.onEnroll),
               const SizedBox(width: 8),
               _iconBtn(Icons.delete_outline_rounded, const Color(0xFFEF4444), widget.onDelete),
+
             ]),
 
             const SizedBox(height: 12),
@@ -220,7 +228,133 @@ class _SubjectCardState extends State<_SubjectCard> {
     );
   }
 
+  void _showSubjectQR(BuildContext context, Subject s) {
+    final qrData = 'STIMSYSENROLL|${s.id}';
+    showDialog(
+      context: context,
+      builder: (_) => Dialog(
+        backgroundColor: Colors.transparent,
+        child: Container(
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            color: const Color(0xFF111633),
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(color: const Color(0xFF6366F1).withValues(alpha: 0.3)),
+          ),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+              decoration: BoxDecoration(
+                color: const Color(0xFF6366F1).withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(s.subjectCode, style: GoogleFonts.inter(color: const Color(0xFF818CF8), fontSize: 13, fontWeight: FontWeight.w800)),
+            ),
+            const SizedBox(height: 10),
+            Text(s.subjectTitle, style: GoogleFonts.inter(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w800), textAlign: TextAlign.center),
+            Text('${s.scheduleDay} ${s.scheduleStartTime}–${s.scheduleEndTime} • ${s.room}',
+              style: GoogleFonts.inter(color: Colors.grey[500], fontSize: 11)),
+            const SizedBox(height: 20),
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12)),
+              child: QrImageView(data: qrData, version: QrVersions.auto, size: 200, backgroundColor: Colors.white, errorCorrectionLevel: QrErrorCorrectLevel.H),
+            ),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(color: const Color(0xFF10B981).withValues(alpha: 0.1), borderRadius: BorderRadius.circular(10)),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                const Icon(Icons.info_outline_rounded, color: Color(0xFF10B981), size: 14),
+                const SizedBox(width: 8),
+                Text('Students scan this to self-enroll', style: GoogleFonts.inter(color: const Color(0xFF10B981), fontSize: 11, fontWeight: FontWeight.w600)),
+              ]),
+            ),
+            const SizedBox(height: 16),
+            Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+              _qrDialogBtn(Icons.download_rounded, 'Save Image', const Color(0xFF6366F1), () => _downloadQR(context, qrData, s.subjectCode)),
+              const SizedBox(width: 12),
+              _qrDialogBtn(Icons.close_rounded, 'Close', Colors.grey, () => Navigator.pop(context)),
+            ]),
+          ]),
+        ),
+      ),
+    );
+  }
+
+  Widget _qrDialogBtn(IconData icon, String label, Color color, VoidCallback onTap) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: color.withValues(alpha: 0.25)),
+        ),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Icon(icon, color: color, size: 16),
+          const SizedBox(width: 6),
+          Text(label, style: GoogleFonts.inter(color: color, fontSize: 12, fontWeight: FontWeight.w600)),
+        ]),
+      ),
+    );
+  }
+
+  Future<void> _downloadQR(BuildContext ctx, String qrData, String subjectCode) async {
+    try {
+      final qrPainter = QrPainter(
+        data: qrData,
+        version: QrVersions.auto,
+        errorCorrectionLevel: QrErrorCorrectLevel.H,
+        color: const Color(0xFF000000),
+        emptyColor: const Color(0xFFFFFFFF),
+      );
+
+      final imageData = await qrPainter.toImageData(600, format: ui.ImageByteFormat.png);
+      if (imageData == null) throw Exception('Failed to generate QR image');
+
+      // Determine save path
+      String savePath;
+      if (Platform.isWindows || Platform.isMacOS || Platform.isLinux) {
+        // Desktop: save to Downloads folder
+        final home = Platform.environment['USERPROFILE'] ?? Platform.environment['HOME'] ?? '.';
+        final downloadsDir = Directory('$home/Downloads');
+        if (!downloadsDir.existsSync()) downloadsDir.createSync(recursive: true);
+        savePath = '${downloadsDir.path}/STIMSYS_QR_$subjectCode.png';
+      } else {
+        // Mobile: save to app documents directory
+        final dir = await getApplicationDocumentsDirectory();
+        savePath = '${dir.path}/STIMSYS_QR_$subjectCode.png';
+      }
+
+      final file = File(savePath);
+      await file.writeAsBytes(imageData.buffer.asUint8List());
+
+      if (ctx.mounted) {
+        Navigator.pop(ctx);
+        ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(
+          content: Text('QR saved to: $savePath', style: const TextStyle(fontWeight: FontWeight.w600)),
+          backgroundColor: const Color(0xFF10B981),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          duration: const Duration(seconds: 4),
+        ));
+      }
+    } catch (e) {
+      if (ctx.mounted) {
+        ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(
+          content: Text('Failed to save QR: $e', style: const TextStyle(fontWeight: FontWeight.w600)),
+          backgroundColor: const Color(0xFFEF4444),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ));
+      }
+    }
+  }
+
   Widget _iconBtn(IconData icon, Color color, VoidCallback onTap) => GestureDetector(
+
     onTap: onTap,
     child: Container(
       padding: const EdgeInsets.all(7),

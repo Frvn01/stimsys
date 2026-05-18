@@ -1,5 +1,8 @@
+import 'dart:io';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import '../theme/theme_provider.dart';
@@ -10,7 +13,6 @@ import '../widgets/common/custom_dropdown.dart';
 import 'login_screen.dart';
 import 'welcome_screen.dart';
 import 'package:intl/intl.dart';
-
 import 'package:shared_preferences/shared_preferences.dart';
 
 class SignUpScreen extends StatefulWidget {
@@ -38,6 +40,10 @@ class _SignUpScreenState extends State<SignUpScreen> {
   bool _passwordVisible = false;
   bool _isLoading = false;
 
+  // Profile image
+  File? _profileImageFile;
+  final ImagePicker _picker = ImagePicker();
+
   @override
   void dispose() {
     _lastNameController.dispose();
@@ -48,6 +54,18 @@ class _SignUpScreenState extends State<SignUpScreen> {
     _phoneController.dispose();
     super.dispose();
   }
+
+  Future<void> _pickProfileImage() async {
+    final xFile = await _picker.pickImage(
+      source: ImageSource.gallery,
+      maxWidth: 600, maxHeight: 600, imageQuality: 70,
+    );
+    if (xFile != null && mounted) {
+      setState(() => _profileImageFile = File(xFile.path));
+    }
+  }
+
+  void _removeProfileImage() => setState(() => _profileImageFile = null);
 
   void _handleSignUp() async {
     if (!_formKey.currentState!.validate()) return;
@@ -79,6 +97,14 @@ class _SignUpScreenState extends State<SignUpScreen> {
           );
 
       if (student != null && mounted) {
+        // Upload profile image if one was picked
+        if (_profileImageFile != null) {
+          try {
+            final bytes = await _profileImageFile!.readAsBytes();
+            final ext = _profileImageFile!.path.split('.').last.toLowerCase();
+            await context.read<StudentProvider>().uploadProfileImage(bytes, ext);
+          } catch (_) {} // non-fatal
+        }
         final prefs = await SharedPreferences.getInstance();
         await prefs.setBool('hasRegistered', true);
         _showSignUpQRCode(student);
@@ -361,6 +387,60 @@ class _SignUpScreenState extends State<SignUpScreen> {
   Widget _buildFormFields(bool isDark) {
     return Column(
       children: [
+        // ── Profile Photo Picker ──
+        Center(
+          child: Stack(
+            children: [
+              GestureDetector(
+                onTap: _pickProfileImage,
+                child: Container(
+                  width: 100, height: 100,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF6366F1).withValues(alpha: 0.1),
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: const Color(0xFF6366F1).withValues(alpha: 0.3),
+                      width: 2,
+                    ),
+                  ),
+                  child: ClipOval(
+                    child: _profileImageFile != null
+                        ? Image.file(_profileImageFile!, fit: BoxFit.cover)
+                        : Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                            Icon(Icons.add_a_photo_rounded,
+                              color: const Color(0xFF6366F1), size: 28),
+                            const SizedBox(height: 4),
+                            Text('Photo', style: TextStyle(
+                              color: isDark ? Colors.grey[400] : Colors.grey[600],
+                              fontSize: 10)),
+                          ]),
+                  ),
+                ),
+              ),
+              if (_profileImageFile != null)
+                Positioned(
+                  top: 0, right: 0,
+                  child: GestureDetector(
+                    onTap: _removeProfileImage,
+                    child: Container(
+                      padding: const EdgeInsets.all(4),
+                      decoration: const BoxDecoration(
+                        color: Color(0xFFEF4444),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(Icons.close_rounded,
+                          color: Colors.white, size: 14),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+        Text('Profile photo (optional)',
+          style: TextStyle(
+            color: isDark ? Colors.grey[500] : Colors.grey[600],
+            fontSize: 11)),
+        const SizedBox(height: 24),
         CustomTextField(
           label: 'Last Name *',
           hint: 'Enter your last name',

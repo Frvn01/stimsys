@@ -182,9 +182,9 @@ class _ProfilePageState extends State<ProfilePage> {
     try {
       final XFile? pickedFile = await _picker.pickImage(
         source: source,
-        maxWidth: 512,
-        maxHeight: 512,
-        imageQuality: 80,
+        maxWidth: 600,
+        maxHeight: 600,
+        imageQuality: 70, // compress aggressively — keeps file ~50-150KB
       );
 
       if (pickedFile != null) {
@@ -194,6 +194,52 @@ class _ProfilePageState extends State<ProfilePage> {
       }
     } catch (e) {
       _showSnackBar('Failed to pick image', isError: true);
+    }
+  }
+
+  Future<void> _deleteProfileImage(Student student) async {
+    // If they picked a new local image but haven't saved, just clear it.
+    if (_imageFile != null) {
+      setState(() => _imageFile = null);
+      return;
+    }
+
+    // Otherwise, if they have a saved remote image, ask for confirmation then delete from DB.
+    if (student.profileImageUrl != null && student.profileImageUrl!.isNotEmpty) {
+      final confirm = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          backgroundColor: Theme.of(context).brightness == Brightness.dark
+              ? const Color(0xFF1E293B)
+              : Colors.white,
+          title: const Text('Remove Photo', style: TextStyle(fontWeight: FontWeight.bold)),
+          content: const Text('Are you sure you want to remove your profile photo?'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Remove', style: TextStyle(color: Colors.red)),
+            ),
+          ],
+        ),
+      );
+
+      if (confirm != true || !mounted) return;
+
+      setState(() => _isSaving = true);
+      try {
+        final (success, msg) = await context.read<StudentProvider>().deleteProfileImage();
+        if (mounted) {
+          _showSnackBar(msg, isError: !success);
+        }
+      } finally {
+        if (mounted) {
+          setState(() => _isSaving = false);
+        }
+      }
     }
   }
 
@@ -207,12 +253,36 @@ class _ProfilePageState extends State<ProfilePage> {
 
   Future<void> _saveProfile() async {
     setState(() => _isSaving = true);
-    await Future.delayed(const Duration(seconds: 1));
-    setState(() {
-      _isEditing = false;
-      _isSaving = false;
-    });
-    _showSnackBar('Profile updated successfully!');
+    try {
+      // Upload profile image if a new one was picked
+      if (_imageFile != null) {
+        final bytes = await _imageFile!.readAsBytes();
+        final ext = _imageFile!.path.split('.').last.toLowerCase();
+        final (success, msg) = await context
+            .read<StudentProvider>()
+            .uploadProfileImage(bytes, ext);
+        if (!success && mounted) {
+          _showSnackBar('Image upload failed: $msg', isError: true);
+        }
+      }
+
+      // TODO: persist name/course edits to Supabase when that endpoint is added
+      await Future.delayed(const Duration(milliseconds: 400));
+
+      if (mounted) {
+        setState(() {
+          _isEditing = false;
+          _imageFile = null;
+          _isSaving = false;
+        });
+        _showSnackBar('Profile updated successfully!');
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isSaving = false);
+        _showSnackBar('Save failed: $e', isError: true);
+      }
+    }
   }
 
   void _cancelEdit() {
@@ -376,6 +446,9 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 
   Widget _buildProfileImage(bool isDark, Student student) {
+    final hasRemoteImage = student.profileImageUrl != null &&
+        student.profileImageUrl!.isNotEmpty;
+
     return Center(
       child: Column(
         children: [
@@ -399,23 +472,37 @@ class _ProfilePageState extends State<ProfilePage> {
                       child: ClipRRect(
                         borderRadius: BorderRadius.circular(16),
                         child: _imageFile != null
+                            // Newly picked (not yet saved)
                             ? Image.file(
                                 _imageFile!,
                                 width: 100,
                                 height: 100,
                                 fit: BoxFit.cover,
                               )
-                            : Container(
-                                width: 100,
-                                height: 100,
-                                color:
-                                    const Color(0xFF6366F1).withValues(alpha: 0.1),
-                                child: const Icon(
-                                  Icons.person_rounded,
-                                  size: 60,
-                                  color: Color(0xFF6366F1),
-                                ),
-                              ),
+                            : hasRemoteImage
+                                // Saved remote image from Supabase
+                                ? Image.network(
+                                    student.profileImageUrl!,
+                                    width: 100,
+                                    height: 100,
+                                    fit: BoxFit.cover,
+                                    loadingBuilder: (_, child, progress) =>
+                                        progress == null
+                                            ? child
+                                            : const SizedBox(
+                                                width: 100,
+                                                height: 100,
+                                                child: Center(
+                                                  child: CircularProgressIndicator(
+                                                    strokeWidth: 2,
+                                                    color: Color(0xFF6366F1),
+                                                  ),
+                                                ),
+                                              ),
+                                    errorBuilder: (_, __, ___) => _avatarFallback(),
+                                  )
+                                // No image at all
+                                : _avatarFallback(),
                       ),
                     ),
                   ),
@@ -440,6 +527,32 @@ class _ProfilePageState extends State<ProfilePage> {
                         Icons.camera_alt_rounded,
                         size: 16,
                         color: Colors.white,
+                      ),
+                    ),
+                  ),
+                if (_isEditing && (hasRemoteImage || _imageFile != null))
+                  Positioned(
+                    top: 0,
+                    right: 0,
+                    child: GestureDetector(
+                      onTap: () => _deleteProfileImage(student),
+                      child: Container(
+                        padding: const EdgeInsets.all(6),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFEF4444),
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: isDark
+                                ? const Color(0xFF0F172A)
+                                : Colors.white,
+                            width: 3,
+                          ),
+                        ),
+                        child: const Icon(
+                          Icons.delete_outline_rounded,
+                          size: 14,
+                          color: Colors.white,
+                        ),
                       ),
                     ),
                   ),
@@ -480,12 +593,25 @@ class _ProfilePageState extends State<ProfilePage> {
               alignment: WrapAlignment.center,
               children: [
                 _buildCustomBadge(isDark, 'Core Developer', const Color(0xFFEF4444)),
-                _buildCustomBadge(isDark, 'The Corvexis', const Color(0xFFA855F7)),
+                _buildCustomBadge(isDark, 'krepsusenpai', const Color(0xFFA855F7)),
                 _buildCustomBadge(isDark, 'Full-Stack Developer', const Color(0xFF10B981)),
               ],
             ),
           ],
         ],
+      ),
+    );
+  }
+
+  Widget _avatarFallback() {
+    return Container(
+      width: 100,
+      height: 100,
+      color: const Color(0xFF6366F1).withValues(alpha: 0.1),
+      child: const Icon(
+        Icons.person_rounded,
+        size: 60,
+        color: Color(0xFF6366F1),
       ),
     );
   }
@@ -705,7 +831,7 @@ class _ProfilePageState extends State<ProfilePage> {
   Widget _buildFooter(bool isDark) {
     return Center(
       child: Text(
-        'Powered by Corvexis and Rensusama',
+        'Powered by krepsusenpai and Rensusama',
         style: TextStyle(
           fontSize: 11,
           color: isDark ? Colors.grey[600] : Colors.grey[500],

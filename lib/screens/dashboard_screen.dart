@@ -139,12 +139,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 children: List.generate(
                   items.length,
-                  (index) => _buildNavItem(
-                    icon: items[index]['icon'] as IconData,
-                    label: items[index]['label'] as String,
-                    isActive: _currentIndex == index,
-                    isDark: isDark,
-                    onTap: () => _updateIndex(index),
+                  (index) => Expanded(
+                    child: _buildNavItem(
+                      icon: items[index]['icon'] as IconData,
+                      label: items[index]['label'] as String,
+                      isActive: _currentIndex == index,
+                      isDark: isDark,
+                      onTap: () => _updateIndex(index),
+                    ),
                   ),
                 ),
               ),
@@ -167,7 +169,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 300),
         padding: EdgeInsets.symmetric(
-          horizontal: isActive ? 12 : 8,
+          horizontal: isActive ? 6 : 4,
           vertical: 8,
         ),
         decoration: BoxDecoration(
@@ -184,6 +186,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(
               icon,
@@ -193,15 +196,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   : (isDark ? Colors.grey[500] : Colors.grey[600]),
             ),
             if (isActive)
-              Padding(
-                padding: const EdgeInsets.only(left: 6),
-                child: Text(
-                  label,
-                  style: const TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: Color(0xFF6366F1),
-                    letterSpacing: 0.2,
+              Flexible(
+                child: Padding(
+                  padding: const EdgeInsets.only(left: 4),
+                  child: Text(
+                    label,
+                    style: const TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFF6366F1),
+                      letterSpacing: 0.1,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                    maxLines: 1,
                   ),
                 ),
               ),
@@ -210,4 +217,4 @@ class _DashboardScreenState extends State<DashboardScreen> {
       ),
     );
   }
-}
+}
