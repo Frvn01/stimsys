@@ -7,6 +7,7 @@ import '../models/enrollment_model.dart';
 import '../models/attendance_model.dart';
 import '../models/instructor_model.dart';
 import '../models/grade_capture_model.dart';
+import '../models/module_model.dart';
 import '../services/supabase_service.dart';
 
 class AdminProvider extends ChangeNotifier {
@@ -16,6 +17,7 @@ class AdminProvider extends ChangeNotifier {
   List<Subject> _subjects = [];
   List<Instructor> _instructors = [];
   List<GradeCapture> _captures = [];
+  List<LearningModule> _modules = [];
   bool _isLoading = false;
   bool _isAuthenticated = false;
 
@@ -23,6 +25,7 @@ class AdminProvider extends ChangeNotifier {
   List<Subject> get subjects => _subjects;
   List<Instructor> get instructors => _instructors;
   List<GradeCapture> get captures => _captures;
+  List<LearningModule> get modules => _modules;
   bool get isLoading => _isLoading;
   bool get isAuthenticated => _isAuthenticated;
 
@@ -66,6 +69,7 @@ class AdminProvider extends ChangeNotifier {
         loadStudents(),
         loadSubjects(),
         loadInstructors(),
+        loadModules(),
       ]);
     } finally {
       _setLoading(false);
@@ -304,6 +308,114 @@ class AdminProvider extends ChangeNotifier {
     } catch (e) {
       debugPrint('Get subject roster error: $e');
       return [];
+    }
+  }
+
+  // ═══════════════════════════════════════════════════
+  // CLASS CANCELLATIONS
+  // ═══════════════════════════════════════════════════
+
+  Future<ClassCancellation?> markClassCancelled({
+    required String subjectId,
+    required DateTime date,
+    required String reason,
+    String? remarks,
+  }) async {
+    try {
+      return await _service.markClassCancelled(
+        subjectId: subjectId,
+        date: date,
+        reason: reason,
+        remarks: remarks,
+      );
+    } catch (e) {
+      debugPrint('Mark class cancelled error: $e');
+      rethrow;
+    }
+  }
+
+  Future<void> restoreClassDay({
+    required String subjectId,
+    required DateTime date,
+  }) async {
+    try {
+      await _service.restoreClassDay(subjectId: subjectId, date: date);
+    } catch (e) {
+      debugPrint('Restore class day error: $e');
+      rethrow;
+    }
+  }
+
+  Future<List<ClassCancellation>> getCancellationsForSubject(
+      String subjectId) async {
+    try {
+      return await _service.getCancellationsForSubject(subjectId);
+    } catch (e) {
+      debugPrint('Get cancellations error: $e');
+      return [];
+    }
+  }
+
+  Future<ClassCancellation?> getCancellationForDate(
+      String subjectId, DateTime date) async {
+    try {
+      return await _service.getCancellationForDate(subjectId, date);
+    } catch (e) {
+      debugPrint('Get cancellation for date error: $e');
+      return null;
+    }
+  }
+
+  // ═══════════════════════════════════════════════════
+  // LEARNING MODULES
+  // ═══════════════════════════════════════════════════
+
+  Future<void> loadModules() async {
+    try {
+      _modules = await _service.getModules();
+      notifyListeners();
+    } catch (e) {
+      debugPrint('Load modules error: $e');
+    }
+  }
+
+  Future<LearningModule?> addModule(LearningModule module) async {
+    try {
+      final created = await _service.createModule(module);
+      if (created != null) {
+        _modules.insert(0, created);
+        notifyListeners();
+      }
+      return created;
+    } catch (e) {
+      debugPrint('Add module error: $e');
+      rethrow;
+    }
+  }
+
+  Future<LearningModule?> editModule(LearningModule module) async {
+    try {
+      final updated = await _service.updateModule(module);
+      if (updated != null) {
+        final idx = _modules.indexWhere((m) => m.id == module.id);
+        if (idx != -1) _modules[idx] = updated;
+        notifyListeners();
+      }
+      return updated;
+    } catch (e) {
+      debugPrint('Edit module error: $e');
+      rethrow;
+    }
+  }
+
+  Future<void> deleteModule(String id) async {
+    try {
+      await _service.deleteModule(id);
+      _modules.removeWhere((m) => m.id == id);
+      notifyListeners();
+    } catch (e) {
+      debugPrint('Delete module error: $e');
+      rethrow;
     }
   }
 

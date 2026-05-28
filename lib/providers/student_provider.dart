@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import '../models/student_model.dart';
 import '../models/enrollment_model.dart';
 import '../models/attendance_model.dart';
+import '../models/module_model.dart';
 import '../services/supabase_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -12,11 +13,13 @@ class StudentProvider extends ChangeNotifier {
   Student? _currentStudent;
   List<Enrollment> _enrollments = [];
   List<AttendanceRecord> _attendanceRecords = [];
+  List<LearningModule> _modules = [];
   bool _isLoading = false;
 
   Student? get currentStudent => _currentStudent;
   List<Enrollment> get enrollments => _enrollments;
   List<AttendanceRecord> get attendanceRecords => _attendanceRecords;
+  List<LearningModule> get modules => _modules;
   bool get isLoading => _isLoading;
   bool get isLoggedIn => _currentStudent != null;
 
@@ -110,6 +113,21 @@ class StudentProvider extends ChangeNotifier {
     return _attendanceRecords
         .where((a) => a.subjectCode == subjectCode)
         .toList();
+  }
+
+  /// Get learning modules for a specific subject.
+  List<LearningModule> getModulesForSubject(String subject) {
+    return _modules.where((m) => m.subject == subject).toList();
+  }
+
+  /// Load all available learning modules.
+  Future<void> loadModules() async {
+    try {
+      _modules = await _service.getModules();
+      notifyListeners();
+    } catch (e) {
+      debugPrint('Load modules error: $e');
+    }
   }
 
   Future<bool> restoreSession() async {

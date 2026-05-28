@@ -33,6 +33,9 @@ dependencies:
   table_calendar: ^3.0.9
   path_provider: ^2.1.0
   shared_preferences: ^2.5.5
+  url_launcher: ^6.2.5
+  webview_flutter: ^4.13.1
+  syncfusion_flutter_pdfviewer: ^33.2.7
 
 dev_dependencies:
   flutter_test:

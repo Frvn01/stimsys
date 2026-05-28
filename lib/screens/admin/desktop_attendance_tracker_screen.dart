@@ -9,7 +9,6 @@ import '../../services/supabase_service.dart';
 import '../../utils/schedule_utils.dart';
 import '../../core/supabase_config.dart';
 import 'desktop_attendance_widgets.dart';
-import 'student_attendance_detail_screen.dart';
 
 class DesktopAttendanceTrackerScreen extends StatefulWidget {
   const DesktopAttendanceTrackerScreen({super.key});
@@ -27,6 +26,10 @@ class _State extends State<DesktopAttendanceTrackerScreen> {
   bool _loading = false;
   StreamSubscription? _rtSub;
 
+  // Class cancellation tracking
+  Map<String, ClassCancellation> _cancellations = {}; // dateStr → cancellation
+  bool _cancelLoading = false;
+
   // Phase 1.2 — section filter
   String? _selectedSection; // null = All sections
 
@@ -37,15 +40,18 @@ class _State extends State<DesktopAttendanceTrackerScreen> {
   static const _sc = {
     'present': Color(0xFF10B981), 'late': Color(0xFFF59E0B),
     'absent':  Color(0xFFEF4444), 'excused': Color(0xFF818CF8),
+    'no_class': Color(0xFF64748B), 'holiday': Color(0xFF0EA5E9),
+    'suspended': Color(0xFFF97316),
   };
 
   @override
   void dispose() { _rtSub?.cancel(); super.dispose(); }
 
   void _onSubj(Subject? s, AdminProvider p) {
-    setState(() { _subj = s; _selDate = null; _roster = []; _selectedSection = null; });
+    setState(() { _subj = s; _selDate = null; _roster = []; _selectedSection = null; _cancellations = {}; });
     _calcDates();
     _initRT();
+    _loadCancellations();
   }
 
   void _calcDates() {
@@ -55,6 +61,27 @@ class _State extends State<DesktopAttendanceTrackerScreen> {
     final today = DateTime(now.year, now.month, now.day);
     setState(() { _dates = d; if (d.isNotEmpty) _selDate = d.contains(today) ? today : d.last; });
     if (_selDate != null) _load(context.read<AdminProvider>());
+  }
+
+  Future<void> _loadCancellations() async {
+    if (_subj == null || _subj!.id == null) return;
+    final p = context.read<AdminProvider>();
+    final list = await p.getCancellationsForSubject(_subj!.id!);
+    final map = <String, ClassCancellation>{};
+    for (final c in list) {
+      map[c.date.toIso8601String().split('T').first] = c;
+    }
+    if (mounted) setState(() => _cancellations = map);
+  }
+
+  bool _isDateCancelled(DateTime date) {
+    final dateStr = date.toIso8601String().split('T').first;
+    return _cancellations.containsKey(dateStr);
+  }
+
+  ClassCancellation? _getCancellation(DateTime date) {
+    final dateStr = date.toIso8601String().split('T').first;
+    return _cancellations[dateStr];
   }
 
   DateTime? _lastRTRefresh;
@@ -100,6 +127,10 @@ class _State extends State<DesktopAttendanceTrackerScreen> {
   }
 
   int _cnt(String s) => _filteredRoster.where((e) => e.attendanceRecord?.status == s).length;
+
+  /// Whether the currently selected date is cancelled
+  bool get _selDateCancelled => _selDate != null && _isDateCancelled(_selDate!);
+  ClassCancellation? get _selDateCancellation => _selDate != null ? _getCancellation(_selDate!) : null;
 
   @override
   Widget build(BuildContext context) {
@@ -231,6 +262,8 @@ class _State extends State<DesktopAttendanceTrackerScreen> {
     final sel = _selDate != null && d.year == _selDate!.year && d.month == _selDate!.month && d.day == _selDate!.day;
     final now = DateTime.now();
     final today = d.year == now.year && d.month == now.month && d.day == now.day;
+    final cancelled = _isDateCancelled(d);
+    final cancellation = _getCancellation(d);
     return Padding(padding: const EdgeInsets.only(bottom: 2),
       child: Material(color: Colors.transparent, borderRadius: BorderRadius.circular(7),
         child: InkWell(borderRadius: BorderRadius.circular(7),
@@ -239,19 +272,38 @@ class _State extends State<DesktopAttendanceTrackerScreen> {
             duration: const Duration(milliseconds: 120),
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
             decoration: BoxDecoration(
-              color: sel ? _ac.withValues(alpha: 0.12) : Colors.transparent,
+              color: sel
+                  ? (cancelled ? const Color(0xFF64748B).withValues(alpha: 0.15) : _ac.withValues(alpha: 0.12))
+                  : Colors.transparent,
               borderRadius: BorderRadius.circular(7),
-              border: Border.all(color: sel ? _ac.withValues(alpha: 0.3) : Colors.transparent)),
+              border: Border.all(color: sel
+                  ? (cancelled ? const Color(0xFF64748B).withValues(alpha: 0.35) : _ac.withValues(alpha: 0.3))
+                  : Colors.transparent)),
             child: Row(children: [
               Text(DateFormat('MMM dd').format(d),
                   style: GoogleFonts.inter(
-                      color: sel ? Colors.white : const Color(0xFF8B9AB2),
-                      fontSize: 12, fontWeight: sel ? FontWeight.w600 : FontWeight.w500)),
+                      color: cancelled
+                          ? const Color(0xFF64748B)
+                          : (sel ? Colors.white : const Color(0xFF8B9AB2)),
+                      fontSize: 12,
+                      fontWeight: sel ? FontWeight.w600 : FontWeight.w500,
+                      decoration: cancelled ? TextDecoration.lineThrough : null)),
               const SizedBox(width: 6),
               Text(DateFormat('EEE').format(d),
                   style: GoogleFonts.inter(color: const Color(0xFF4B5E78), fontSize: 10)),
-              if (today) ...[
-                const Spacer(),
+              const Spacer(),
+              if (cancelled) ...[
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                  decoration: BoxDecoration(
+                    color: _cancelledReasonColor(cancellation!.reason).withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(4)),
+                  child: Text(
+                    _cancelledReasonShort(cancellation.reason),
+                    style: GoogleFonts.inter(
+                        color: _cancelledReasonColor(cancellation.reason),
+                        fontSize: 8, fontWeight: FontWeight.w700))),
+              ] else if (today) ...[
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                   decoration: BoxDecoration(
@@ -283,6 +335,72 @@ class _State extends State<DesktopAttendanceTrackerScreen> {
     );
   }
 
+  Color _cancelledReasonColor(String reason) {
+    switch (reason) {
+      case 'no_class': return const Color(0xFF64748B);
+      case 'holiday': return const Color(0xFF0EA5E9);
+      case 'suspended': return const Color(0xFFF97316);
+      default: return const Color(0xFF64748B);
+    }
+  }
+
+  String _cancelledReasonShort(String reason) {
+    switch (reason) {
+      case 'no_class': return 'NO CLASS';
+      case 'holiday': return 'HOLIDAY';
+      case 'suspended': return 'SUSPENDED';
+      default: return reason.toUpperCase();
+    }
+  }
+
+  IconData _cancelledReasonIcon(String reason) {
+    switch (reason) {
+      case 'no_class': return Icons.person_off_rounded;
+      case 'holiday': return Icons.celebration_rounded;
+      case 'suspended': return Icons.block_rounded;
+      default: return Icons.cancel_rounded;
+    }
+  }
+
+  Future<void> _markDayCancelled(AdminProvider p, String reason) async {
+    if (_subj?.id == null || _selDate == null) return;
+    setState(() => _cancelLoading = true);
+    try {
+      await p.markClassCancelled(
+        subjectId: _subj!.id!,
+        date: _selDate!,
+        reason: reason,
+      );
+      await _loadCancellations();
+      await _load(p);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Error: $e'), backgroundColor: const Color(0xFFEF4444)));
+      }
+    }
+    if (mounted) setState(() => _cancelLoading = false);
+  }
+
+  Future<void> _restoreDay(AdminProvider p) async {
+    if (_subj?.id == null || _selDate == null) return;
+    setState(() => _cancelLoading = true);
+    try {
+      await p.restoreClassDay(
+        subjectId: _subj!.id!,
+        date: _selDate!,
+      );
+      await _loadCancellations();
+      await _load(p);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Error: $e'), backgroundColor: const Color(0xFFEF4444)));
+      }
+    }
+    if (mounted) setState(() => _cancelLoading = false);
+  }
+
   Widget _rightPanel(AdminProvider p) {
     final grp = _grp;
     final pr = _cnt('present'); final lt = _cnt('late');
@@ -291,7 +409,7 @@ class _State extends State<DesktopAttendanceTrackerScreen> {
 
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       // Stats bar
-      if (_roster.isNotEmpty)
+      if (_roster.isNotEmpty || _selDateCancelled)
         Container(
           padding: const EdgeInsets.fromLTRB(24, 16, 24, 12),
           decoration: BoxDecoration(border: Border(bottom: BorderSide(color: _bd))),
@@ -300,10 +418,12 @@ class _State extends State<DesktopAttendanceTrackerScreen> {
               Text(DateFormat('EEEE, MMM dd yyyy').format(_selDate!),
                   style: GoogleFonts.inter(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w700)),
             const SizedBox(width: 16),
-            _chip('Present', pr, const Color(0xFF10B981)), const SizedBox(width: 6),
-            _chip('Late', lt, const Color(0xFFF59E0B)), const SizedBox(width: 6),
-            _chip('Absent', ab, const Color(0xFFEF4444)), const SizedBox(width: 6),
-            _chip('Excused', ex, const Color(0xFF818CF8)),
+            if (!_selDateCancelled) ...[
+              _chip('Present', pr, const Color(0xFF10B981)), const SizedBox(width: 6),
+              _chip('Late', lt, const Color(0xFFF59E0B)), const SizedBox(width: 6),
+              _chip('Absent', ab, const Color(0xFFEF4444)), const SizedBox(width: 6),
+              _chip('Excused', ex, const Color(0xFF818CF8)),
+            ],
             const Spacer(),
             if (_selectedSection != null)
               Container(
@@ -320,7 +440,15 @@ class _State extends State<DesktopAttendanceTrackerScreen> {
                   Text(_selectedSection!, style: GoogleFonts.inter(color: _ac, fontSize: 11, fontWeight: FontWeight.w600)),
                 ]),
               ),
-            Text('$total students', style: GoogleFonts.inter(color: const Color(0xFF4B5E78), fontSize: 11)),
+            // Mark Day button (dropdown)
+            if (_subj != null && _selDate != null && !_selDateCancelled)
+              _buildMarkDayButton(p),
+            // Restore day button (if cancelled)
+            if (_selDateCancelled)
+              _buildRestoreDayButton(p),
+            const SizedBox(width: 6),
+            if (!_selDateCancelled)
+              Text('$total students', style: GoogleFonts.inter(color: const Color(0xFF4B5E78), fontSize: 11)),
             const SizedBox(width: 10),
             Material(color: Colors.transparent, borderRadius: BorderRadius.circular(6),
               child: InkWell(borderRadius: BorderRadius.circular(6), onTap: () => _load(p),
@@ -329,6 +457,10 @@ class _State extends State<DesktopAttendanceTrackerScreen> {
                   child: const Icon(Icons.refresh_rounded, color: Color(0xFF4B5E78), size: 15)))),
           ]),
         ),
+
+      // Cancellation banner
+      if (_selDateCancelled)
+        _buildCancellationBanner(),
 
       // Table header
       if (_subj != null && _selDate != null && !_loading)
@@ -408,4 +540,133 @@ class _State extends State<DesktopAttendanceTrackerScreen> {
     const SizedBox(height: 10),
     Text(m, style: GoogleFonts.inter(color: const Color(0xFF4B5E78), fontSize: 13)),
   ]));
+
+  // ── Mark Day as Cancelled (dropdown) ────────────────────────
+  Widget _buildMarkDayButton(AdminProvider p) {
+    return PopupMenuButton<String>(
+      onSelected: (reason) => _markDayCancelled(p, reason),
+      enabled: !_cancelLoading,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      color: _sf,
+      offset: const Offset(0, 36),
+      itemBuilder: (_) => [
+        PopupMenuItem(
+          value: 'no_class',
+          child: Row(children: [
+            const Icon(Icons.person_off_rounded, color: Color(0xFF64748B), size: 16),
+            const SizedBox(width: 8),
+            Text('No Class (Instructor Leave)',
+                style: GoogleFonts.inter(color: Colors.white, fontSize: 12)),
+          ]),
+        ),
+        PopupMenuItem(
+          value: 'holiday',
+          child: Row(children: [
+            const Icon(Icons.celebration_rounded, color: Color(0xFF0EA5E9), size: 16),
+            const SizedBox(width: 8),
+            Text('Holiday',
+                style: GoogleFonts.inter(color: Colors.white, fontSize: 12)),
+          ]),
+        ),
+        PopupMenuItem(
+          value: 'suspended',
+          child: Row(children: [
+            const Icon(Icons.block_rounded, color: Color(0xFFF97316), size: 16),
+            const SizedBox(width: 8),
+            Text('Class Suspended',
+                style: GoogleFonts.inter(color: Colors.white, fontSize: 12)),
+          ]),
+        ),
+      ],
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        margin: const EdgeInsets.only(right: 8),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF97316).withValues(alpha: 0.1),
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(color: const Color(0xFFF97316).withValues(alpha: 0.3)),
+        ),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          _cancelLoading
+              ? const SizedBox(width: 13, height: 13,
+                  child: CircularProgressIndicator(color: Color(0xFFF97316), strokeWidth: 1.5))
+              : const Icon(Icons.event_busy_rounded, color: Color(0xFFF97316), size: 13),
+          const SizedBox(width: 5),
+          Text('Mark Day', style: GoogleFonts.inter(
+              color: const Color(0xFFF97316), fontSize: 10, fontWeight: FontWeight.w700)),
+          const SizedBox(width: 2),
+          const Icon(Icons.arrow_drop_down_rounded, color: Color(0xFFF97316), size: 16),
+        ]),
+      ),
+    );
+  }
+
+  // ── Restore Day (undo cancellation) ─────────────────────────
+  Widget _buildRestoreDayButton(AdminProvider p) {
+    return GestureDetector(
+      onTap: _cancelLoading ? null : () => _restoreDay(p),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        margin: const EdgeInsets.only(right: 8),
+        decoration: BoxDecoration(
+          color: const Color(0xFF10B981).withValues(alpha: 0.1),
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(color: const Color(0xFF10B981).withValues(alpha: 0.3)),
+        ),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          _cancelLoading
+              ? const SizedBox(width: 13, height: 13,
+                  child: CircularProgressIndicator(color: Color(0xFF10B981), strokeWidth: 1.5))
+              : const Icon(Icons.restore_rounded, color: Color(0xFF10B981), size: 13),
+          const SizedBox(width: 5),
+          Text('Restore Day', style: GoogleFonts.inter(
+              color: const Color(0xFF10B981), fontSize: 10, fontWeight: FontWeight.w700)),
+        ]),
+      ),
+    );
+  }
+
+  // ── Cancellation Banner ─────────────────────────────────────
+  Widget _buildCancellationBanner() {
+    final c = _selDateCancellation;
+    if (c == null) return const SizedBox.shrink();
+    final color = _cancelledReasonColor(c.reason);
+    final icon = _cancelledReasonIcon(c.reason);
+
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.fromLTRB(24, 12, 24, 0),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withValues(alpha: 0.25)),
+      ),
+      child: Row(children: [
+        Container(
+          width: 44, height: 44,
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.15),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Icon(icon, color: color, size: 24),
+        ),
+        const SizedBox(width: 16),
+        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(c.reasonLabel,
+              style: GoogleFonts.inter(color: color, fontSize: 15, fontWeight: FontWeight.w700)),
+          const SizedBox(height: 2),
+          Text(
+            'All student attendance records for this date have been marked as "${_cancelledReasonShort(c.reason)}".\nStudents will not be penalized for this date.',
+            style: GoogleFonts.inter(color: const Color(0xFF4B5E78), fontSize: 11, height: 1.4),
+          ),
+          if (c.remarks != null && c.remarks!.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Text('Note: ${c.remarks}',
+                style: GoogleFonts.inter(color: color.withValues(alpha: 0.7), fontSize: 10, fontStyle: FontStyle.italic)),
+          ],
+        ])),
+      ]),
+    );
+  }
 }

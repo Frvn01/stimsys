@@ -40,12 +40,18 @@ class _StudentAttendanceDetailScreenState
     'late':    Color(0xFFF59E0B),
     'absent':  Color(0xFFEF4444),
     'excused': Color(0xFF818CF8),
+    'no_class': Color(0xFF64748B),
+    'holiday': Color(0xFF0EA5E9),
+    'suspended': Color(0xFFF97316),
   };
   static const _statusIcons = {
     'present': Icons.check_circle_rounded,
     'late':    Icons.watch_later_rounded,
     'absent':  Icons.cancel_rounded,
     'excused': Icons.remove_circle_rounded,
+    'no_class': Icons.person_off_rounded,
+    'holiday': Icons.celebration_rounded,
+    'suspended': Icons.block_rounded,
   };
 
   @override
@@ -90,6 +96,9 @@ class _StudentAttendanceDetailScreenState
 
   // ── Stats ────────────────────────────────────────────────
   int get _totalClasses => _records.length;
+  int get _cancelledCount => _records
+      .where((r) => r.record != null && (r.record!.isNoClass || r.record!.isHoliday || r.record!.isSuspended)).length;
+  int get _effectiveClasses => _totalClasses - _cancelledCount;
   int get _presentCount => _records
       .where((r) => r.record?.status == 'present').length;
   int get _lateCount => _records
@@ -99,10 +108,11 @@ class _StudentAttendanceDetailScreenState
   int get _excusedCount => _records
       .where((r) => r.record?.status == 'excused').length;
 
-  /// Attendance % = (present + late + excused) / total classes
+  /// Attendance % = (present + late + excused) / effective classes
+  /// Cancelled days (no_class, holiday, suspended) are excluded.
   double get _attendancePct {
-    if (_totalClasses == 0) return 0;
-    return ((_presentCount + _lateCount + _excusedCount) / _totalClasses) * 100;
+    if (_effectiveClasses == 0) return 0;
+    return ((_presentCount + _lateCount + _excusedCount) / _effectiveClasses) * 100;
   }
 
   Color get _pctColor {
@@ -237,7 +247,7 @@ class _StudentAttendanceDetailScreenState
               const Icon(Icons.calendar_month_rounded,
                   color: Color(0xFF4B5E78), size: 13),
               const SizedBox(width: 5),
-              Text('$_totalClasses total class dates tracked',
+              Text('$_effectiveClasses effective class date${_effectiveClasses == 1 ? '' : 's'} ($_totalClasses total${_cancelledCount > 0 ? ', $_cancelledCount cancelled' : ''})',
                   style: GoogleFonts.inter(
                       color: const Color(0xFF4B5E78), fontSize: 11)),
             ],
@@ -340,6 +350,11 @@ class _RecordTile extends StatelessWidget {
         ? DateFormat('hh:mm:ss a').format(rec!.scannedAt!.toLocal())
         : null;
 
+    String getLabel(String s) {
+      if (s == 'no_class') return 'No Class';
+      return s[0].toUpperCase() + s.substring(1);
+    }
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
@@ -410,7 +425,7 @@ class _RecordTile extends StatelessWidget {
             child: Text(
               status == 'unmarked'
                   ? '—'
-                  : status[0].toUpperCase() + status.substring(1),
+                  : getLabel(status),
               style: GoogleFonts.inter(
                   color: color, fontSize: 10, fontWeight: FontWeight.w700),
             ),

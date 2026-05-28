@@ -7,6 +7,7 @@ import 'desktop_student_registry_screen.dart';
 import 'desktop_subject_management_screen.dart';
 import 'desktop_attendance_tracker_screen.dart';
 import 'desktop_grade_gallery_screen.dart';
+import 'desktop_modules_screen.dart';
 
 class DesktopAdminDashboardScreen extends StatefulWidget {
   const DesktopAdminDashboardScreen({super.key});
@@ -26,9 +27,6 @@ class _DesktopAdminDashboardScreenState
   static const _surface   = Color(0xFF1A2235);
   static const _border    = Color(0xFF232D3F);
   static const _accent    = Color(0xFF6366F1);
-  static const _green     = Color(0xFF10B981);
-  static const _amber     = Color(0xFFF59E0B);
-  static const _purple    = Color(0xFF8B5CF6);
 
   final _screens = const [
     _DesktopPlaceholder(),
@@ -36,6 +34,7 @@ class _DesktopAdminDashboardScreenState
     DesktopSubjectManagementScreen(),
     DesktopAttendanceTrackerScreen(),
     DesktopGradeGalleryScreen(),
+    DesktopModulesScreen(),
   ];
 
   static const _navItems = [
@@ -44,6 +43,7 @@ class _DesktopAdminDashboardScreenState
     (icon: Icons.book_rounded,            label: 'Subjects'),
     (icon: Icons.fact_check_rounded,      label: 'Attendance'),
     (icon: Icons.photo_library_rounded,   label: 'Grade Gallery'),
+    (icon: Icons.folder_copy_rounded,     label: 'Modules'),
   ];
 
   @override

@@ -11,6 +11,7 @@ import '../models/enrollment_model.dart';
 import '../models/attendance_model.dart';
 import '../models/instructor_model.dart';
 import '../models/grade_capture_model.dart';
+import '../models/module_model.dart';
 
 /// Thrown when a QR scan happens outside the subject's valid schedule window.
 class ScheduleValidationException implements Exception {
@@ -865,6 +866,276 @@ class SupabaseService {
     } catch (e) {
       debugPrint('Delete profile image error: $e');
       rethrow;
+    }
+  }
+
+  // ═══════════════════════════════════════════════════
+  // CLASS CANCELLATIONS
+  // ═══════════════════════════════════════════════════
+
+  /// Mark a class day as cancelled (no_class / holiday / suspended).
+  /// - Creates a record in `class_cancellations`.
+  /// - Bulk-updates all enrolled students' attendance for that date to [reason].
+  Future<ClassCancellation?> markClassCancelled({
+    required String subjectId,
+    required DateTime date,
+    required String reason, // 'no_class', 'holiday', 'suspended'
+    String? remarks,
+  }) async {
+    try {
+      final dateStr = date.toIso8601String().split('T').first;
+
+      // Check if already cancelled
+      final existing = await _client
+          .from('class_cancellations')
+          .select()
+          .eq('subject_id', subjectId)
+          .eq('date', dateStr)
+          .maybeSingle();
+
+      if (existing != null) {
+        // Update reason
+        await _client
+            .from('class_cancellations')
+            .update({'reason': reason, 'remarks': remarks})
+            .eq('id', existing['id']);
+      } else {
+        await _client.from('class_cancellations').insert({
+          'subject_id': subjectId,
+          'date': dateStr,
+          'reason': reason,
+          'remarks': remarks,
+        });
+      }
+
+      // Update all attendance records for this subject+date to the cancelled status
+      final enrollments = await _client
+          .from('enrollments')
+          .select('id')
+          .eq('subject_id', subjectId);
+
+      for (final enrollment in (enrollments as List)) {
+        final enrollmentId = enrollment['id'] as String;
+        final attRec = await _client
+            .from('attendance')
+            .select('id')
+            .eq('enrollment_id', enrollmentId)
+            .eq('date', dateStr)
+            .maybeSingle();
+
+        final reasonLabel = reason == 'no_class'
+            ? 'No Class — Instructor Leave'
+            : reason == 'holiday'
+                ? 'Holiday'
+                : 'Class Suspended';
+        final remarkStr = remarks ?? reasonLabel;
+
+        if (attRec != null) {
+          await _client.from('attendance').update({
+            'status': reason,
+            'remarks': remarkStr,
+          }).eq('id', attRec['id']);
+        } else {
+          await _client.from('attendance').insert({
+            'enrollment_id': enrollmentId,
+            'date': dateStr,
+            'status': reason,
+            'scanned_at': null,
+            'minutes_late': 0,
+            'remarks': remarkStr,
+          });
+        }
+      }
+
+      // Fetch and return the cancellation record
+      final cancellation = await _client
+          .from('class_cancellations')
+          .select()
+          .eq('subject_id', subjectId)
+          .eq('date', dateStr)
+          .single();
+
+      return ClassCancellation.fromMap(cancellation);
+    } catch (e) {
+      debugPrint('Mark class cancelled error: $e');
+      rethrow;
+    }
+  }
+
+  /// Restore a cancelled class day — removes the cancellation record and
+  /// deletes the bulk-inserted attendance entries so the day is "clean" again.
+  Future<void> restoreClassDay({
+    required String subjectId,
+    required DateTime date,
+  }) async {
+    try {
+      final dateStr = date.toIso8601String().split('T').first;
+
+      // Delete the cancellation record
+      await _client
+          .from('class_cancellations')
+          .delete()
+          .eq('subject_id', subjectId)
+          .eq('date', dateStr);
+
+      // Delete all attendance records for this date that have a cancelled status
+      final enrollments = await _client
+          .from('enrollments')
+          .select('id')
+          .eq('subject_id', subjectId);
+
+      for (final enrollment in (enrollments as List)) {
+        final enrollmentId = enrollment['id'] as String;
+        await _client
+            .from('attendance')
+            .delete()
+            .eq('enrollment_id', enrollmentId)
+            .eq('date', dateStr)
+            .inFilter('status', ['no_class', 'holiday', 'suspended']);
+      }
+    } catch (e) {
+      debugPrint('Restore class day error: $e');
+      rethrow;
+    }
+  }
+
+  /// Get all class cancellations for a subject.
+  Future<List<ClassCancellation>> getCancellationsForSubject(
+      String subjectId) async {
+    try {
+      final response = await _client
+          .from('class_cancellations')
+          .select()
+          .eq('subject_id', subjectId)
+          .order('date', ascending: false);
+
+      return (response as List)
+          .map((e) => ClassCancellation.fromMap(e))
+          .toList();
+    } catch (e) {
+      debugPrint('Get cancellations error: $e');
+      return [];
+    }
+  }
+
+  /// Check if a specific date is cancelled for a subject.
+  Future<ClassCancellation?> getCancellationForDate(
+      String subjectId, DateTime date) async {
+    try {
+      final dateStr = date.toIso8601String().split('T').first;
+      final response = await _client
+          .from('class_cancellations')
+          .select()
+          .eq('subject_id', subjectId)
+          .eq('date', dateStr)
+          .maybeSingle();
+
+      if (response == null) return null;
+      return ClassCancellation.fromMap(response);
+    } catch (e) {
+      debugPrint('Get cancellation for date error: $e');
+      return null;
+    }
+  }
+
+  // ═══════════════════════════════════════════════════
+  // LEARNING MODULES (Google Drive metadata)
+  // ═══════════════════════════════════════════════════
+
+  /// Fetch all learning modules, optionally filtered by subject.
+  Future<List<LearningModule>> getModules({String? subject}) async {
+    try {
+      var query = _client.from('modules').select();
+      if (subject != null && subject.isNotEmpty) {
+        query = query.eq('subject', subject);
+      }
+      final response =
+          await query.order('created_at', ascending: false);
+      return (response as List)
+          .map((e) => LearningModule.fromSupabase(e))
+          .toList();
+    } catch (e) {
+      debugPrint('Get modules error: $e');
+      return [];
+    }
+  }
+
+  /// Create a new learning module.
+  Future<LearningModule?> createModule(LearningModule module) async {
+    try {
+      final response = await _client
+          .from('modules')
+          .insert(module.toSupabase())
+          .select()
+          .single();
+      return LearningModule.fromSupabase(response);
+    } catch (e) {
+      debugPrint('Create module error: $e');
+      rethrow;
+    }
+  }
+
+  /// Update an existing learning module.
+  Future<LearningModule?> updateModule(LearningModule module) async {
+    try {
+      final response = await _client
+          .from('modules')
+          .update(module.toSupabase())
+          .eq('id', module.id!)
+          .select()
+          .single();
+      return LearningModule.fromSupabase(response);
+    } catch (e) {
+      debugPrint('Update module error: $e');
+      rethrow;
+    }
+  }
+
+  /// Delete a learning module by ID.
+  Future<void> deleteModule(String id) async {
+    try {
+      await _client.from('modules').delete().eq('id', id);
+    } catch (e) {
+      debugPrint('Delete module error: $e');
+      rethrow;
+    }
+  }
+}
+
+// ═══════════════════════════════════════════════════
+// CLASS CANCELLATIONS (no_class / holiday / suspended)
+// ═══════════════════════════════════════════════════
+
+/// A class-level cancellation record stored in `class_cancellations`.
+class ClassCancellation {
+  final String? id;
+  final String subjectId;
+  final DateTime date;
+  final String reason; // 'no_class', 'holiday', 'suspended'
+  final String? remarks;
+
+  const ClassCancellation({
+    this.id,
+    required this.subjectId,
+    required this.date,
+    required this.reason,
+    this.remarks,
+  });
+
+  factory ClassCancellation.fromMap(Map<String, dynamic> m) => ClassCancellation(
+    id: m['id'],
+    subjectId: m['subject_id'] ?? '',
+    date: m['date'] != null ? DateTime.parse(m['date']) : DateTime.now(),
+    reason: m['reason'] ?? 'no_class',
+    remarks: m['remarks'],
+  );
+
+  String get reasonLabel {
+    switch (reason) {
+      case 'no_class': return 'No Class (Instructor Leave)';
+      case 'holiday': return 'Holiday';
+      case 'suspended': return 'Class Suspended';
+      default: return reason;
     }
   }
 }

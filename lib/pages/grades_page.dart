@@ -98,8 +98,10 @@ class _GradesPageState extends State<GradesPage> {
     final present = all.where((r) => r.isPresent).length;
     final late = all.where((r) => r.isLate).length;
     final absent = all.where((r) => r.isAbsent).length;
-    final total = all.length;
-    final rate = total == 0 ? 0.0 : (present + late) / total;
+    final excused = all.where((r) => r.isExcused).length;
+    final cancelled = all.where((r) => r.isCancelled).length;
+    final effectiveTotal = all.length - cancelled;
+    final rate = effectiveTotal == 0 ? 0.0 : (present + late + excused) / effectiveTotal;
 
     return Container(
       width: double.infinity,
@@ -229,8 +231,11 @@ class _SubjectCard extends StatelessWidget {
     final present = attendance.where((r) => r.isPresent).length;
     final late = attendance.where((r) => r.isLate).length;
     final absent = attendance.where((r) => r.isAbsent).length;
+    final excused = attendance.where((r) => r.isExcused).length;
+    final cancelled = attendance.where((r) => r.isCancelled).length;
     final total = attendance.length;
-    final rate = total == 0 ? 0.0 : (present + late) / total;
+    final effectiveTotal = total - cancelled;
+    final rate = effectiveTotal == 0 ? 0.0 : (present + late + excused) / effectiveTotal;
 
     return GestureDetector(
       onTap: onTap,
@@ -324,7 +329,14 @@ class _SubjectCard extends StatelessWidget {
                   icon: Icons.how_to_reg_rounded, label: 'Attendance',
                   child: _AttendanceContent(
                     isDark: isDark,
-                    present: present, late: late, absent: absent, total: total, rate: rate,
+                    present: present,
+                    late: late,
+                    absent: absent,
+                    excused: excused,
+                    cancelled: cancelled,
+                    total: total,
+                    effectiveTotal: effectiveTotal,
+                    rate: rate,
                   ),
                 ),
                 const SizedBox(height: 12),
@@ -405,12 +417,19 @@ class _Section extends StatelessWidget {
 
 class _AttendanceContent extends StatelessWidget {
   final bool isDark;
-  final int present, late, absent, total;
+  final int present, late, absent, excused, cancelled, total, effectiveTotal;
   final double rate;
 
   const _AttendanceContent({
-    required this.isDark, required this.present, required this.late,
-    required this.absent, required this.total, required this.rate,
+    required this.isDark,
+    required this.present,
+    required this.late,
+    required this.absent,
+    required this.excused,
+    required this.cancelled,
+    required this.total,
+    required this.effectiveTotal,
+    required this.rate,
   });
 
   @override
@@ -424,18 +443,24 @@ class _AttendanceContent extends StatelessWidget {
       // Stat chips row
       Row(children: [
         _chip(isDark, 'Present', present, const Color(0xFF10B981), Icons.check_circle_rounded),
-        const SizedBox(width: 8),
+        const SizedBox(width: 6),
         _chip(isDark, 'Late', late, const Color(0xFFF59E0B), Icons.watch_later_rounded),
-        const SizedBox(width: 8),
+        const SizedBox(width: 6),
         _chip(isDark, 'Absent', absent, const Color(0xFFEF4444), Icons.cancel_rounded),
+        const SizedBox(width: 6),
+        _chip(isDark, 'Excused', excused, const Color(0xFF818CF8), Icons.remove_circle_rounded),
       ]),
       const SizedBox(height: 12),
 
       // Classes attended text
       Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-        Text('Total sessions', style: TextStyle(fontSize: 12, color: isDark ? Colors.grey[400] : Colors.grey[600])),
-        Text('$total classes', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700,
-          color: isDark ? Colors.white : Colors.black87)),
+        Text('Effective sessions', style: TextStyle(fontSize: 12, color: isDark ? Colors.grey[400] : Colors.grey[600])),
+        Text(
+          effectiveTotal == 0 && total > 0
+              ? '0 classes ($cancelled cancelled)'
+              : '$effectiveTotal class${effectiveTotal == 1 ? '' : 'es'}${cancelled > 0 ? ' ($total total, $cancelled cancelled)' : ''}',
+          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: isDark ? Colors.white : Colors.black87),
+        ),
       ]),
       const SizedBox(height: 10),
 
@@ -443,11 +468,12 @@ class _AttendanceContent extends StatelessWidget {
       ClipRRect(
         borderRadius: BorderRadius.circular(6),
         child: Row(children: [
-          _progressBar(present, total, const Color(0xFF10B981)),
-          _progressBar(late, total, const Color(0xFFF59E0B)),
-          _progressBar(absent, total, const Color(0xFFEF4444)),
-          if (total == 0)
-            Expanded(child: Container(height: 8, color: Colors.grey[200])),
+          _progressBar(present, effectiveTotal, const Color(0xFF10B981)),
+          _progressBar(late, effectiveTotal, const Color(0xFFF59E0B)),
+          _progressBar(excused, effectiveTotal, const Color(0xFF818CF8)),
+          _progressBar(absent, effectiveTotal, const Color(0xFFEF4444)),
+          if (effectiveTotal == 0)
+            Expanded(child: Container(height: 8, color: isDark ? Colors.white.withValues(alpha: 0.08) : Colors.grey[200])),
         ]),
       ),
 

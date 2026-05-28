@@ -463,8 +463,6 @@ class _CoursesPageState extends State<CoursesPage> {
 
   Widget _buildAttendanceButton(
       BuildContext context, Enrollment enrollment, Color color) {
-    final subject = enrollment.subject!;
-
     return Container(
       width: double.infinity,
       height: 56,

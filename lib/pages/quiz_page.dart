@@ -4,15 +4,29 @@ import 'package:provider/provider.dart';
 import '../theme/theme_provider.dart';
 import '../providers/student_provider.dart';
 import '../models/enrollment_model.dart';
+import 'student_modules_screen.dart';
 import 'package:google_fonts/google_fonts.dart';
 
-class QuizPage extends StatelessWidget {
+class QuizPage extends StatefulWidget {
   final ThemeProvider themeProvider;
 
   const QuizPage({
     super.key,
     required this.themeProvider,
   });
+
+  @override
+  State<QuizPage> createState() => _QuizPageState();
+}
+
+class _QuizPageState extends State<QuizPage> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      context.read<StudentProvider>().loadModules();
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -137,7 +151,7 @@ class QuizPage extends StatelessWidget {
     final color = _getColorForSubject(code);
 
     return GestureDetector(
-      onTap: () => _showAssessmentsDialog(context, title, isDark),
+      onTap: () => _showAssessmentsDialog(context, enrollment, isDark),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(16),
         child: BackdropFilter(
@@ -210,10 +224,9 @@ class QuizPage extends StatelessWidget {
                             child: Text(
                               code,
                               style: TextStyle(
-                                fontSize: 10,
-                                fontWeight: FontWeight.w700,
-                                color: color,
-                              ),
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w700,
+                                  color: color),
                             ),
                           ),
                           const SizedBox(width: 8),
@@ -256,10 +269,11 @@ class QuizPage extends StatelessWidget {
 
   void _showAssessmentsDialog(
     BuildContext context,
-    String subject,
+    Enrollment enrollment,
     bool isDark,
   ) {
     final terms = ['Prelim', 'Midterm', 'Pre-Finals', 'Finals'];
+    final subjectTitle = enrollment.subjectTitle ?? 'Unknown Subject';
 
     showModalBottomSheet(
       context: context,
@@ -297,7 +311,7 @@ class QuizPage extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          subject,
+                          subjectTitle,
                           style: GoogleFonts.inter(
                             fontSize: 18,
                             fontWeight: FontWeight.w700,
@@ -329,6 +343,7 @@ class QuizPage extends StatelessWidget {
                       children: terms.map((term) {
                         return _buildTermSection(
                           ctx,
+                          enrollment,
                           term,
                           isDark,
                         );
@@ -346,9 +361,29 @@ class QuizPage extends StatelessWidget {
 
   Widget _buildTermSection(
     BuildContext context,
+    Enrollment enrollment,
     String term,
     bool isDark,
   ) {
+    final subject = enrollment.subject!;
+    final subjectIdentifier = '${subject.subjectCode} — ${subject.subjectTitle}';
+
+    String getTermCode(String t) {
+      switch (t) {
+        case 'Prelim': return 'prelim';
+        case 'Midterm': return 'midterm';
+        case 'Pre-Finals': return 'prefinal';
+        case 'Finals': return 'final';
+        default: return t.toLowerCase();
+      }
+    }
+
+    final termCode = getTermCode(term);
+    final provider = context.watch<StudentProvider>();
+    final moduleCount = provider.modules
+        .where((m) => m.subject == subjectIdentifier && m.term == termCode)
+        .length;
+
     const items = [
       {'name': 'Module', 'icon': Icons.menu_book_rounded, 'color': Color(0xFF3B82F6)},
       {'name': 'Quiz', 'icon': Icons.assignment_rounded, 'color': Color(0xFF6366F1)},
@@ -376,24 +411,44 @@ class QuizPage extends StatelessWidget {
             final icon = item['icon'] as IconData;
             final color = item['color'] as Color;
 
+            String subtitleText = '0/1 Items';
+            if (name == 'Module') {
+              subtitleText = '$moduleCount Material${moduleCount == 1 ? '' : 's'}';
+            }
+
             return Expanded(
               child: GestureDetector(
                 onTap: () {
-                  // Show 'Coming Soon' feedback
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(
-                        '$term $name limit reached or not yet available.',
-                        style: GoogleFonts.inter(fontWeight: FontWeight.w600),
+                  if (name == 'Module') {
+                    Navigator.of(context).pop(); // pop assessments dialog
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => StudentModulesScreen(
+                          subjectCode: subject.subjectCode,
+                          subjectTitle: subject.subjectTitle,
+                          subjectIdentifier: subjectIdentifier,
+                          initialTerm: termCode,
+                        ),
                       ),
-                      backgroundColor: const Color(0xFF6366F1),
-                      behavior: SnackBarBehavior.floating,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10),
+                    );
+                  } else {
+                    // Show 'Coming Soon' feedback
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(
+                          '$term $name limit reached or not yet available.',
+                          style: GoogleFonts.inter(fontWeight: FontWeight.w600),
+                        ),
+                        backgroundColor: const Color(0xFF6366F1),
+                        behavior: SnackBarBehavior.floating,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        duration: const Duration(seconds: 2),
                       ),
-                      duration: const Duration(seconds: 2),
-                    ),
-                  );
+                    );
+                  }
                 },
                 child: Container(
                   margin: EdgeInsets.only(
@@ -424,7 +479,7 @@ class QuizPage extends StatelessWidget {
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        '0/1 Items',
+                        subtitleText,
                         style: TextStyle(
                           fontSize: 10,
                           color: isDark ? Colors.grey[400] : Colors.grey[600],

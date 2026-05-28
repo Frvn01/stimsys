@@ -43,6 +43,11 @@ class _AttendanceRowState extends State<AttendanceRow> {
     final status = rec?.status ?? 'absent';
     final color = widget.statusColors[status] ?? Colors.grey;
 
+    String getLabel(String s) {
+      if (s == 'no_class') return 'No Class';
+      return s[0].toUpperCase() + s.substring(1);
+    }
+
     return MouseRegion(
       onEnter: (_) => setState(() => _hovered = true),
       onExit:  (_) => setState(() => _hovered = false),
@@ -74,7 +79,7 @@ class _AttendanceRowState extends State<AttendanceRow> {
                   color: color.withValues(alpha: 0.10),
                   borderRadius: BorderRadius.circular(5)),
                 child: Text(
-                  status[0].toUpperCase() + status.substring(1),
+                  getLabel(status),
                   textAlign: TextAlign.center,
                   style: GoogleFonts.inter(color: color, fontSize: 10, fontWeight: FontWeight.w600)),
               )),
@@ -211,6 +216,41 @@ class _EditAttendanceDialogState extends State<EditAttendanceDialog> {
                       style: GoogleFonts.inter(
                           color: sel ? color : const Color(0xFF4B5E78),
                           fontSize: 11, fontWeight: FontWeight.w600)),
+                ),
+              ),
+            ));
+          }).toList()),
+          const SizedBox(height: 8),
+          // Cancellation statuses row
+          Row(children: [
+            {'key': 'no_class', 'label': 'No Class', 'icon': Icons.person_off_rounded},
+            {'key': 'holiday', 'label': 'Holiday', 'icon': Icons.celebration_rounded},
+            {'key': 'suspended', 'label': 'Suspended', 'icon': Icons.block_rounded},
+          ].map((item) {
+            final s = item['key'] as String;
+            final label = item['label'] as String;
+            final icon = item['icon'] as IconData;
+            final color = widget.statusColors[s] ?? Colors.grey;
+            final sel = _status == s;
+            return Expanded(child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 2),
+              child: GestureDetector(
+                onTap: () => setState(() => _status = s),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 140),
+                  padding: const EdgeInsets.symmetric(vertical: 7),
+                  decoration: BoxDecoration(
+                    color: sel ? color.withValues(alpha: 0.15) : Colors.transparent,
+                    borderRadius: BorderRadius.circular(7),
+                    border: Border.all(color: sel ? color : const Color(0xFF232D3F), width: sel ? 1.5 : 1)),
+                  child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                    Icon(icon, color: sel ? color : const Color(0xFF4B5E78), size: 12),
+                    const SizedBox(width: 3),
+                    Text(label, textAlign: TextAlign.center,
+                        style: GoogleFonts.inter(
+                            color: sel ? color : const Color(0xFF4B5E78),
+                            fontSize: 9, fontWeight: FontWeight.w600)),
+                  ]),
                 ),
               ),
             ));

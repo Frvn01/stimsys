@@ -2,7 +2,7 @@ class AttendanceRecord {
   final String? id;
   final String enrollmentId;
   final DateTime date;
-  final String status; // 'present', 'late', 'absent', 'excused'
+  final String status; // 'present', 'late', 'absent', 'excused', 'no_class', 'holiday', 'suspended'
   final DateTime? scannedAt;
   final int minutesLate;
   final DateTime? markedAt;
@@ -45,6 +45,11 @@ class AttendanceRecord {
   bool get isLate => status == 'late';
   bool get isAbsent => status == 'absent';
   bool get isExcused => status == 'excused';
+  bool get isNoClass => status == 'no_class';
+  bool get isHoliday => status == 'holiday';
+  bool get isSuspended => status == 'suspended';
+  /// True when the day was cancelled (no_class / holiday / suspended)
+  bool get isCancelled => isNoClass || isHoliday || isSuspended;
 
   /// e.g. "BSIT 2 A" or "WAD 1 AB"
   String get sectionLabel {
@@ -65,6 +70,12 @@ class AttendanceRecord {
         return 'Absent';
       case 'excused':
         return 'Excused';
+      case 'no_class':
+        return 'No Class';
+      case 'holiday':
+        return 'Holiday';
+      case 'suspended':
+        return 'Suspended';
       default:
         return status;
     }
