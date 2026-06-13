@@ -8,6 +8,8 @@ import '../models/attendance_model.dart';
 import '../models/instructor_model.dart';
 import '../models/grade_capture_model.dart';
 import '../models/module_model.dart';
+import '../models/grading_config_model.dart';
+import '../models/student_grade_model.dart';
 import '../services/supabase_service.dart';
 
 class AdminProvider extends ChangeNotifier {
@@ -21,6 +23,15 @@ class AdminProvider extends ChangeNotifier {
   bool _isLoading = false;
   bool _isAuthenticated = false;
 
+  // ── Grading state ──────────────────────────────────
+  /// Cache of grading configs keyed by subjectId
+  final Map<String, GradingConfig> _gradingConfigs = {};
+  /// All grade records for the currently viewed subject
+  List<StudentGrade> _subjectGrades = [];
+  /// Enrollment roster (enrollmentId → student info) for grade table
+  List<Map<String, dynamic>> _gradeRoster = [];
+  String? _gradesSubjectId;
+
   List<Student> get students => _students;
   List<Subject> get subjects => _subjects;
   List<Instructor> get instructors => _instructors;
@@ -28,6 +39,13 @@ class AdminProvider extends ChangeNotifier {
   List<LearningModule> get modules => _modules;
   bool get isLoading => _isLoading;
   bool get isAuthenticated => _isAuthenticated;
+
+  Map<String, GradingConfig> get gradingConfigs => _gradingConfigs;
+  List<StudentGrade> get subjectGrades => _subjectGrades;
+  List<Map<String, dynamic>> get gradeRoster => _gradeRoster;
+  String? get gradesSubjectId => _gradesSubjectId;
+
+  GradingConfig? configFor(String subjectId) => _gradingConfigs[subjectId];
 
   int get totalStudents => _students.length;
   int get confirmedStudents => _students.where((s) => s.isConfirmed).length;
@@ -479,5 +497,118 @@ class AdminProvider extends ChangeNotifier {
       debugPrint('Delete capture error: $e');
       rethrow;
     }
+  }
+
+  // ═══════════════════════════════════════════════════
+  // GRADING CONFIG
+  // ═══════════════════════════════════════════════════
+
+  Future<GradingConfig?> loadGradingConfig(String subjectId) async {
+    try {
+      final config = await _service.getGradingConfig(subjectId);
+      if (config != null) {
+        _gradingConfigs[subjectId] = config;
+        notifyListeners();
+      }
+      return config;
+    } catch (e) {
+      debugPrint('Load grading config error: $e');
+      return null;
+    }
+  }
+
+  Future<GradingConfig?> saveGradingConfig(GradingConfig config) async {
+    try {
+      final saved = await _service.saveGradingConfig(config);
+      if (saved != null) {
+        _gradingConfigs[config.subjectId] = saved;
+        notifyListeners();
+      }
+      return saved;
+    } catch (e) {
+      debugPrint('Save grading config error: $e');
+      rethrow;
+    }
+  }
+
+  // ═══════════════════════════════════════════════════
+  // STUDENT GRADES
+  // ═══════════════════════════════════════════════════
+
+  /// Load all grades + roster for a subject into state.
+  Future<void> loadSubjectGrades(String subjectId) async {
+    try {
+      _gradesSubjectId = subjectId;
+      final results = await Future.wait([
+        _service.getSubjectGrades(subjectId),
+        _service.getSubjectEnrollmentRoster(subjectId),
+        _service.getGradingConfig(subjectId),
+      ]);
+      _subjectGrades = results[0] as List<StudentGrade>;
+      _gradeRoster   = results[1] as List<Map<String, dynamic>>;
+      final cfg = results[2] as GradingConfig?;
+      if (cfg != null) _gradingConfigs[subjectId] = cfg;
+      notifyListeners();
+    } catch (e) {
+      debugPrint('Load subject grades error: $e');
+    }
+  }
+
+  /// Save a grade entry and refresh local state.
+  Future<StudentGrade?> saveStudentGrade(StudentGrade grade) async {
+    try {
+      final saved = await _service.upsertStudentGrade(grade);
+      if (saved != null) {
+        final idx = _subjectGrades
+            .indexWhere((g) =>
+                g.enrollmentId == grade.enrollmentId && g.term == grade.term);
+        if (idx >= 0) {
+          _subjectGrades[idx] = saved;
+        } else {
+          _subjectGrades.add(saved);
+        }
+        notifyListeners();
+      }
+      return saved;
+    } catch (e) {
+      debugPrint('Save student grade error: $e');
+      rethrow;
+    }
+  }
+
+  /// Returns the saved StudentGrade for a specific enrollment + term, or null.
+  StudentGrade? gradeFor(String enrollmentId, String term) {
+    try {
+      return _subjectGrades.firstWhere(
+          (g) => g.enrollmentId == enrollmentId && g.term == term);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Build final summary list from current _subjectGrades + _gradeRoster.
+  List<StudentFinalSummary> buildFinalSummaries(List<String> terms) {
+    return _gradeRoster.map((enrollment) {
+      final enrollmentId = enrollment['id'] as String;
+      final student =
+          enrollment['students'] as Map<String, dynamic>? ?? {};
+      final termGrades = <String, double?>{};
+      for (final t in terms) {
+        final g = gradeFor(enrollmentId, t);
+        termGrades[t] = g?.computedGrade;
+      }
+      return StudentFinalSummary(
+        enrollmentId: enrollmentId,
+        studentId: student['id'] ?? '',
+        lastName: student['last_name'] ?? '',
+        firstName: student['first_name'] ?? '',
+        usn: student['usn'] ?? '',
+        termGrades: termGrades,
+      );
+    }).toList()
+      ..sort((a, b) {
+        final last = a.lastName.compareTo(b.lastName);
+        return last != 0 ? last : a.firstName.compareTo(b.firstName);
+      });
   }
 }

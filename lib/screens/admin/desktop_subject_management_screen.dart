@@ -4,9 +4,10 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:qr_flutter/qr_flutter.dart';
-import 'package:path_provider/path_provider.dart';
+
 import '../../providers/admin_provider.dart';
 import '../../models/subject_model.dart';
+import '../../models/grading_config_model.dart';
 
 class DesktopSubjectManagementScreen extends StatefulWidget {
   const DesktopSubjectManagementScreen({super.key});
@@ -95,13 +96,14 @@ class _DesktopSubjectManagementScreenState
                       borderRadius: const BorderRadius.vertical(bottom: Radius.circular(10)),
                       child: ListView.separated(
                         itemCount: provider.subjects.length,
-                        separatorBuilder: (_, __) => Divider(height: 1, color: _border),
+                        separatorBuilder: (context, index) => Divider(height: 1, color: _border),
                         itemBuilder: (_, i) {
                           final s = provider.subjects[i];
-                          return _SubjectRow(
+                        return _SubjectRow(
                             subject: s,
                             onQR:     () => _showQRDialog(context, s),
                             onDelete: () => _confirmDelete(context, provider, s),
+                            onGrading: () => _showGradingSetup(context, provider, s),
                           );
                         },
                       ),
@@ -248,8 +250,10 @@ class _DesktopSubjectManagementScreenState
         ));
       }
     } catch (e) {
-      if (ctx.mounted) ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(
-        content: Text('Failed: $e'), backgroundColor: const Color(0xFFEF4444)));
+      if (ctx.mounted) {
+        ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(
+          content: Text('Failed: $e'), backgroundColor: const Color(0xFFEF4444)));
+      }
     }
   }
 
@@ -259,13 +263,20 @@ class _DesktopSubjectManagementScreenState
       builder: (_) => _DesktopCreateSubjectDialog(provider: provider),
     );
   }
+
+  void _showGradingSetup(BuildContext ctx, AdminProvider provider, Subject s) {
+    showDialog(
+      context: ctx,
+      builder: (_) => _GradingSetupDialog(provider: provider, subject: s),
+    );
+  }
 }
 
 // ── Subject table row ─────────────────────────────────────────────────────────
 class _SubjectRow extends StatefulWidget {
   final Subject subject;
-  final VoidCallback onQR, onDelete;
-  const _SubjectRow({required this.subject, required this.onQR, required this.onDelete});
+  final VoidCallback onQR, onDelete, onGrading;
+  const _SubjectRow({required this.subject, required this.onQR, required this.onDelete, required this.onGrading});
   @override State<_SubjectRow> createState() => _SubjectRowState();
 }
 
@@ -305,6 +316,8 @@ class _SubjectRowState extends State<_SubjectRow> {
           Expanded(flex: 1, child: Row(
             mainAxisAlignment: MainAxisAlignment.end,
             children: [
+              _btn(Icons.grading_rounded, const Color(0xFF10B981), widget.onGrading, 'Grading Setup'),
+              const SizedBox(width: 6),
               _btn(Icons.qr_code_rounded, _accent, widget.onQR, 'Enrollment QR'),
               const SizedBox(width: 6),
               _btn(Icons.delete_outline_rounded, const Color(0xFFEF4444), widget.onDelete, 'Delete'),
@@ -477,9 +490,283 @@ class _DesktopCreateSubjectDialogState extends State<_DesktopCreateSubjectDialog
       );
       if (mounted) Navigator.pop(context);
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e'), backgroundColor: const Color(0xFFEF4444)));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error: $e'), backgroundColor: const Color(0xFFEF4444)));
+      }
       setState(() => _loading = false);
     }
   }
+}
+
+// ── Grading Setup Dialog ──────────────────────────────────────────────────────
+class _GradingSetupDialog extends StatefulWidget {
+  final AdminProvider provider;
+  final Subject subject;
+  const _GradingSetupDialog({required this.provider, required this.subject});
+  @override State<_GradingSetupDialog> createState() => _GradingSetupDialogState();
+}
+
+class _GradingSetupDialogState extends State<_GradingSetupDialog> {
+  static const _surface = Color(0xFF1E293B);
+  static const _border  = Color(0xFF2D3B52);
+  static const _accent  = Color(0xFF6366F1);
+  static const _green   = Color(0xFF10B981);
+
+  bool _loading = true;
+  bool _saving  = false;
+
+  late String _termType;
+  late double _examPct;
+  late double _quizPct;
+  late double _attendPct;
+  GradingConfig? _existing;
+
+  final _examCtrl  = TextEditingController();
+  final _quizCtrl  = TextEditingController();
+  final _attendCtrl = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    _termType  = 'semester';
+    _examPct   = 60;
+    _quizPct   = 30;
+    _attendPct = 10;
+    _examCtrl.text  = '60';
+    _quizCtrl.text  = '30';
+    _attendCtrl.text = '10';
+    _loadExisting();
+  }
+
+  Future<void> _loadExisting() async {
+    final cfg = await widget.provider.loadGradingConfig(widget.subject.id!);
+    if (mounted && cfg != null) {
+      setState(() {
+        _existing  = cfg;
+        _termType  = cfg.termType;
+        _examPct   = cfg.examPct;
+        _quizPct   = cfg.quizPct;
+        _attendPct = cfg.attendancePct;
+        _examCtrl.text   = cfg.examPct.toStringAsFixed(0);
+        _quizCtrl.text   = cfg.quizPct.toStringAsFixed(0);
+        _attendCtrl.text = cfg.attendancePct.toStringAsFixed(0);
+      });
+    }
+    if (mounted) setState(() => _loading = false);
+  }
+
+  @override
+  void dispose() {
+    _examCtrl.dispose(); _quizCtrl.dispose(); _attendCtrl.dispose();
+    super.dispose();
+  }
+
+  double get _total => _examPct + _quizPct + _attendPct;
+  bool get _valid => (_total - 100.0).abs() < 0.01;
+
+  void _recalc() {
+    _examPct   = double.tryParse(_examCtrl.text)  ?? _examPct;
+    _quizPct   = double.tryParse(_quizCtrl.text)  ?? _quizPct;
+    _attendPct = double.tryParse(_attendCtrl.text) ?? _attendPct;
+    setState(() {});
+  }
+
+  Future<void> _save() async {
+    if (!_valid) return;
+    setState(() => _saving = true);
+    try {
+      final config = GradingConfig(
+        id: _existing?.id,
+        subjectId: widget.subject.id!,
+        termType: _termType,
+        examPct: _examPct,
+        quizPct: _quizPct,
+        attendancePct: _attendPct,
+      );
+      await widget.provider.saveGradingConfig(config);
+      if (mounted) {
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Grading setup saved for ${widget.subject.subjectCode}',
+              style: const TextStyle(fontWeight: FontWeight.w600)),
+          backgroundColor: _green,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          duration: const Duration(seconds: 3),
+        ));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text('Error: $e'), backgroundColor: const Color(0xFFEF4444)));
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      child: Container(
+        width: 460,
+        padding: const EdgeInsets.all(28),
+        decoration: BoxDecoration(
+          color: _surface,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: _border),
+        ),
+        child: _loading
+            ? const SizedBox(height: 120,
+                child: Center(child: CircularProgressIndicator(color: _accent, strokeWidth: 2)))
+            : Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+                // Header
+                Row(children: [
+                  Container(
+                    width: 36, height: 36,
+                    decoration: BoxDecoration(color: _green.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(10)),
+                    child: const Icon(Icons.grading_rounded, color: _green, size: 18),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text('Grading Setup', style: GoogleFonts.inter(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w800)),
+                    Text(widget.subject.subjectCode, style: GoogleFonts.inter(color: Colors.grey[500], fontSize: 11)),
+                  ])),
+                ]),
+                const SizedBox(height: 22),
+
+                // Term Type
+                Text('Term Type', style: GoogleFonts.inter(color: Colors.grey[400], fontSize: 11, fontWeight: FontWeight.w600)),
+                const SizedBox(height: 8),
+                Row(children: [
+                  _termChip('semester',  'Semester (4 terms)'),
+                  const SizedBox(width: 10),
+                  _termChip('trimester', 'Trimester (3 terms)'),
+                ]),
+                const SizedBox(height: 6),
+                Text(
+                  _termType == 'semester'
+                      ? 'Prelim · Midterm · Semi-Finals · Finals'
+                      : 'Prelim · Midterm · Finals',
+                  style: GoogleFonts.inter(color: Colors.grey[600], fontSize: 11),
+                ),
+                const SizedBox(height: 22),
+
+                // Weight fields
+                Text('Grade Component Weights', style: GoogleFonts.inter(color: Colors.grey[400], fontSize: 11, fontWeight: FontWeight.w600)),
+                const SizedBox(height: 4),
+                Text('Formula: (score ÷ max) × 100 × weight%  =  contribution',
+                    style: GoogleFonts.inter(color: Colors.grey[700], fontSize: 10)),
+                const SizedBox(height: 10),
+
+                Row(children: [
+                  _weightField(_examCtrl,  Icons.assignment_rounded,       'Exam', const Color(0xFF6366F1)),
+                  const SizedBox(width: 10),
+                  _weightField(_quizCtrl,  Icons.edit_note_rounded,        'Quiz / Activity', const Color(0xFFF59E0B)),
+                  const SizedBox(width: 10),
+                  _weightField(_attendCtrl, Icons.how_to_reg_rounded,      'Attendance', const Color(0xFF10B981)),
+                ]),
+                const SizedBox(height: 14),
+
+                // Total indicator
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: (_valid ? _green : const Color(0xFFEF4444)).withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: (_valid ? _green : const Color(0xFFEF4444)).withValues(alpha: 0.25)),
+                  ),
+                  child: Row(children: [
+                    Icon(_valid ? Icons.check_circle_rounded : Icons.warning_rounded,
+                        color: _valid ? _green : const Color(0xFFEF4444), size: 16),
+                    const SizedBox(width: 8),
+                    Text(
+                      _valid
+                          ? 'Total: 100% ✓ Ready to save'
+                          : 'Total: ${_total.toStringAsFixed(0)}%  — must equal 100%',
+                      style: GoogleFonts.inter(
+                          color: _valid ? _green : const Color(0xFFEF4444),
+                          fontSize: 12, fontWeight: FontWeight.w600),
+                    ),
+                  ]),
+                ),
+                const SizedBox(height: 22),
+
+                // Actions
+                Row(mainAxisAlignment: MainAxisAlignment.end, children: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: Text('Cancel', style: GoogleFonts.inter(color: Colors.grey[500])),
+                  ),
+                  const SizedBox(width: 8),
+                  ElevatedButton(
+                    onPressed: (_valid && !_saving) ? _save : null,
+                    style: ElevatedButton.styleFrom(
+                        backgroundColor: _green, elevation: 0,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        disabledBackgroundColor: Colors.grey[800]),
+                    child: _saving
+                        ? const SizedBox(width: 16, height: 16,
+                            child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                        : Text('Save Config', style: GoogleFonts.inter(color: Colors.white, fontWeight: FontWeight.w700)),
+                  ),
+                ]),
+              ]),
+      ),
+    );
+  }
+
+  Widget _termChip(String value, String label) {
+    final active = _termType == value;
+    return Expanded(
+      child: GestureDetector(
+        onTap: () => setState(() => _termType = value),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          padding: const EdgeInsets.symmetric(vertical: 9),
+          decoration: BoxDecoration(
+            color: active ? _accent.withValues(alpha: 0.12) : const Color(0xFF0F172A),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: active ? _accent : _border, width: active ? 1.5 : 1),
+          ),
+          child: Center(
+            child: Text(label,
+                style: GoogleFonts.inter(
+                    color: active ? _accent : Colors.grey[600],
+                    fontSize: 11, fontWeight: FontWeight.w600)),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _weightField(TextEditingController ctrl, IconData icon, String label, Color color) =>
+      Expanded(
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            Icon(icon, color: color, size: 13),
+            const SizedBox(width: 4),
+            Text(label, style: GoogleFonts.inter(color: Colors.grey[400], fontSize: 10, fontWeight: FontWeight.w600),
+                overflow: TextOverflow.ellipsis),
+          ]),
+          const SizedBox(height: 5),
+          TextFormField(
+            controller: ctrl,
+            onChanged: (_) => _recalc(),
+            keyboardType: TextInputType.number,
+            style: GoogleFonts.inter(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w700),
+            decoration: InputDecoration(
+              suffixText: '%',
+              suffixStyle: GoogleFonts.inter(color: Colors.grey[600], fontSize: 12),
+              filled: true, fillColor: const Color(0xFF0F172A),
+              contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: _border)),
+              enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: _border)),
+              focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: color, width: 1.5)),
+            ),
+          ),
+        ]),
+      );
 }

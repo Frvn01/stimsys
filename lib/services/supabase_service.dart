@@ -12,6 +12,8 @@ import '../models/attendance_model.dart';
 import '../models/instructor_model.dart';
 import '../models/grade_capture_model.dart';
 import '../models/module_model.dart';
+import '../models/grading_config_model.dart';
+import '../models/student_grade_model.dart';
 
 /// Thrown when a QR scan happens outside the subject's valid schedule window.
 class ScheduleValidationException implements Exception {
@@ -1098,6 +1100,129 @@ class SupabaseService {
     } catch (e) {
       debugPrint('Delete module error: $e');
       rethrow;
+    }
+  }
+
+  // ═══════════════════════════════════════════════════
+  // GRADING CONFIG
+  // ═══════════════════════════════════════════════════
+
+  /// Fetch grading config for a subject, or null if not yet configured.
+  Future<GradingConfig?> getGradingConfig(String subjectId) async {
+    try {
+      final response = await _client
+          .from('subject_grading_config')
+          .select()
+          .eq('subject_id', subjectId)
+          .maybeSingle();
+      if (response == null) return null;
+      return GradingConfig.fromSupabase(response);
+    } catch (e) {
+      debugPrint('Get grading config error: $e');
+      return null;
+    }
+  }
+
+  /// Upsert (insert or update) a grading config for a subject.
+  Future<GradingConfig?> saveGradingConfig(GradingConfig config) async {
+    try {
+      final data = config.toSupabase();
+      if (config.id != null) {
+        // Update existing
+        final response = await _client
+            .from('subject_grading_config')
+            .update({...data, 'updated_at': DateTime.now().toIso8601String()})
+            .eq('id', config.id!)
+            .select()
+            .single();
+        return GradingConfig.fromSupabase(response);
+      } else {
+        // Insert new (upsert on subject_id)
+        final response = await _client
+            .from('subject_grading_config')
+            .upsert(data, onConflict: 'subject_id')
+            .select()
+            .single();
+        return GradingConfig.fromSupabase(response);
+      }
+    } catch (e) {
+      debugPrint('Save grading config error: $e');
+      rethrow;
+    }
+  }
+
+  // ═══════════════════════════════════════════════════
+  // STUDENT GRADES
+  // ═══════════════════════════════════════════════════
+
+  /// Get all grade records for a subject (all students × all terms).
+  /// Joins through enrollments to get student info.
+  Future<List<StudentGrade>> getSubjectGrades(String subjectId) async {
+    try {
+      // First get all enrollments for the subject
+      final enrollments = await _client
+          .from('enrollments')
+          .select('id, students(*)')
+          .eq('subject_id', subjectId);
+
+      if ((enrollments as List).isEmpty) return [];
+
+      final enrollmentIds =
+          enrollments.map((e) => e['id'] as String).toList();
+
+      final grades = await _client
+          .from('student_grades')
+          .select('*, enrollments(*, students(*))')
+          .inFilter('enrollment_id', enrollmentIds)
+          .order('term');
+
+      return (grades as List)
+          .map((e) => StudentGrade.fromSupabase(e))
+          .toList();
+    } catch (e) {
+      debugPrint('Get subject grades error: $e');
+      return [];
+    }
+  }
+
+  /// Upsert a single student grade record.
+  Future<StudentGrade?> upsertStudentGrade(StudentGrade grade) async {
+    try {
+      final data = grade.toSupabase();
+      if (grade.id != null) {
+        final response = await _client
+            .from('student_grades')
+            .update(data)
+            .eq('id', grade.id!)
+            .select('*, enrollments(*, students(*))')
+            .single();
+        return StudentGrade.fromSupabase(response);
+      } else {
+        final response = await _client
+            .from('student_grades')
+            .upsert(data, onConflict: 'enrollment_id,term')
+            .select('*, enrollments(*, students(*))')
+            .single();
+        return StudentGrade.fromSupabase(response);
+      }
+    } catch (e) {
+      debugPrint('Upsert student grade error: $e');
+      rethrow;
+    }
+  }
+
+  /// Get a flat list of enrollments for a subject (for building grade table).
+  Future<List<Map<String, dynamic>>> getSubjectEnrollmentRoster(
+      String subjectId) async {
+    try {
+      final response = await _client
+          .from('enrollments')
+          .select('id, students(*)')
+          .eq('subject_id', subjectId);
+      return (response as List).cast<Map<String, dynamic>>();
+    } catch (e) {
+      debugPrint('Get enrollment roster error: $e');
+      return [];
     }
   }
 }
