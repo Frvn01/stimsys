@@ -10,6 +10,8 @@ import '../models/grade_capture_model.dart';
 import '../models/module_model.dart';
 import '../models/grading_config_model.dart';
 import '../models/student_grade_model.dart';
+import '../models/assessment_model.dart';
+import '../models/student_grade_item_model.dart';
 import '../services/supabase_service.dart';
 
 class AdminProvider extends ChangeNotifier {
@@ -610,5 +612,271 @@ class AdminProvider extends ChangeNotifier {
         final last = a.lastName.compareTo(b.lastName);
         return last != 0 ? last : a.firstName.compareTo(b.firstName);
       });
+  }
+
+  // ═══════════════════════════════════════════════════
+  // ASSESSMENTS (Quizzes & Exams)
+  // ═══════════════════════════════════════════════════
+
+  List<AssessmentConfig> _assessments = [];
+  List<AssessmentQuestion> _currentQuestions = [];
+  List<AssessmentSubmission> _currentSubmissions = [];
+  final Map<String, List<StudentGradeItem>> _gradeItems = {};
+
+  List<AssessmentConfig> get assessments => _assessments;
+  List<AssessmentQuestion> get currentQuestions => _currentQuestions;
+  List<AssessmentSubmission> get currentSubmissions => _currentSubmissions;
+
+  List<AssessmentConfig> assessmentsForTerm(String term) =>
+      _assessments.where((a) => a.term == term).toList();
+
+  List<StudentGradeItem> gradeItemsFor(String gradeId) =>
+      _gradeItems[gradeId] ?? [];
+
+  Future<void> loadAssessments(String subjectId) async {
+    try {
+      _assessments = await _service.getAssessmentsForSubject(subjectId);
+      notifyListeners();
+    } catch (e) {
+      debugPrint('Load assessments error: $e');
+    }
+  }
+
+  Future<AssessmentConfig?> createAssessment(AssessmentConfig config) async {
+    try {
+      final created = await _service.createAssessment(config);
+      if (created != null) {
+        _assessments.add(created);
+        notifyListeners();
+      }
+      return created;
+    } catch (e) {
+      debugPrint('Create assessment error: $e');
+      rethrow;
+    }
+  }
+
+  Future<AssessmentConfig?> updateAssessment(AssessmentConfig config) async {
+    try {
+      final updated = await _service.updateAssessment(config);
+      if (updated != null) {
+        final idx = _assessments.indexWhere((a) => a.id == config.id);
+        if (idx >= 0) _assessments[idx] = updated;
+        notifyListeners();
+      }
+      return updated;
+    } catch (e) {
+      debugPrint('Update assessment error: $e');
+      rethrow;
+    }
+  }
+
+  Future<void> deleteAssessment(String id) async {
+    try {
+      await _service.deleteAssessment(id);
+      _assessments.removeWhere((a) => a.id == id);
+      notifyListeners();
+    } catch (e) {
+      debugPrint('Delete assessment error: $e');
+      rethrow;
+    }
+  }
+
+  Future<void> publishAssessment(String id, bool publish) async {
+    try {
+      await _service.publishAssessment(id, publish);
+      final idx = _assessments.indexWhere((a) => a.id == id);
+      if (idx >= 0) {
+        _assessments[idx] = _assessments[idx].copyWith(isPublished: publish);
+        notifyListeners();
+      }
+    } catch (e) {
+      debugPrint('Publish assessment error: $e');
+      rethrow;
+    }
+  }
+
+  Future<String> generateExamSessionCode(String assessmentId) async {
+    try {
+      final code = await _service.generateSessionCode(assessmentId);
+      final idx = _assessments.indexWhere((a) => a.id == assessmentId);
+      if (idx >= 0) {
+        _assessments[idx] = _assessments[idx].copyWith(sessionCode: code);
+        notifyListeners();
+      }
+      return code;
+    } catch (e) {
+      debugPrint('Generate session code error: $e');
+      rethrow;
+    }
+  }
+
+  // ── Questions ──────────────────────────────────────
+
+  Future<void> loadQuestions(String assessmentId) async {
+    try {
+      _currentQuestions = await _service.getQuestions(assessmentId);
+      notifyListeners();
+    } catch (e) {
+      debugPrint('Load questions error: $e');
+    }
+  }
+
+  Future<AssessmentQuestion?> addQuestion(AssessmentQuestion q) async {
+    try {
+      final created = await _service.addQuestion(q);
+      if (created != null) {
+        _currentQuestions.add(created);
+        notifyListeners();
+      }
+      return created;
+    } catch (e) {
+      debugPrint('Add question error: $e');
+      rethrow;
+    }
+  }
+
+  Future<AssessmentQuestion?> updateQuestion(AssessmentQuestion q) async {
+    try {
+      final updated = await _service.updateQuestion(q);
+      if (updated != null) {
+        final idx = _currentQuestions.indexWhere((x) => x.id == q.id);
+        if (idx >= 0) _currentQuestions[idx] = updated;
+        notifyListeners();
+      }
+      return updated;
+    } catch (e) {
+      debugPrint('Update question error: $e');
+      rethrow;
+    }
+  }
+
+  Future<void> deleteQuestion(String id) async {
+    try {
+      await _service.deleteQuestion(id);
+      _currentQuestions.removeWhere((q) => q.id == id);
+      notifyListeners();
+    } catch (e) {
+      debugPrint('Delete question error: $e');
+      rethrow;
+    }
+  }
+
+  // ── Submissions ────────────────────────────────────
+
+  Future<void> loadSubmissions(String assessmentId) async {
+    try {
+      _currentSubmissions =
+          await _service.getSubmissionsForAssessment(assessmentId);
+      notifyListeners();
+    } catch (e) {
+      debugPrint('Load submissions error: $e');
+    }
+  }
+
+  // ── QR Grade Processing ────────────────────────────
+
+  Future<(bool, String)> processScannedGradeQR(String qrData) async {
+    try {
+      final result = await _service.processGradeQR(qrData);
+      // Refresh grades if a subject is currently loaded
+      if (_gradesSubjectId != null) {
+        await loadSubjectGrades(_gradesSubjectId!);
+      }
+      return result;
+    } catch (e) {
+      debugPrint('Process QR error: $e');
+      return (false, 'Error: $e');
+    }
+  }
+
+  // ═══════════════════════════════════════════════════
+  // STUDENT GRADE ITEMS
+  // ═══════════════════════════════════════════════════
+
+  Future<void> loadGradeItems(String gradeId) async {
+    try {
+      _gradeItems[gradeId] = await _service.getGradeItems(gradeId);
+      notifyListeners();
+    } catch (e) {
+      debugPrint('Load grade items error: $e');
+    }
+  }
+
+  Future<StudentGradeItem?> saveGradeItem(StudentGradeItem item) async {
+    try {
+      final saved = await _service.upsertGradeItem(item);
+      if (saved != null) {
+        final list = _gradeItems.putIfAbsent(item.gradeId, () => []);
+        final idx = list.indexWhere((i) => i.id == saved.id);
+        if (idx >= 0) {
+          list[idx] = saved;
+        } else {
+          list.add(saved);
+        }
+        // Recalculate totals
+        await _service.recalculateGradeTotals(item.gradeId);
+        // Refresh subject grades
+        if (_gradesSubjectId != null) {
+          await loadSubjectGrades(_gradesSubjectId!);
+        }
+      }
+      return saved;
+    } catch (e) {
+      debugPrint('Save grade item error: $e');
+      rethrow;
+    }
+  }
+
+  Future<void> removeGradeItem(String id, String gradeId) async {
+    try {
+      await _service.deleteGradeItem(id);
+      _gradeItems[gradeId]?.removeWhere((i) => i.id == id);
+      await _service.recalculateGradeTotals(gradeId);
+      if (_gradesSubjectId != null) {
+        await loadSubjectGrades(_gradesSubjectId!);
+      }
+      notifyListeners();
+    } catch (e) {
+      debugPrint('Remove grade item error: $e');
+      rethrow;
+    }
+  }
+
+  // ── Attendance Auto-Compute ────────────────────────
+
+  Future<void> autoComputeAttendance(
+      String enrollmentId, String gradeId, double maxScore) async {
+    try {
+      final result = await _service.computeAttendanceScore(
+        enrollmentId: enrollmentId,
+        maxScore: maxScore,
+      );
+      // Update the grade record directly
+      await _service.client
+          .from('student_grades')
+          .update({
+            'attendance_raw': result.raw,
+            'attendance_max': result.max,
+            'updated_at': DateTime.now().toIso8601String(),
+          })
+          .eq('id', gradeId);
+      // Recalculate
+      await _service.recalculateGradeTotals(gradeId);
+      if (_gradesSubjectId != null) {
+        await loadSubjectGrades(_gradesSubjectId!);
+      }
+    } catch (e) {
+      debugPrint('Auto compute attendance error: $e');
+      rethrow;
+    }
+  }
+
+  // ═══════════════════════════════════════════════════
+  // GRADE SCANNING
+  // ═══════════════════════════════════════════════════
+
+  Future<(bool, String)> processGradeQR(String qrData) async {
+    return await _service.processGradeQR(qrData);
   }
 }

@@ -8,6 +8,7 @@ import 'desktop_subject_management_screen.dart';
 import 'desktop_attendance_tracker_screen.dart';
 import 'desktop_grade_gallery_screen.dart';
 import 'desktop_modules_screen.dart';
+import 'desktop_assessment_screen.dart';
 import 'desktop_student_grades_screen.dart';
 
 class DesktopAdminDashboardScreen extends StatefulWidget {
@@ -36,6 +37,7 @@ class _DesktopAdminDashboardScreenState
     DesktopAttendanceTrackerScreen(),
     DesktopGradeGalleryScreen(),
     DesktopModulesScreen(),
+    DesktopAssessmentScreen(),
     DesktopStudentGradesScreen(),
   ];
 
@@ -46,6 +48,7 @@ class _DesktopAdminDashboardScreenState
     (icon: Icons.fact_check_rounded,      label: 'Attendance'),
     (icon: Icons.photo_library_rounded,   label: 'Grade Gallery'),
     (icon: Icons.folder_copy_rounded,     label: 'Modules'),
+    (icon: Icons.assignment_rounded,      label: 'Assessments'),
     (icon: Icons.grade_rounded,           label: 'Grades'),
   ];
 

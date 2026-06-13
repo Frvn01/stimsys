@@ -6,6 +6,9 @@ import '../providers/student_provider.dart';
 import '../models/enrollment_model.dart';
 import 'student_modules_screen.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'take_assessment_page.dart';
+import 'assessment_result_page.dart';
+import '../screens/qr_scanner_screen.dart';
 
 class QuizPage extends StatefulWidget {
   final ThemeProvider themeProvider;
@@ -151,7 +154,14 @@ class _QuizPageState extends State<QuizPage> {
     final color = _getColorForSubject(code);
 
     return GestureDetector(
-      onTap: () => _showAssessmentsDialog(context, enrollment, isDark),
+      onTap: () async {
+        final provider = context.read<StudentProvider>();
+        showDialog(context: context, barrierDismissible: false, builder: (_) => Center(child: CircularProgressIndicator(color: color)));
+        await provider.loadAvailableAssessments(enrollment.subjectId!);
+        await provider.loadMySubmissions(enrollment.subjectId!);
+        if (context.mounted) Navigator.pop(context);
+        if (context.mounted) _showAssessmentsDialog(context, enrollment, isDark, color);
+      },
       child: ClipRRect(
         borderRadius: BorderRadius.circular(16),
         child: BackdropFilter(
@@ -271,8 +281,9 @@ class _QuizPageState extends State<QuizPage> {
     BuildContext context,
     Enrollment enrollment,
     bool isDark,
+    Color subjectColor,
   ) {
-    final terms = ['Prelim', 'Midterm', 'Pre-Finals', 'Finals'];
+    final terms = ['Prelim', 'Midterm', 'Semi-Finals', 'Finals'];
     final subjectTitle = enrollment.subjectTitle ?? 'Unknown Subject';
 
     showModalBottomSheet(
@@ -346,6 +357,7 @@ class _QuizPageState extends State<QuizPage> {
                           enrollment,
                           term,
                           isDark,
+                          subjectColor,
                         );
                       }).toList(),
                     ),
@@ -364,6 +376,7 @@ class _QuizPageState extends State<QuizPage> {
     Enrollment enrollment,
     String term,
     bool isDark,
+    Color subjectColor,
   ) {
     final subject = enrollment.subject!;
     final subjectIdentifier = '${subject.subjectCode} — ${subject.subjectTitle}';
@@ -372,127 +385,187 @@ class _QuizPageState extends State<QuizPage> {
       switch (t) {
         case 'Prelim': return 'prelim';
         case 'Midterm': return 'midterm';
-        case 'Pre-Finals': return 'prefinal';
-        case 'Finals': return 'final';
+        case 'Semi-Finals': return 'semi_finals';
+        case 'Finals': return 'finals';
         default: return t.toLowerCase();
       }
     }
 
     final termCode = getTermCode(term);
     final provider = context.watch<StudentProvider>();
+    final isUnlocked = provider.isTermUnlocked(subject.id!, termCode);
+    final termAssessments = provider.assessmentsForTerm(subject.id!, termCode);
     final moduleCount = provider.modules
         .where((m) => m.subject == subjectIdentifier && m.term == termCode)
         .length;
-
-    const items = [
-      {'name': 'Module', 'icon': Icons.menu_book_rounded, 'color': Color(0xFF3B82F6)},
-      {'name': 'Quiz', 'icon': Icons.assignment_rounded, 'color': Color(0xFF6366F1)},
-      {'name': 'Exam', 'icon': Icons.school_rounded, 'color': Color(0xFFF59E0B)},
-    ];
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Padding(
           padding: const EdgeInsets.symmetric(vertical: 12),
-          child: Text(
-            term,
-            style: GoogleFonts.inter(
-              fontSize: 15,
-              fontWeight: FontWeight.w800,
-              color: isDark ? Colors.white : Colors.black87,
-              letterSpacing: 0.2,
+          child: Row(
+            children: [
+              Text(
+                term,
+                style: GoogleFonts.inter(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w800,
+                  color: isDark ? Colors.white : Colors.black87,
+                  letterSpacing: 0.2,
+                ),
+              ),
+              if (!isUnlocked) ...[
+                const SizedBox(width: 8),
+                Icon(Icons.lock_rounded, color: Colors.grey[500], size: 14),
+                const SizedBox(width: 4),
+                Text('Locked', style: GoogleFonts.inter(color: Colors.grey[500], fontSize: 11, fontWeight: FontWeight.w600)),
+              ],
+            ],
+          ),
+        ),
+        
+        // Modules Button
+        GestureDetector(
+          onTap: () {
+            Navigator.of(context).pop(); // pop assessments dialog
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => StudentModulesScreen(
+                  subjectCode: subject.subjectCode,
+                  subjectTitle: subject.subjectTitle,
+                  subjectIdentifier: subjectIdentifier,
+                  initialTerm: termCode,
+                ),
+              ),
+            );
+          },
+          child: Container(
+            margin: const EdgeInsets.only(bottom: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            decoration: BoxDecoration(
+              color: subjectColor.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: subjectColor.withValues(alpha: 0.2)),
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.folder_copy_rounded, color: subjectColor, size: 20),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Learning Modules', style: GoogleFonts.inter(color: subjectColor, fontSize: 14, fontWeight: FontWeight.w700)),
+                      Text('$moduleCount Material${moduleCount == 1 ? "" : "s"} available', style: GoogleFonts.inter(color: isDark ? Colors.grey[400] : Colors.grey[600], fontSize: 11)),
+                    ],
+                  ),
+                ),
+                Icon(Icons.chevron_right_rounded, color: subjectColor, size: 20),
+              ],
             ),
           ),
         ),
-        Row(
-          children: items.map((item) {
-            final name = item['name'] as String;
-            final icon = item['icon'] as IconData;
-            final color = item['color'] as Color;
 
-            String subtitleText = '0/1 Items';
-            if (name == 'Module') {
-              subtitleText = '$moduleCount Material${moduleCount == 1 ? '' : 's'}';
-            }
+        // Assessments List
+        if (!isUnlocked)
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: isDark ? Colors.white.withValues(alpha: 0.03) : Colors.grey[50],
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: isDark ? Colors.transparent : Colors.grey[200]!),
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.info_outline_rounded, color: Colors.grey[500], size: 16),
+                const SizedBox(width: 10),
+                Expanded(child: Text('Complete previous terms to unlock assessments.', style: GoogleFonts.inter(color: Colors.grey[500], fontSize: 12))),
+              ],
+            ),
+          )
+        else if (termAssessments.isEmpty)
+          Container(
+            padding: const EdgeInsets.all(12),
+            child: Row(
+              children: [
+                Icon(Icons.check_circle_outline_rounded, color: Colors.grey[500], size: 16),
+                const SizedBox(width: 10),
+                Text('No assessments yet for this term.', style: GoogleFonts.inter(color: Colors.grey[500], fontSize: 12)),
+              ],
+            ),
+          )
+        else
+          ...termAssessments.map((assessment) {
+            final isExam = assessment.isExam;
+            final iconCol = isExam ? const Color(0xFFF59E0B) : const Color(0xFF6366F1);
+            final icon = isExam ? Icons.school_rounded : Icons.assignment_rounded;
+            final isSubmitted = provider.hasSubmittedLocally(assessment.id!);
+            final submission = provider.submissionFor(assessment.id!);
 
-            return Expanded(
-              child: GestureDetector(
-                onTap: () {
-                  if (name == 'Module') {
-                    Navigator.of(context).pop(); // pop assessments dialog
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => StudentModulesScreen(
-                          subjectCode: subject.subjectCode,
-                          subjectTitle: subject.subjectTitle,
-                          subjectIdentifier: subjectIdentifier,
-                          initialTerm: termCode,
-                        ),
-                      ),
-                    );
-                  } else {
-                    // Show 'Coming Soon' feedback
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text(
-                          '$term $name limit reached or not yet available.',
-                          style: GoogleFonts.inter(fontWeight: FontWeight.w600),
-                        ),
-                        backgroundColor: const Color(0xFF6366F1),
-                        behavior: SnackBarBehavior.floating,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        duration: const Duration(seconds: 2),
-                      ),
-                    );
+            return GestureDetector(
+              onTap: () async {
+                if (isSubmitted && submission != null) {
+                  Navigator.push(context, MaterialPageRoute(builder: (_) => AssessmentResultPage(
+                    assessment: assessment,
+                    submission: submission,
+                    isDark: isDark,
+                  )));
+                } else {
+                  final code = await Navigator.push<String>(
+                    context,
+                    MaterialPageRoute(builder: (_) => const QRScannerScreen()),
+                  );
+                  if (code != null && context.mounted) {
+                    final parts = code.split('|');
+                    if (parts.length >= 4 && parts[0] == 'STIMSYS_EXAM' && parts[1] == assessment.id) {
+                      Navigator.push(context, MaterialPageRoute(builder: (_) => TakeAssessmentPage(
+                        assessment: assessment,
+                        isDark: isDark,
+                        prefilledSessionCode: parts[3],
+                      )));
+                    } else {
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Invalid or mismatched Exam QR Code'), backgroundColor: Colors.red));
+                    }
                   }
-                },
-                child: Container(
-                  margin: EdgeInsets.only(
-                    right: name != 'Exam' ? 8 : 0,
-                  ),
-                  padding: const EdgeInsets.symmetric(
-                    vertical: 16,
-                    horizontal: 8,
-                  ),
-                  decoration: BoxDecoration(
-                    color: color.withValues(alpha: 0.08),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(
-                      color: color.withValues(alpha: 0.25),
+                }
+              },
+              child: Container(
+                margin: const EdgeInsets.only(bottom: 8),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                decoration: BoxDecoration(
+                  color: isDark ? const Color(0xFF0F172A) : Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: isSubmitted ? const Color(0xFF10B981) : (isDark ? Colors.white.withValues(alpha: 0.1) : Colors.grey[200]!)),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: isSubmitted ? const Color(0xFF10B981).withValues(alpha: 0.1) : iconCol.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Icon(isSubmitted ? Icons.check_rounded : icon, color: isSubmitted ? const Color(0xFF10B981) : iconCol, size: 18),
                     ),
-                  ),
-                  child: Column(
-                    children: [
-                      Icon(icon, color: color, size: 26),
-                      const SizedBox(height: 8),
-                      Text(
-                        name,
-                        style: GoogleFonts.inter(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w700,
-                          color: color,
-                        ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(assessment.title, style: GoogleFonts.inter(color: isDark ? Colors.white : Colors.black87, fontSize: 13, fontWeight: FontWeight.w700)),
+                          Text(isSubmitted ? 'Completed — Tap to view result' : '${assessment.timeLimitSecs ~/ 60} mins', style: GoogleFonts.inter(color: isSubmitted ? const Color(0xFF10B981) : (isDark ? Colors.grey[400] : Colors.grey[600]), fontSize: 11)),
+                        ],
                       ),
-                      const SizedBox(height: 4),
-                      Text(
-                        subtitleText,
-                        style: TextStyle(
-                          fontSize: 10,
-                          color: isDark ? Colors.grey[400] : Colors.grey[600],
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ],
-                  ),
+                    ),
+                    Icon(Icons.chevron_right_rounded, color: isDark ? Colors.grey[600] : Colors.grey[400], size: 20),
+                  ],
                 ),
               ),
             );
           }).toList(),
-        ),
+
         const SizedBox(height: 12),
         Divider(
           color: isDark

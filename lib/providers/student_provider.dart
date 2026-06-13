@@ -4,6 +4,7 @@ import '../models/student_model.dart';
 import '../models/enrollment_model.dart';
 import '../models/attendance_model.dart';
 import '../models/module_model.dart';
+import '../models/assessment_model.dart';
 import '../services/supabase_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -14,12 +15,16 @@ class StudentProvider extends ChangeNotifier {
   List<Enrollment> _enrollments = [];
   List<AttendanceRecord> _attendanceRecords = [];
   List<LearningModule> _modules = [];
+  List<AssessmentConfig> _availableAssessments = [];
+  List<AssessmentSubmission> _mySubmissions = [];
   bool _isLoading = false;
 
   Student? get currentStudent => _currentStudent;
   List<Enrollment> get enrollments => _enrollments;
   List<AttendanceRecord> get attendanceRecords => _attendanceRecords;
   List<LearningModule> get modules => _modules;
+  List<AssessmentConfig> get availableAssessments => _availableAssessments;
+  List<AssessmentSubmission> get mySubmissions => _mySubmissions;
   bool get isLoading => _isLoading;
   bool get isLoggedIn => _currentStudent != null;
 
@@ -149,6 +154,8 @@ class StudentProvider extends ChangeNotifier {
     _currentStudent = null;
     _enrollments = [];
     _attendanceRecords = [];
+    _availableAssessments = [];
+    _mySubmissions = [];
     notifyListeners();
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -212,6 +219,102 @@ class StudentProvider extends ChangeNotifier {
       return (false, 'Failed to delete profile image: $e');
     }
   }
+
+  // ═══════════════════════════════════════════════════
+  // ASSESSMENTS (Student Side)
+  // ═══════════════════════════════════════════════════
+
+  /// Load published assessments for a subject.
+  Future<void> loadAvailableAssessments(String subjectId) async {
+    try {
+      _availableAssessments =
+          await _service.getPublishedAssessments(subjectId);
+      notifyListeners();
+    } catch (e) {
+      debugPrint('Load available assessments error: $e');
+    }
+  }
+
+  /// Load student's submissions for a subject.
+  Future<void> loadMySubmissions(String subjectId) async {
+    if (_currentStudent?.id == null) return;
+    try {
+      _mySubmissions =
+          await _service.getStudentSubmissions(_currentStudent!.id!, subjectId);
+      notifyListeners();
+    } catch (e) {
+      debugPrint('Load my submissions error: $e');
+    }
+  }
+
+  /// Check if student has submitted a specific assessment.
+  Future<bool> hasSubmitted(String assessmentId) async {
+    if (_currentStudent?.id == null) return false;
+    return _service.hasStudentSubmitted(assessmentId, _currentStudent!.id!);
+  }
+
+  /// Check locally from cached submissions.
+  bool hasSubmittedLocally(String assessmentId) {
+    return _mySubmissions.any((s) => s.assessmentId == assessmentId);
+  }
+
+  /// Get submission for a specific assessment.
+  AssessmentSubmission? submissionFor(String assessmentId) {
+    try {
+      return _mySubmissions
+          .firstWhere((s) => s.assessmentId == assessmentId);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Get assessments for a specific term.
+  List<AssessmentConfig> assessmentsForTerm(String subjectId, String term) {
+    return _availableAssessments
+        .where((a) => a.subjectId == subjectId && a.term == term)
+        .toList();
+  }
+
+  /// Load questions for an assessment.
+  Future<List<AssessmentQuestion>> loadQuestions(String assessmentId) async {
+    return _service.getQuestions(assessmentId);
+  }
+
+  /// Submit an assessment with all answers.
+  Future<AssessmentSubmission?> submitAssessment(
+    AssessmentSubmission submission,
+    List<AssessmentAnswer> answers,
+  ) async {
+    try {
+      final result = await _service.submitAssessment(submission, answers);
+      if (result != null) {
+        _mySubmissions.add(result);
+        notifyListeners();
+      }
+      return result;
+    } catch (e) {
+      debugPrint('Submit assessment error: $e');
+      rethrow;
+    }
+  }
+
+  /// Check if all assessments for a term are completed (for term locking).
+  bool isTermComplete(String subjectId, String term) {
+    final termAssessments = assessmentsForTerm(subjectId, term);
+    if (termAssessments.isEmpty) return true; // No assessments = unlocked
+    return termAssessments.every(
+        (a) => _mySubmissions.any((s) => s.assessmentId == a.id));
+  }
+
+  /// Check if a term is unlocked (previous term must be complete).
+  bool isTermUnlocked(String subjectId, String term) {
+    const termOrder = ['prelim', 'midterm', 'semi_finals', 'finals'];
+    final idx = termOrder.indexOf(term);
+    if (idx <= 0) return true; // Prelim always unlocked
+    // All previous terms must be complete
+    for (int i = 0; i < idx; i++) {
+      if (!isTermComplete(subjectId, termOrder[i])) return false;
+    }
+    return true;
+  }
 }
-
-

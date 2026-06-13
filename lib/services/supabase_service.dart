@@ -14,6 +14,8 @@ import '../models/grade_capture_model.dart';
 import '../models/module_model.dart';
 import '../models/grading_config_model.dart';
 import '../models/student_grade_model.dart';
+import '../models/assessment_model.dart';
+import '../models/student_grade_item_model.dart';
 
 /// Thrown when a QR scan happens outside the subject's valid schedule window.
 class ScheduleValidationException implements Exception {
@@ -1223,6 +1225,557 @@ class SupabaseService {
     } catch (e) {
       debugPrint('Get enrollment roster error: $e');
       return [];
+    }
+  }
+
+  // ═══════════════════════════════════════════════════
+  // ASSESSMENTS CRUD (admin creates quizzes/exams)
+  // ═══════════════════════════════════════════════════
+
+  Future<AssessmentConfig?> createAssessment(AssessmentConfig config) async {
+    try {
+      final response = await _client
+          .from('assessments')
+          .insert(config.toSupabase())
+          .select()
+          .single();
+      return AssessmentConfig.fromSupabase(response);
+    } catch (e) {
+      debugPrint('Create assessment error: $e');
+      rethrow;
+    }
+  }
+
+  Future<AssessmentConfig?> updateAssessment(AssessmentConfig config) async {
+    try {
+      final data = config.toSupabase();
+      data['updated_at'] = DateTime.now().toIso8601String();
+      final response = await _client
+          .from('assessments')
+          .update(data)
+          .eq('id', config.id!)
+          .select()
+          .single();
+      return AssessmentConfig.fromSupabase(response);
+    } catch (e) {
+      debugPrint('Update assessment error: $e');
+      rethrow;
+    }
+  }
+
+  Future<void> deleteAssessment(String id) async {
+    try {
+      await _client.from('assessments').delete().eq('id', id);
+    } catch (e) {
+      debugPrint('Delete assessment error: $e');
+      rethrow;
+    }
+  }
+
+  Future<List<AssessmentConfig>> getAssessmentsForSubject(
+      String subjectId) async {
+    try {
+      final response = await _client
+          .from('assessments')
+          .select()
+          .eq('subject_id', subjectId)
+          .order('term')
+          .order('type')
+          .order('created_at');
+      return (response as List)
+          .map((e) => AssessmentConfig.fromSupabase(e))
+          .toList();
+    } catch (e) {
+      debugPrint('Get assessments error: $e');
+      return [];
+    }
+  }
+
+  Future<List<AssessmentConfig>> getPublishedAssessments(
+      String subjectId) async {
+    try {
+      final response = await _client
+          .from('assessments')
+          .select()
+          .eq('subject_id', subjectId)
+          .eq('is_published', true)
+          .order('term')
+          .order('type');
+      return (response as List)
+          .map((e) => AssessmentConfig.fromSupabase(e))
+          .toList();
+    } catch (e) {
+      debugPrint('Get published assessments error: $e');
+      return [];
+    }
+  }
+
+  Future<void> publishAssessment(String id, bool publish) async {
+    try {
+      await _client
+          .from('assessments')
+          .update({
+            'is_published': publish,
+            'updated_at': DateTime.now().toIso8601String(),
+          })
+          .eq('id', id);
+    } catch (e) {
+      debugPrint('Publish assessment error: $e');
+      rethrow;
+    }
+  }
+
+  Future<String> generateSessionCode(String assessmentId) async {
+    try {
+      const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+      final code = List.generate(4, (_) {
+        final idx = DateTime.now().microsecond % chars.length;
+        return chars[idx];
+      }).join();
+      await _client
+          .from('assessments')
+          .update({'session_code': code})
+          .eq('id', assessmentId);
+      return code;
+    } catch (e) {
+      debugPrint('Generate session code error: $e');
+      rethrow;
+    }
+  }
+
+  // ═══════════════════════════════════════════════════
+  // ASSESSMENT QUESTIONS CRUD
+  // ═══════════════════════════════════════════════════
+
+  Future<AssessmentQuestion?> addQuestion(AssessmentQuestion question) async {
+    try {
+      final response = await _client
+          .from('assessment_questions')
+          .insert(question.toSupabase())
+          .select()
+          .single();
+      return AssessmentQuestion.fromSupabase(response);
+    } catch (e) {
+      debugPrint('Add question error: $e');
+      rethrow;
+    }
+  }
+
+  Future<AssessmentQuestion?> updateQuestion(
+      AssessmentQuestion question) async {
+    try {
+      final response = await _client
+          .from('assessment_questions')
+          .update(question.toSupabase())
+          .eq('id', question.id!)
+          .select()
+          .single();
+      return AssessmentQuestion.fromSupabase(response);
+    } catch (e) {
+      debugPrint('Update question error: $e');
+      rethrow;
+    }
+  }
+
+  Future<void> deleteQuestion(String id) async {
+    try {
+      await _client.from('assessment_questions').delete().eq('id', id);
+    } catch (e) {
+      debugPrint('Delete question error: $e');
+      rethrow;
+    }
+  }
+
+  Future<List<AssessmentQuestion>> getQuestions(String assessmentId) async {
+    try {
+      final response = await _client
+          .from('assessment_questions')
+          .select()
+          .eq('assessment_id', assessmentId)
+          .order('question_order');
+      return (response as List)
+          .map((e) => AssessmentQuestion.fromSupabase(e))
+          .toList();
+    } catch (e) {
+      debugPrint('Get questions error: $e');
+      return [];
+    }
+  }
+
+  // ═══════════════════════════════════════════════════
+  // STUDENT SUBMISSIONS
+  // ═══════════════════════════════════════════════════
+
+  Future<AssessmentSubmission?> submitAssessment(
+    AssessmentSubmission submission,
+    List<AssessmentAnswer> answers,
+  ) async {
+    try {
+      // Insert submission
+      final subRes = await _client
+          .from('assessment_submissions')
+          .insert(submission.toSupabase())
+          .select()
+          .single();
+
+      final submissionId = subRes['id'] as String;
+
+      // Insert all answers
+      if (answers.isNotEmpty) {
+        final answerData = answers
+            .map((a) => AssessmentAnswer(
+                  submissionId: submissionId,
+                  questionId: a.questionId,
+                  studentAnswer: a.studentAnswer,
+                  isCorrect: a.isCorrect,
+                  pointsEarned: a.pointsEarned,
+                ).toSupabase())
+            .toList();
+        await _client.from('assessment_answers').insert(answerData);
+      }
+
+      return AssessmentSubmission.fromSupabase(subRes);
+    } catch (e) {
+      debugPrint('Submit assessment error: $e');
+      rethrow;
+    }
+  }
+
+  Future<bool> hasStudentSubmitted(
+      String assessmentId, String studentId) async {
+    try {
+      final response = await _client
+          .from('assessment_submissions')
+          .select('id')
+          .eq('assessment_id', assessmentId)
+          .eq('student_id', studentId)
+          .maybeSingle();
+      return response != null;
+    } catch (e) {
+      debugPrint('Check submission error: $e');
+      return false;
+    }
+  }
+
+  Future<List<AssessmentSubmission>> getSubmissionsForAssessment(
+      String assessmentId) async {
+    try {
+      final response = await _client
+          .from('assessment_submissions')
+          .select('*, students(usn, last_name, first_name)')
+          .eq('assessment_id', assessmentId)
+          .order('submitted_at', ascending: false);
+      return (response as List)
+          .map((e) => AssessmentSubmission.fromSupabase(e))
+          .toList();
+    } catch (e) {
+      debugPrint('Get submissions error: $e');
+      return [];
+    }
+  }
+
+  Future<List<AssessmentSubmission>> getStudentSubmissions(
+      String studentId, String subjectId) async {
+    try {
+      // Get all assessment IDs for this subject
+      final assessments = await _client
+          .from('assessments')
+          .select('id')
+          .eq('subject_id', subjectId);
+      final ids =
+          (assessments as List).map((e) => e['id'] as String).toList();
+      if (ids.isEmpty) return [];
+
+      final response = await _client
+          .from('assessment_submissions')
+          .select('*, assessments(title, term, type)')
+          .eq('student_id', studentId)
+          .inFilter('assessment_id', ids)
+          .order('submitted_at', ascending: false);
+      return (response as List)
+          .map((e) => AssessmentSubmission.fromSupabase(e))
+          .toList();
+    } catch (e) {
+      debugPrint('Get student submissions error: $e');
+      return [];
+    }
+  }
+
+  // ═══════════════════════════════════════════════════
+  // QR → GRADE PIPELINE
+  // ═══════════════════════════════════════════════════
+
+  /// Process a scanned grade QR code.
+  /// QR format: STIMSYS_GRADE|assessmentId|studentId|score|maxScore|timestamp
+  ///
+  /// Steps:
+  /// 1. Parse the QR data
+  /// 2. Find the assessment → subject → enrollment
+  /// 3. Find or create the StudentGrade record for that enrollment+term
+  /// 4. Create a StudentGradeItem for the quiz/exam score
+  /// 5. Recalculate the grade totals
+  /// 6. Mark submission as graded
+  ///
+  /// Returns (success, message).
+  Future<(bool, String)> processGradeQR(String qrData) async {
+    try {
+      final parts = qrData.split('|');
+      if (parts.length < 6 || parts[0] != 'STIMSYS_GRADE') {
+        return (false, 'Invalid QR format');
+      }
+
+      final assessmentId = parts[1];
+      final studentId = parts[2];
+      final score = double.tryParse(parts[3]) ?? 0;
+      final maxScore = double.tryParse(parts[4]) ?? 0;
+
+      // 1. Get the assessment to know subject + term + type
+      final assessmentMap = await _client
+          .from('assessments')
+          .select()
+          .eq('id', assessmentId)
+          .maybeSingle();
+      if (assessmentMap == null) return (false, 'Assessment not found');
+      final assessment = AssessmentConfig.fromSupabase(assessmentMap);
+
+      // 2. Find enrollment
+      final enrollmentMap = await _client
+          .from('enrollments')
+          .select('id')
+          .eq('student_id', studentId)
+          .eq('subject_id', assessment.subjectId)
+          .maybeSingle();
+      if (enrollmentMap == null) {
+        return (false, 'Student not enrolled in this subject');
+      }
+      final enrollmentId = enrollmentMap['id'] as String;
+
+      // 3. Find or create StudentGrade for this enrollment + term
+      var gradeMap = await _client
+          .from('student_grades')
+          .select()
+          .eq('enrollment_id', enrollmentId)
+          .eq('term', assessment.term)
+          .maybeSingle();
+
+      String gradeId;
+      if (gradeMap != null) {
+        gradeId = gradeMap['id'] as String;
+      } else {
+        final newGrade = await _client
+            .from('student_grades')
+            .insert({
+              'enrollment_id': enrollmentId,
+              'term': assessment.term,
+            })
+            .select()
+            .single();
+        gradeId = newGrade['id'] as String;
+      }
+
+      // 4. Check if a grade item for this assessment already exists
+      final existingItem = await _client
+          .from('student_grade_items')
+          .select()
+          .eq('grade_id', gradeId)
+          .eq('assessment_id', assessmentId)
+          .maybeSingle();
+
+      final category = assessment.isExam ? 'exam' : 'quiz';
+      if (existingItem != null) {
+        // Update existing
+        await _client
+            .from('student_grade_items')
+            .update({'score': score, 'max_score': maxScore})
+            .eq('id', existingItem['id']);
+      } else {
+        // Create new
+        await _client.from('student_grade_items').insert({
+          'grade_id': gradeId,
+          'category': category,
+          'label': assessment.title,
+          'score': score,
+          'max_score': maxScore,
+          'source': 'assessment_qr',
+          'assessment_id': assessmentId,
+        });
+      }
+
+      // 5. Recalculate grade totals
+      await recalculateGradeTotals(gradeId);
+
+      // 6. Mark submission as graded
+      await _client
+          .from('assessment_submissions')
+          .update({'is_graded': true})
+          .eq('assessment_id', assessmentId)
+          .eq('student_id', studentId);
+
+      return (true, '${assessment.title} — Score: ${score.toStringAsFixed(0)}/${maxScore.toStringAsFixed(0)} recorded');
+    } catch (e) {
+      debugPrint('Process grade QR error: $e');
+      return (false, 'Error: $e');
+    }
+  }
+
+  // ═══════════════════════════════════════════════════
+  // STUDENT GRADE ITEMS CRUD
+  // ═══════════════════════════════════════════════════
+
+  Future<List<StudentGradeItem>> getGradeItems(String gradeId) async {
+    try {
+      final response = await _client
+          .from('student_grade_items')
+          .select()
+          .eq('grade_id', gradeId)
+          .order('created_at');
+      return (response as List)
+          .map((e) => StudentGradeItem.fromSupabase(e))
+          .toList();
+    } catch (e) {
+      debugPrint('Get grade items error: $e');
+      return [];
+    }
+  }
+
+  Future<StudentGradeItem?> upsertGradeItem(StudentGradeItem item) async {
+    try {
+      if (item.id != null) {
+        final response = await _client
+            .from('student_grade_items')
+            .update(item.toSupabase())
+            .eq('id', item.id!)
+            .select()
+            .single();
+        return StudentGradeItem.fromSupabase(response);
+      } else {
+        final response = await _client
+            .from('student_grade_items')
+            .insert(item.toSupabase())
+            .select()
+            .single();
+        return StudentGradeItem.fromSupabase(response);
+      }
+    } catch (e) {
+      debugPrint('Upsert grade item error: $e');
+      rethrow;
+    }
+  }
+
+  Future<void> deleteGradeItem(String id) async {
+    try {
+      await _client.from('student_grade_items').delete().eq('id', id);
+    } catch (e) {
+      debugPrint('Delete grade item error: $e');
+      rethrow;
+    }
+  }
+
+  /// Recalculate quiz_raw/quiz_max and exam_raw/exam_max from grade items.
+  Future<void> recalculateGradeTotals(String gradeId) async {
+    try {
+      final items = await getGradeItems(gradeId);
+
+      double quizRaw = 0, quizMax = 0, examRaw = 0, examMax = 0;
+      for (final item in items) {
+        if (item.category == 'quiz' || item.category == 'activity') {
+          quizRaw += item.score;
+          quizMax += item.maxScore;
+        } else if (item.category == 'exam') {
+          examRaw += item.score;
+          examMax += item.maxScore;
+        }
+      }
+
+      // Get the existing grade to preserve attendance + compute grade
+      final gradeMap = await _client
+          .from('student_grades')
+          .select()
+          .eq('id', gradeId)
+          .single();
+      final attendRaw =
+          (gradeMap['attendance_raw'] as num?)?.toDouble() ?? 0;
+      final attendMax =
+          (gradeMap['attendance_max'] as num?)?.toDouble() ?? 0;
+
+      // Get grading config to compute grade
+      final enrollmentId = gradeMap['enrollment_id'] as String;
+      final enrollment = await _client
+          .from('enrollments')
+          .select('subject_id')
+          .eq('id', enrollmentId)
+          .single();
+      final subjectId = enrollment['subject_id'] as String;
+      final configMap = await _client
+          .from('subject_grading_config')
+          .select()
+          .eq('subject_id', subjectId)
+          .maybeSingle();
+
+      double? computedGrade;
+      if (configMap != null) {
+        final config = GradingConfig.fromSupabase(configMap);
+        if (examMax > 0 && quizMax > 0 && attendMax > 0) {
+          computedGrade = config.computeTermGrade(
+            examRaw: examRaw,
+            examMax: examMax,
+            quizRaw: quizRaw,
+            quizMax: quizMax,
+            attendRaw: attendRaw,
+            attendMax: attendMax,
+          );
+        }
+      }
+
+      await _client.from('student_grades').update({
+        'quiz_raw': quizRaw,
+        'quiz_max': quizMax,
+        'exam_raw': examRaw,
+        'exam_max': examMax,
+        'computed_grade': computedGrade,
+        'updated_at': DateTime.now().toIso8601String(),
+      }).eq('id', gradeId);
+    } catch (e) {
+      debugPrint('Recalculate grade totals error: $e');
+    }
+  }
+
+  // ═══════════════════════════════════════════════════
+  // ATTENDANCE → GRADE AUTO-COMPUTATION
+  // ═══════════════════════════════════════════════════
+
+  /// Compute attendance score from attendance records.
+  /// Formula: (present + 0.5 * late) / total_days × maxScore
+  Future<({double raw, double max})> computeAttendanceScore({
+    required String enrollmentId,
+    required double maxScore,
+  }) async {
+    try {
+      final records = await _client
+          .from('attendance')
+          .select('status')
+          .eq('enrollment_id', enrollmentId);
+
+      if ((records as List).isEmpty) return (raw: 0.0, max: maxScore);
+
+      int present = 0, late = 0, total = 0;
+      for (final r in records) {
+        final status = r['status'] as String? ?? '';
+        if (status == 'present' ||
+            status == 'late' ||
+            status == 'absent') {
+          total++;
+          if (status == 'present') present++;
+          if (status == 'late') late++;
+        }
+      }
+
+      if (total == 0) return (raw: 0.0, max: maxScore);
+      final raw = ((present + 0.5 * late) / total) * maxScore;
+      return (raw: double.parse(raw.toStringAsFixed(1)), max: maxScore);
+    } catch (e) {
+      debugPrint('Compute attendance score error: $e');
+      return (raw: 0.0, max: maxScore);
     }
   }
 }

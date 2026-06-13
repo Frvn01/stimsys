@@ -7,6 +7,7 @@ import 'student_registry_screen.dart';
 import 'subject_management_screen.dart';
 import 'attendance_scanner_screen.dart';
 import 'grade_capture_screen.dart';
+import '../qr_scanner_screen.dart';
 
 class AdminDashboardScreen extends StatefulWidget {
   const AdminDashboardScreen({super.key});
@@ -243,6 +244,7 @@ class _AdminHomeTabState extends State<_AdminHomeTab> {
                 },
               ),
               const SizedBox(height: 10),
+              const SizedBox(height: 10),
               _QuickAction(
                 icon: Icons.add_box_rounded, label: 'Create Subject',
                 subtitle: 'Add new subject with schedule & room',
@@ -250,6 +252,41 @@ class _AdminHomeTabState extends State<_AdminHomeTab> {
                 onTap: () {
                   context.findAncestorStateOfType<_AdminDashboardScreenState>()
                     ?.setState(() => context.findAncestorStateOfType<_AdminDashboardScreenState>()?._currentIndex = 2);
+                },
+              ),
+              const SizedBox(height: 10),
+              _QuickAction(
+                icon: Icons.fact_check_rounded, label: 'Scan Exam/Quiz Grade',
+                subtitle: 'Scan a student\'s assessment result QR',
+                color: const Color(0xFF8B5CF6),
+                onTap: () async {
+                  final code = await Navigator.push<String>(
+                    context,
+                    MaterialPageRoute(builder: (_) => const QRScannerScreen()),
+                  );
+                  if (code != null && context.mounted) {
+                    final provider = context.read<AdminProvider>();
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Processing Grade...'), duration: Duration(seconds: 1)),
+                    );
+                    try {
+                      final (success, msg) = await provider.processGradeQR(code);
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(msg),
+                            backgroundColor: success ? Colors.green : Colors.red,
+                          ),
+                        );
+                      }
+                    } catch (e) {
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+                        );
+                      }
+                    }
+                  }
                 },
               ),
               const SizedBox(height: 8),

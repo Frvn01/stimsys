@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -236,6 +237,9 @@ class _DesktopSubjectManagementScreenState
           color: Colors.black, emptyColor: Colors.white);
       final img = await painter.toImageData(600, format: ui.ImageByteFormat.png);
       if (img == null) throw Exception('Failed');
+      if (kIsWeb) {
+        throw Exception('Downloading files directly is not supported on web in this demo.');
+      }
       final home = Platform.environment['USERPROFILE'] ?? Platform.environment['HOME'] ?? '.';
       final path = '$home/Downloads/STIMSYS_QR_$code.png';
       await File(path).writeAsBytes(img.buffer.asUint8List());

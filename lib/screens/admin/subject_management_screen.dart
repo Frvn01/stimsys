@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
@@ -316,7 +317,9 @@ class _SubjectCardState extends State<_SubjectCard> {
 
       // Determine save path
       String savePath;
-      if (Platform.isWindows || Platform.isMacOS || Platform.isLinux) {
+      if (kIsWeb) {
+        throw Exception('Downloading files directly is not supported on web in this demo.');
+      } else if (Platform.isWindows || Platform.isMacOS || Platform.isLinux) {
         // Desktop: save to Downloads folder
         final home = Platform.environment['USERPROFILE'] ?? Platform.environment['HOME'] ?? '.';
         final downloadsDir = Directory('$home/Downloads');

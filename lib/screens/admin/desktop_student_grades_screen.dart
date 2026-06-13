@@ -379,6 +379,7 @@ class _GradeRowState extends State<_GradeRow> {
   static const _accent  = Color(0xFF6366F1);
   static const _green   = Color(0xFF10B981);
   static const _red     = Color(0xFFEF4444);
+  static const _amber   = Color(0xFFF59E0B);
 
   bool _hovered = false;
   bool _editing = false;
@@ -527,8 +528,13 @@ class _GradeRowState extends State<_GradeRow> {
                           color: gradeColor, fontSize: 12, fontWeight: FontWeight.w800)),
                 ),
         )),
-        SizedBox(width: 48, child: Center(
-          child: _rowBtn(Icons.edit_rounded, _accent, () => setState(() => _editing = true), 'Edit'),
+        SizedBox(width: 60, child: Row(
+          mainAxisAlignment: MainAxisAlignment.end,
+          children: [
+            _rowBtn(Icons.list_alt_rounded, _amber, () => _showGradeItemsDialog(), 'Grade Items'),
+            const SizedBox(width: 4),
+            _rowBtn(Icons.edit_rounded, _accent, () => setState(() => _editing = true), 'Manual Edit'),
+          ],
         )),
       ]),
     );
@@ -695,6 +701,124 @@ class _GradeRowState extends State<_GradeRow> {
                   borderRadius: BorderRadius.circular(6),
                   border: Border.all(color: color.withValues(alpha: 0.2))),
               child: Icon(icon, color: color, size: 14)))));
+
+  void _showGradeItemsDialog() async {
+    final grade = widget.grade;
+    if (grade == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Please manually save a 0/0 grade first before adding items.'), backgroundColor: _amber));
+      return;
+    }
+
+    // Load items
+    await widget.provider.loadGradeItems(grade.id!);
+
+    if (!mounted) return;
+    showDialog(
+      context: context,
+      builder: (ctx) => Consumer<AdminProvider>(
+        builder: (_, p, __) {
+          final items = p.gradeItemsFor(grade.id!);
+          return AlertDialog(
+            backgroundColor: _surface,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+            title: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Grade Items — ${widget.student['last_name']}, ${widget.student['first_name']}',
+                          style: GoogleFonts.inter(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w700)),
+                      Text('${widget.term.toUpperCase()} TERM',
+                          style: GoogleFonts.inter(color: Colors.grey[500], fontSize: 11)),
+                    ],
+                  ),
+                ),
+                ElevatedButton.icon(
+                  onPressed: () async {
+                    try {
+                      await p.autoComputeAttendance(widget.enrollmentId, grade.id!, widget.config.attendancePct);
+                      if (ctx.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('Attendance computed successfully!'), backgroundColor: _green));
+                      }
+                    } catch (e) {
+                      if (ctx.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('Error: $e'), backgroundColor: _red));
+                      }
+                    }
+                  },
+                  icon: const Icon(Icons.auto_awesome_rounded, size: 14),
+                  label: Text('Auto-Compute Attendance', style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600)),
+                  style: ElevatedButton.styleFrom(backgroundColor: _green),
+                ),
+              ],
+            ),
+            content: SizedBox(
+              width: 500,
+              height: 400,
+              child: items.isEmpty
+                  ? Center(child: Text('No assessments or activities found for this term.', style: GoogleFonts.inter(color: Colors.grey[500])))
+                  : ListView.builder(
+                      itemCount: items.length,
+                      itemBuilder: (_, i) {
+                        final item = items[i];
+                        final isExam = item.category == 'exam';
+                        final color = isExam ? _accent : _amber;
+                        return Container(
+                          margin: const EdgeInsets.only(bottom: 8),
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF0F172A),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: _border),
+                          ),
+                          child: Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: color.withValues(alpha: 0.12),
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: Text(item.category.toUpperCase(), style: GoogleFonts.inter(color: color, fontSize: 9, fontWeight: FontWeight.w800)),
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(item.label, style: GoogleFonts.inter(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600)),
+                                    Text('Source: ${item.source}', style: GoogleFonts.inter(color: Colors.grey[500], fontSize: 10)),
+                                  ],
+                                ),
+                              ),
+                              Text('${item.score.toStringAsFixed(0)} / ${item.maxScore.toStringAsFixed(0)}',
+                                  style: GoogleFonts.inter(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w700)),
+                              const SizedBox(width: 8),
+                              IconButton(
+                                icon: Icon(Icons.delete_rounded, color: Colors.red[400], size: 16),
+                                onPressed: () => p.removeGradeItem(item.id!, grade.id!),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: Text('Close', style: GoogleFonts.inter(color: Colors.grey[400])),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
