@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
 import 'dart:typed_data';
 import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
@@ -16,6 +17,7 @@ import '../models/grading_config_model.dart';
 import '../models/student_grade_model.dart';
 import '../models/assessment_model.dart';
 import '../models/student_grade_item_model.dart';
+import '../models/announcement_model.dart';
 
 /// Thrown when a QR scan happens outside the subject's valid schedule window.
 class ScheduleValidationException implements Exception {
@@ -28,17 +30,34 @@ class ScheduleValidationException implements Exception {
 /// Maps a scheduleDay code to the list of Dart weekday integers (1=Mon … 7=Sun).
 List<int> _scheduleDayToWeekdays(String scheduleDay) {
   switch (scheduleDay.toUpperCase().trim()) {
-    case 'MON':    return [DateTime.monday];
-    case 'TUE':    return [DateTime.tuesday];
-    case 'WED':    return [DateTime.wednesday];
-    case 'THU':    return [DateTime.thursday];
-    case 'FRI':    return [DateTime.friday];
-    case 'SAT':    return [DateTime.saturday];
-    case 'SUN':    return [DateTime.sunday];
-    case 'MWF':    return [DateTime.monday, DateTime.wednesday, DateTime.friday];
-    case 'TTH':    return [DateTime.tuesday, DateTime.thursday];
-    case 'MTWTHF': return [DateTime.monday, DateTime.tuesday, DateTime.wednesday, DateTime.thursday, DateTime.friday];
-    default:       return [];
+    case 'MON':
+      return [DateTime.monday];
+    case 'TUE':
+      return [DateTime.tuesday];
+    case 'WED':
+      return [DateTime.wednesday];
+    case 'THU':
+      return [DateTime.thursday];
+    case 'FRI':
+      return [DateTime.friday];
+    case 'SAT':
+      return [DateTime.saturday];
+    case 'SUN':
+      return [DateTime.sunday];
+    case 'MWF':
+      return [DateTime.monday, DateTime.wednesday, DateTime.friday];
+    case 'TTH':
+      return [DateTime.tuesday, DateTime.thursday];
+    case 'MTWTHF':
+      return [
+        DateTime.monday,
+        DateTime.tuesday,
+        DateTime.wednesday,
+        DateTime.thursday,
+        DateTime.friday,
+      ];
+    default:
+      return [];
   }
 }
 
@@ -50,7 +69,7 @@ class SupabaseService {
   final _client = SupabaseConfig.client;
 
   /// Expose client for advanced queries.
-  get client => _client;
+  SupabaseClient get client => _client;
 
   // ═══════════════════════════════════════════════════
   // PASSWORD HASHING
@@ -136,11 +155,31 @@ class SupabaseService {
           .select()
           .order('created_at', ascending: false);
 
-      return (response as List)
-          .map((e) => Student.fromSupabase(e))
-          .toList();
+      return (response as List).map((e) => Student.fromSupabase(e)).toList();
     } catch (e) {
       debugPrint('Get students error: $e');
+      return [];
+    }
+  }
+
+  /// Get students enrolled in an instructor's subjects.
+  Future<List<Student>> getStudentsForInstructor(String instructorId) async {
+    try {
+      final response = await _client
+          .from('enrollments')
+          .select('students!inner(*), subjects!inner(instructor_id)')
+          .eq('subjects.instructor_id', instructorId);
+
+      final studentMaps = <String, Map<String, dynamic>>{};
+      for (final item in (response as List)) {
+        final sMap = item['students'] as Map<String, dynamic>?;
+        if (sMap != null && sMap['id'] != null) {
+          studentMaps[sMap['id'].toString()] = sMap;
+        }
+      }
+      return studentMaps.values.map((e) => Student.fromSupabase(e)).toList();
+    } catch (e) {
+      debugPrint('Get students for instructor error: $e');
       return [];
     }
   }
@@ -182,6 +221,9 @@ class SupabaseService {
     }
   }
 
+  // ── Token generation helper (public for provider use) ──
+  String generateSessionToken() => _generateToken();
+
   // ═══════════════════════════════════════════════════
   // INSTRUCTORS
   // ═══════════════════════════════════════════════════
@@ -193,9 +235,7 @@ class SupabaseService {
           .select()
           .order('full_name');
 
-      return (response as List)
-          .map((e) => Instructor.fromSupabase(e))
-          .toList();
+      return (response as List).map((e) => Instructor.fromSupabase(e)).toList();
     } catch (e) {
       debugPrint('Get instructors error: $e');
       return [];
@@ -206,6 +246,226 @@ class SupabaseService {
     final instructors = await getInstructors();
     if (instructors.isNotEmpty) return instructors.first;
     return null;
+  }
+
+  /// Fetches a single instructor by ID — always returns all columns including qr_token.
+  Future<Instructor?> getInstructorById(String id) async {
+    try {
+      final response = await _client
+          .from('instructors')
+          .select()
+          .eq('id', id)
+          .maybeSingle();
+      if (response == null) return null;
+      return Instructor.fromSupabase(response);
+    } catch (e) {
+      debugPrint('Get instructor by id error: $e');
+      return null;
+    }
+  }
+
+  // ── Super Admin: Register a new instructor ──────────────
+  /// Creates an instructor record with a fresh one-time QR token.
+  /// Returns the saved [Instructor] (including the generated token).
+  Future<Instructor> registerInstructor({
+    required String fullName,
+    String? email,
+    String? department,
+    String? phone,
+  }) async {
+    // Generate a cryptographically-secure one-time QR token
+    final token = _generateToken();
+
+    // Only include columns that exist in the instructors table.
+    // email / department / phone are stored locally in the model but are NOT
+    // columns in the current Supabase schema — adding them causes PGRST204.
+    final data = {
+      'full_name': fullName.trim(),
+      'qr_token': token,
+      'qr_used': false,
+      'is_active': true,
+    };
+
+    try {
+      final response = await _client
+          .from('instructors')
+          .insert(data)
+          .select()
+          .single();
+      return Instructor.fromSupabase(response);
+    } catch (e) {
+      debugPrint('Register instructor error: $e');
+      rethrow;
+    }
+  }
+
+  /// Looks up an instructor by their one-time QR token.
+  /// Returns null if not found, already used, or inactive.
+  Future<Instructor?> getInstructorByQrToken(String token) async {
+    try {
+      final response = await _client
+          .from('instructors')
+          .select()
+          .eq('qr_token', token.trim())
+          .eq('qr_used', false)
+          .eq('is_active', true)
+          .maybeSingle();
+      if (response == null) {
+        debugPrint('QR lookup: no match for token (may be used, inactive, or RLS blocked)');
+        return null;
+      }
+      return Instructor.fromSupabase(response);
+    } catch (e) {
+      debugPrint('Get instructor by QR error: $e');
+      rethrow; // Surface to caller so auth failure shows real reason
+    }
+  }
+
+  /// Marks the QR token as used and stores a persistent session token.
+  /// Called immediately after a successful first-time QR login.
+  Future<Instructor?> markQrTokenUsed(String instructorId, String sessionToken) async {
+    try {
+      final response = await _client
+          .from('instructors')
+          .update({
+            'qr_used': true,
+            'session_token': sessionToken,
+          })
+          .eq('id', instructorId)
+          .select()
+          .single();
+      return Instructor.fromSupabase(response);
+    } catch (e) {
+      debugPrint('Mark QR used error: $e');
+      rethrow;
+    }
+  }
+
+  /// Validates a stored session token — returns the instructor if active.
+  Future<Instructor?> validateSessionToken(String sessionToken) async {
+    try {
+      final response = await _client
+          .from('instructors')
+          .select()
+          .eq('session_token', sessionToken.trim())
+          .eq('is_active', true)
+          .maybeSingle();
+      if (response == null) return null;
+      return Instructor.fromSupabase(response);
+    } catch (e) {
+      debugPrint('Validate session token error: $e');
+      return null;
+    }
+  }
+
+  /// Clears the session token on logout.
+  Future<void> clearInstructorSession(String instructorId) async {
+    try {
+      await _client
+          .from('instructors')
+          .update({'session_token': null})
+          .eq('id', instructorId);
+    } catch (e) {
+      debugPrint('Clear session error: $e');
+    }
+  }
+
+  /// Deactivates an instructor (soft delete).
+  Future<void> deactivateInstructor(String id) async {
+    try {
+      await _client
+          .from('instructors')
+          .update({'is_active': false, 'session_token': null})
+          .eq('id', id);
+    } catch (e) {
+      debugPrint('Deactivate instructor error: $e');
+      rethrow;
+    }
+  }
+
+  /// Re-activates a previously deactivated instructor.
+  Future<void> reactivateInstructor(String id) async {
+    try {
+      await _client
+          .from('instructors')
+          .update({'is_active': true})
+          .eq('id', id);
+    } catch (e) {
+      debugPrint('Reactivate instructor error: $e');
+      rethrow;
+    }
+  }
+
+  /// Permanently deletes an instructor record.
+  Future<void> deleteInstructor(String id) async {
+    try {
+      await _client
+          .from('instructors')
+          .delete()
+          .eq('id', id);
+    } catch (e) {
+      debugPrint('Delete instructor error: $e');
+      rethrow;
+    }
+  }
+
+  /// Resets the QR token so the instructor can log in again.
+  /// Clears the used flag and any existing session.
+  Future<Instructor?> regenerateQrToken(String id) async {
+    final newToken = _generateToken();
+    try {
+      final response = await _client
+          .from('instructors')
+          .update({
+            'qr_token': newToken,
+            'qr_used': false,
+            'session_token': null,
+          })
+          .eq('id', id)
+          .select()
+          .single();
+      return Instructor.fromSupabase(response);
+    } catch (e) {
+      debugPrint('Regenerate QR token error: $e');
+      rethrow;
+    }
+  }
+
+  /// Updates instructor profile info.
+  Future<Instructor?> updateInstructor({
+    required String id,
+    String? fullName,
+    String? email,
+    String? department,
+    String? phone,
+  }) async {
+    final data = <String, dynamic>{};
+    if (fullName != null) data['full_name'] = fullName.trim();
+    if (email != null) data['email'] = email.trim();
+    if (department != null) data['department'] = department.trim();
+    if (phone != null) data['phone'] = phone.trim();
+    if (data.isEmpty) return null;
+
+    try {
+      final response = await _client
+          .from('instructors')
+          .update(data)
+          .eq('id', id)
+          .select()
+          .single();
+      return Instructor.fromSupabase(response);
+    } catch (e) {
+      debugPrint('Update instructor error: $e');
+      rethrow;
+    }
+  }
+
+  // ── Token generation helper ──────────────────────────────
+  String _generateToken() {
+    // Use cryptographically-secure random bytes for a truly unique token
+    final rng = Random.secure();
+    final bytes = List<int>.generate(32, (_) => rng.nextInt(256));
+    return bytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
   }
 
   // ═══════════════════════════════════════════════════
@@ -232,7 +492,7 @@ class SupabaseService {
         'schedule_end_time': scheduleEndTime,
         'schedule_day': scheduleDay.trim().toUpperCase(),
         'room': room.trim(),
-        'instructor_id': instructorId,
+        'instructor_id': instructorId.isEmpty ? null : instructorId,
         'late_threshold_minutes': lateThresholdMinutes,
       };
 
@@ -249,16 +509,58 @@ class SupabaseService {
     }
   }
 
-  Future<List<Subject>> getSubjects() async {
+  Future<Subject?> updateSubject(
+    String subjectId, {
+    required String subjectCode,
+    required String subjectTitle,
+    required int units,
+    required String scheduleStartTime,
+    required String scheduleEndTime,
+    required String scheduleDay,
+    required String room,
+    required String instructorId,
+    int lateThresholdMinutes = 15,
+  }) async {
     try {
+      final data = {
+        'subject_code': subjectCode.trim().toUpperCase(),
+        'subject_title': subjectTitle.trim(),
+        'units': units,
+        'schedule_start_time': scheduleStartTime,
+        'schedule_end_time': scheduleEndTime,
+        'schedule_day': scheduleDay.trim().toUpperCase(),
+        'room': room.trim(),
+        'instructor_id': instructorId.isEmpty ? null : instructorId,
+        'late_threshold_minutes': lateThresholdMinutes,
+      };
+
       final response = await _client
           .from('subjects')
+          .update(data)
+          .eq('id', subjectId)
           .select('*, instructors(full_name)')
-          .order('subject_code');
+          .single();
 
-      return (response as List)
-          .map((e) => Subject.fromSupabase(e))
-          .toList();
+      return Subject.fromSupabase(response);
+    } catch (e) {
+      debugPrint('Update subject error: $e');
+      rethrow;
+    }
+  }
+
+  Future<List<Subject>> getSubjects({String? instructorId}) async {
+    try {
+      var query = _client
+          .from('subjects')
+          .select('*, instructors(full_name)');
+
+      if (instructorId != null) {
+        query = query.eq('instructor_id', instructorId);
+      }
+
+      final response = await query.order('subject_code');
+
+      return (response as List).map((e) => Subject.fromSupabase(e)).toList();
     } catch (e) {
       debugPrint('Get subjects error: $e');
       return [];
@@ -282,10 +584,7 @@ class SupabaseService {
     try {
       final response = await _client
           .from('enrollments')
-          .insert({
-            'student_id': studentId,
-            'subject_id': subjectId,
-          })
+          .insert({'student_id': studentId, 'subject_id': subjectId})
           .select('*, subjects(*, instructors(full_name))')
           .single();
 
@@ -304,9 +603,7 @@ class SupabaseService {
           .eq('student_id', studentId)
           .order('enrolled_at', ascending: false);
 
-      return (response as List)
-          .map((e) => Enrollment.fromSupabase(e))
-          .toList();
+      return (response as List).map((e) => Enrollment.fromSupabase(e)).toList();
     } catch (e) {
       debugPrint('Get enrollments error: $e');
       return [];
@@ -320,9 +617,7 @@ class SupabaseService {
           .select('*, students(*)')
           .eq('subject_id', subjectId);
 
-      return (response as List)
-          .map((e) => Enrollment.fromSupabase(e))
-          .toList();
+      return (response as List).map((e) => Enrollment.fromSupabase(e)).toList();
     } catch (e) {
       debugPrint('Get subject enrollments error: $e');
       return [];
@@ -341,7 +636,9 @@ class SupabaseService {
   /// Enroll a student by subject ID (used when student scans enrollment QR).
   /// Returns existing enrollment if already enrolled (no error).
   Future<Enrollment> enrollStudentBySubjectId(
-      String studentId, String subjectId) async {
+    String studentId,
+    String subjectId,
+  ) async {
     try {
       final existing = await _client
           .from('enrollments')
@@ -380,26 +677,40 @@ class SupabaseService {
       final now = DateTime.now();
       final today = DateTime(now.year, now.month, now.day);
 
-      // ── Schedule Day Validation ──────────────────────────────────
+      // ── Schedule Day Validation ─── strict rejection ─────────────
       final validDays = _scheduleDayToWeekdays(subject.scheduleDay);
       if (validDays.isNotEmpty && !validDays.contains(now.weekday)) {
-        throw const ScheduleValidationException(
-            'No class scheduled today for this subject.');
+        const dayNames = [
+          '',
+          'Monday',
+          'Tuesday',
+          'Wednesday',
+          'Thursday',
+          'Friday',
+          'Saturday',
+          'Sunday',
+        ];
+        final todayName = dayNames[now.weekday];
+        throw ScheduleValidationException(
+          'No class today ($todayName). This subject is only scheduled on ${subject.scheduleDay}.',
+        );
       }
 
-      // ── Time Window Validation ───────────────────────────────────
+      // ── Time Window Validation ────────────────────────────────────
       final startTime = subject.startTimeToday;
       final endTime = subject.endTimeToday;
-      final openTime = startTime.subtract(const Duration(minutes: 30));
 
-      if (now.isBefore(openTime)) {
-        final diff = openTime.difference(now).inMinutes;
+      if (now.isBefore(startTime)) {
+        final diff = startTime.difference(now).inMinutes;
         throw ScheduleValidationException(
-            "Class hasn't started yet — opens in $diff min.");
+          'Class hasn\'t started yet. Starts in $diff minute${diff == 1 ? '' : 's'}.',
+        );
       }
+
       if (now.isAfter(endTime)) {
-        throw const ScheduleValidationException(
-            'Class session has already ended.');
+        throw ScheduleValidationException(
+          'Class has already ended. Attendance can no longer be recorded.',
+        );
       }
 
       // ── Duplicate Check ──────────────────────────────────────────
@@ -414,9 +725,13 @@ class SupabaseService {
         return AttendanceRecord.fromSupabase(existing);
       }
 
-      // ── Late vs Present Determination ────────────────────────────
-      final lateThreshold =
-          startTime.add(Duration(minutes: subject.lateThresholdMinutes));
+      // ── Late vs Present (10-minute grace period) ─────────────────
+      // Present: scanned within 10 minutes of class start
+      // Late: more than 10 minutes after class start
+      const lateGraceMinutes = 10;
+      final lateThreshold = startTime.add(
+        const Duration(minutes: lateGraceMinutes),
+      );
 
       String status;
       int minutesLate = 0;
@@ -446,7 +761,15 @@ class SupabaseService {
           .select()
           .single();
 
-      return AttendanceRecord.fromSupabase(response);
+      final record = AttendanceRecord.fromSupabase(response);
+
+      // Auto-sync to grades
+      await syncAttendanceToGrade(
+        enrollmentId: enrollmentId,
+        date: record.date,
+      );
+
+      return record;
     } on ScheduleValidationException {
       rethrow;
     } catch (e) {
@@ -459,10 +782,11 @@ class SupabaseService {
   Future<int> markAbsentees(String subjectId) async {
     try {
       final today = DateTime.now();
-      final dateStr = DateTime(today.year, today.month, today.day)
-          .toIso8601String()
-          .split('T')
-          .first;
+      final dateStr = DateTime(
+        today.year,
+        today.month,
+        today.day,
+      ).toIso8601String().split('T').first;
 
       final enrollments = await _client
           .from('enrollments')
@@ -490,6 +814,13 @@ class SupabaseService {
             'minutes_late': 0,
             'remarks': 'Auto-absent (did not scan)',
           });
+
+          // Auto-sync to grades
+          await syncAttendanceToGrade(
+            enrollmentId: enrollmentId,
+            date: DateTime(today.year, today.month, today.day),
+          );
+
           absentCount++;
         }
       }
@@ -503,7 +834,9 @@ class SupabaseService {
 
   /// Get attendance records for a subject on a given date.
   Future<List<AttendanceRecord>> getAttendanceBySubject(
-      String subjectId, {DateTime? date}) async {
+    String subjectId, {
+    DateTime? date,
+  }) async {
     try {
       final dateStr = (date ?? DateTime.now())
           .toIso8601String()
@@ -515,8 +848,9 @@ class SupabaseService {
           .select('id')
           .eq('subject_id', subjectId);
 
-      final enrollmentIds =
-          (enrollments as List).map((e) => e['id'] as String).toList();
+      final enrollmentIds = (enrollments as List)
+          .map((e) => e['id'] as String)
+          .toList();
 
       if (enrollmentIds.isEmpty) return [];
 
@@ -544,8 +878,9 @@ class SupabaseService {
           .select('id')
           .eq('student_id', studentId);
 
-      final enrollmentIds =
-          (enrollments as List).map((e) => e['id'] as String).toList();
+      final enrollmentIds = (enrollments as List)
+          .map((e) => e['id'] as String)
+          .toList();
 
       if (enrollmentIds.isEmpty) return [];
 
@@ -564,20 +899,27 @@ class SupabaseService {
     }
   }
 
-  /// Get today's total attendance count.
-  Future<int> getTodayAttendanceCount() async {
+  /// Get today's total attendance count (optionally filtered by instructor).
+  Future<int> getTodayAttendanceCount({String? instructorId}) async {
     try {
       final today = DateTime.now();
-      final dateStr = DateTime(today.year, today.month, today.day)
-          .toIso8601String()
-          .split('T')
-          .first;
+      final dateStr = DateTime(
+        today.year,
+        today.month,
+        today.day,
+      ).toIso8601String().split('T').first;
 
-      final response = await _client
+      var query = _client
           .from('attendance')
-          .select('id')
+          .select('id, enrollments!inner(subjects!inner(instructor_id))')
           .eq('date', dateStr)
           .neq('status', 'absent');
+
+      if (instructorId != null) {
+        query = query.eq('enrollments.subjects.instructor_id', instructorId);
+      }
+
+      final response = await query;
 
       return (response as List).length;
     } catch (e) {
@@ -587,7 +929,10 @@ class SupabaseService {
   }
 
   /// Find enrollment by student USN and subject ID.
-  Future<Enrollment?> findEnrollment(String studentUsn, String subjectId) async {
+  Future<Enrollment?> findEnrollment(
+    String studentUsn,
+    String subjectId,
+  ) async {
     try {
       final student = await getStudentByUsn(studentUsn);
       if (student == null || student.id == null) return null;
@@ -613,11 +958,28 @@ class SupabaseService {
 
   /// Admin manually updates an attendance record's status.
   Future<void> updateAttendanceStatus(
-      String attendanceId, String newStatus, {String? remarks}) async {
+    String attendanceId,
+    String newStatus, {
+    String? remarks,
+  }) async {
     try {
       final data = <String, dynamic>{'status': newStatus};
       if (remarks != null) data['remarks'] = remarks;
       await _client.from('attendance').update(data).eq('id', attendanceId);
+
+      // Fetch to get enrollment_id and date for syncing
+      final existing = await _client
+          .from('attendance')
+          .select('enrollment_id, date')
+          .eq('id', attendanceId)
+          .maybeSingle();
+
+      if (existing != null) {
+        final enrollmentId = existing['enrollment_id'] as String;
+        final date =
+            DateTime.tryParse(existing['date'] as String) ?? DateTime.now();
+        await syncAttendanceToGrade(enrollmentId: enrollmentId, date: date);
+      }
     } catch (e) {
       debugPrint('Update attendance status error: $e');
       rethrow;
@@ -646,7 +1008,9 @@ class SupabaseService {
             .select('*, enrollments(*, students(*), subjects(*))')
             .eq('id', existing['id'])
             .single();
-        return AttendanceRecord.fromSupabase(updated);
+        final record = AttendanceRecord.fromSupabase(updated);
+        // Sync is already handled by updateAttendanceStatus
+        return record;
       }
       final response = await _client
           .from('attendance')
@@ -659,7 +1023,16 @@ class SupabaseService {
           })
           .select('*, enrollments(*, students(*), subjects(*))')
           .single();
-      return AttendanceRecord.fromSupabase(response);
+
+      final record = AttendanceRecord.fromSupabase(response);
+
+      // Auto-sync to grades
+      await syncAttendanceToGrade(
+        enrollmentId: record.enrollmentId,
+        date: record.date,
+      );
+
+      return record;
     } catch (e) {
       debugPrint('Create manual attendance error: $e');
       rethrow;
@@ -673,7 +1046,9 @@ class SupabaseService {
   /// Returns ALL enrolled students for a subject with their attendance record
   /// for [date] (or null if they haven't been marked yet).
   Future<List<RosterEntry>> getSubjectRoster(
-      String subjectId, {DateTime? date}) async {
+    String subjectId, {
+    DateTime? date,
+  }) async {
     try {
       final dateStr = (date ?? DateTime.now())
           .toIso8601String()
@@ -711,17 +1086,19 @@ class SupabaseService {
           record = AttendanceRecord.fromSupabase(merged);
         }
 
-        roster.add(RosterEntry(
-          enrollmentId: enrollmentId,
-          studentId: studentMap?['id'] ?? '',
-          lastName: studentMap?['last_name'] ?? '',
-          firstName: studentMap?['first_name'] ?? '',
-          usn: studentMap?['usn'] ?? '',
-          course: studentMap?['course'] ?? '',
-          yearLevel: studentMap?['year_level'] ?? '',
-          section: studentMap?['section'] ?? '',
-          attendanceRecord: record,
-        ));
+        roster.add(
+          RosterEntry(
+            enrollmentId: enrollmentId,
+            studentId: studentMap?['id'] ?? '',
+            lastName: studentMap?['last_name'] ?? '',
+            firstName: studentMap?['first_name'] ?? '',
+            usn: studentMap?['usn'] ?? '',
+            course: studentMap?['course'] ?? '',
+            yearLevel: studentMap?['year_level'] ?? '',
+            section: studentMap?['section'] ?? '',
+            attendanceRecord: record,
+          ),
+        );
       }
 
       roster.sort((a, b) {
@@ -743,8 +1120,11 @@ class SupabaseService {
   /// Upload a file to Supabase Storage and return the public URL.
   Future<String> uploadGradeCaptureFile(File file, String fileName) async {
     final bucket = _client.storage.from('grade-captures');
-    await bucket.upload(fileName, file,
-        fileOptions: const FileOptions(upsert: true));
+    await bucket.upload(
+      fileName,
+      file,
+      fileOptions: const FileOptions(upsert: true),
+    );
     return bucket.getPublicUrl(fileName);
   }
 
@@ -836,7 +1216,10 @@ class SupabaseService {
   /// Uploads a profile image to Supabase Storage and updates the student record.
   /// Returns the public URL of the uploaded image.
   Future<String> uploadStudentProfileImage(
-      String studentId, Uint8List imageBytes, String extension) async {
+    String studentId,
+    Uint8List imageBytes,
+    String extension,
+  ) async {
     final bucket = _client.storage.from('student-profiles');
     final fileName = '$studentId.$extension';
     await bucket.uploadBinary(
@@ -854,7 +1237,10 @@ class SupabaseService {
   }
 
   /// Deletes a student profile image from Supabase Storage and clears the DB URL.
-  Future<void> deleteStudentProfileImage(String studentId, String fileUrl) async {
+  Future<void> deleteStudentProfileImage(
+    String studentId,
+    String fileUrl,
+  ) async {
     try {
       final uri = Uri.parse(fileUrl);
       final segments = uri.pathSegments;
@@ -930,15 +1316,15 @@ class SupabaseService {
         final reasonLabel = reason == 'no_class'
             ? 'No Class — Instructor Leave'
             : reason == 'holiday'
-                ? 'Holiday'
-                : 'Class Suspended';
+            ? 'Holiday'
+            : 'Class Suspended';
         final remarkStr = remarks ?? reasonLabel;
 
         if (attRec != null) {
-          await _client.from('attendance').update({
-            'status': reason,
-            'remarks': remarkStr,
-          }).eq('id', attRec['id']);
+          await _client
+              .from('attendance')
+              .update({'status': reason, 'remarks': remarkStr})
+              .eq('id', attRec['id']);
         } else {
           await _client.from('attendance').insert({
             'enrollment_id': enrollmentId,
@@ -1005,7 +1391,8 @@ class SupabaseService {
 
   /// Get all class cancellations for a subject.
   Future<List<ClassCancellation>> getCancellationsForSubject(
-      String subjectId) async {
+    String subjectId,
+  ) async {
     try {
       final response = await _client
           .from('class_cancellations')
@@ -1024,7 +1411,9 @@ class SupabaseService {
 
   /// Check if a specific date is cancelled for a subject.
   Future<ClassCancellation?> getCancellationForDate(
-      String subjectId, DateTime date) async {
+    String subjectId,
+    DateTime date,
+  ) async {
     try {
       final dateStr = date.toIso8601String().split('T').first;
       final response = await _client
@@ -1053,8 +1442,7 @@ class SupabaseService {
       if (subject != null && subject.isNotEmpty) {
         query = query.eq('subject', subject);
       }
-      final response =
-          await query.order('created_at', ascending: false);
+      final response = await query.order('created_at', ascending: false);
       return (response as List)
           .map((e) => LearningModule.fromSupabase(e))
           .toList();
@@ -1161,26 +1549,13 @@ class SupabaseService {
   /// Joins through enrollments to get student info.
   Future<List<StudentGrade>> getSubjectGrades(String subjectId) async {
     try {
-      // First get all enrollments for the subject
-      final enrollments = await _client
-          .from('enrollments')
-          .select('id, students(*)')
-          .eq('subject_id', subjectId);
-
-      if ((enrollments as List).isEmpty) return [];
-
-      final enrollmentIds =
-          enrollments.map((e) => e['id'] as String).toList();
-
       final grades = await _client
           .from('student_grades')
-          .select('*, enrollments(*, students(*))')
-          .inFilter('enrollment_id', enrollmentIds)
+          .select('*, enrollments!inner(*, students(*))')
+          .eq('enrollments.subject_id', subjectId)
           .order('term');
 
-      return (grades as List)
-          .map((e) => StudentGrade.fromSupabase(e))
-          .toList();
+      return (grades as List).map((e) => StudentGrade.fromSupabase(e)).toList();
     } catch (e) {
       debugPrint('Get subject grades error: $e');
       return [];
@@ -1215,7 +1590,8 @@ class SupabaseService {
 
   /// Get a flat list of enrollments for a subject (for building grade table).
   Future<List<Map<String, dynamic>>> getSubjectEnrollmentRoster(
-      String subjectId) async {
+    String subjectId,
+  ) async {
     try {
       final response = await _client
           .from('enrollments')
@@ -1273,7 +1649,8 @@ class SupabaseService {
   }
 
   Future<List<AssessmentConfig>> getAssessmentsForSubject(
-      String subjectId) async {
+    String subjectId,
+  ) async {
     try {
       final response = await _client
           .from('assessments')
@@ -1292,7 +1669,8 @@ class SupabaseService {
   }
 
   Future<List<AssessmentConfig>> getPublishedAssessments(
-      String subjectId) async {
+    String subjectId,
+  ) async {
     try {
       final response = await _client
           .from('assessments')
@@ -1362,7 +1740,8 @@ class SupabaseService {
   }
 
   Future<AssessmentQuestion?> updateQuestion(
-      AssessmentQuestion question) async {
+    AssessmentQuestion question,
+  ) async {
     try {
       final response = await _client
           .from('assessment_questions')
@@ -1423,16 +1802,26 @@ class SupabaseService {
       // Insert all answers
       if (answers.isNotEmpty) {
         final answerData = answers
-            .map((a) => AssessmentAnswer(
-                  submissionId: submissionId,
-                  questionId: a.questionId,
-                  studentAnswer: a.studentAnswer,
-                  isCorrect: a.isCorrect,
-                  pointsEarned: a.pointsEarned,
-                ).toSupabase())
+            .map(
+              (a) => AssessmentAnswer(
+                submissionId: submissionId,
+                questionId: a.questionId,
+                studentAnswer: a.studentAnswer,
+                isCorrect: a.isCorrect,
+                pointsEarned: a.pointsEarned,
+              ).toSupabase(),
+            )
             .toList();
         await _client.from('assessment_answers').insert(answerData);
       }
+
+      // Auto-record the score to grades
+      await autoRecordAssessmentToGrade(
+        assessmentId: submission.assessmentId,
+        studentId: submission.studentId,
+        score: submission.score,
+        maxScore: submission.maxScore,
+      );
 
       return AssessmentSubmission.fromSupabase(subRes);
     } catch (e) {
@@ -1441,8 +1830,100 @@ class SupabaseService {
     }
   }
 
+  /// Automatically records an assessment score to the student's grades.
+  Future<void> autoRecordAssessmentToGrade({
+    required String assessmentId,
+    required String studentId,
+    required double score,
+    required double maxScore,
+  }) async {
+    try {
+      // 1. Get the assessment to know subject + term + type
+      final assessmentMap = await _client
+          .from('assessments')
+          .select()
+          .eq('id', assessmentId)
+          .maybeSingle();
+      if (assessmentMap == null) return;
+      final assessment = AssessmentConfig.fromSupabase(assessmentMap);
+
+      // 2. Find enrollment
+      final enrollmentMap = await _client
+          .from('enrollments')
+          .select('id')
+          .eq('student_id', studentId)
+          .eq('subject_id', assessment.subjectId)
+          .maybeSingle();
+      if (enrollmentMap == null) return;
+
+      final enrollmentId = enrollmentMap['id'] as String;
+
+      // 3. Find or create StudentGrade for this enrollment + term
+      var gradeMap = await _client
+          .from('student_grades')
+          .select('id')
+          .eq('enrollment_id', enrollmentId)
+          .eq('term', assessment.term)
+          .maybeSingle();
+
+      String gradeId;
+      if (gradeMap != null) {
+        gradeId = gradeMap['id'] as String;
+      } else {
+        final newGrade = await _client
+            .from('student_grades')
+            .insert({'enrollment_id': enrollmentId, 'term': assessment.term})
+            .select()
+            .single();
+        gradeId = newGrade['id'] as String;
+      }
+
+      // 4. Check if a grade item for this assessment already exists
+      final existingItem = await _client
+          .from('student_grade_items')
+          .select('id')
+          .eq('grade_id', gradeId)
+          .eq('assessment_id', assessmentId)
+          .maybeSingle();
+
+      final category = assessment.isExam ? 'exam' : 'quiz';
+      if (existingItem != null) {
+        // Update existing
+        await _client
+            .from('student_grade_items')
+            .update({'score': score, 'max_score': maxScore})
+            .eq('id', existingItem['id']);
+      } else {
+        // Create new
+        await _client.from('student_grade_items').insert({
+          'grade_id': gradeId,
+          'category': category,
+          'label': assessment.title,
+          'score': score,
+          'max_score': maxScore,
+          'source': 'auto', // Auto-recorded from submission
+          'assessment_id': assessmentId,
+        });
+      }
+
+      // 5. Recalculate grade totals
+      await recalculateGradeTotals(gradeId);
+
+      // 6. Mark submission as graded (if not already)
+      await _client
+          .from('assessment_submissions')
+          .update({'is_graded': true})
+          .eq('assessment_id', assessmentId)
+          .eq('student_id', studentId);
+    } catch (e) {
+      debugPrint('Auto record assessment to grade error: $e');
+    }
+  }
+
   Future<bool> hasStudentSubmitted(
-      String assessmentId, String studentId) async {
+    String assessmentId,
+    String studentId,
+  ) async {
     try {
       final response = await _client
           .from('assessment_submissions')
@@ -1458,7 +1939,8 @@ class SupabaseService {
   }
 
   Future<List<AssessmentSubmission>> getSubmissionsForAssessment(
-      String assessmentId) async {
+    String assessmentId,
+  ) async {
     try {
       final response = await _client
           .from('assessment_submissions')
@@ -1475,15 +1957,16 @@ class SupabaseService {
   }
 
   Future<List<AssessmentSubmission>> getStudentSubmissions(
-      String studentId, String subjectId) async {
+    String studentId,
+    String subjectId,
+  ) async {
     try {
       // Get all assessment IDs for this subject
       final assessments = await _client
           .from('assessments')
           .select('id')
           .eq('subject_id', subjectId);
-      final ids =
-          (assessments as List).map((e) => e['id'] as String).toList();
+      final ids = (assessments as List).map((e) => e['id'] as String).toList();
       if (ids.isEmpty) return [];
 
       final response = await _client
@@ -1521,7 +2004,10 @@ class SupabaseService {
     try {
       final parts = qrData.split('|');
       if (parts.length < 6 || parts[0] != 'STIMSYS_GRADE') {
-        return (false, 'Invalid QR format');
+        return (
+          false,
+          'Invalid QR format. Expected 6 parts, got ${parts.length}',
+        );
       }
 
       final assessmentId = parts[1];
@@ -1564,10 +2050,7 @@ class SupabaseService {
       } else {
         final newGrade = await _client
             .from('student_grades')
-            .insert({
-              'enrollment_id': enrollmentId,
-              'term': assessment.term,
-            })
+            .insert({'enrollment_id': enrollmentId, 'term': assessment.term})
             .select()
             .single();
         gradeId = newGrade['id'] as String;
@@ -1611,7 +2094,10 @@ class SupabaseService {
           .eq('assessment_id', assessmentId)
           .eq('student_id', studentId);
 
-      return (true, '${assessment.title} — Score: ${score.toStringAsFixed(0)}/${maxScore.toStringAsFixed(0)} recorded');
+      return (
+        true,
+        '${assessment.title} — Score: ${score.toStringAsFixed(0)}/${maxScore.toStringAsFixed(0)} recorded',
+      );
     } catch (e) {
       debugPrint('Process grade QR error: $e');
       return (false, 'Error: $e');
@@ -1693,10 +2179,8 @@ class SupabaseService {
           .select()
           .eq('id', gradeId)
           .single();
-      final attendRaw =
-          (gradeMap['attendance_raw'] as num?)?.toDouble() ?? 0;
-      final attendMax =
-          (gradeMap['attendance_max'] as num?)?.toDouble() ?? 0;
+      final attendRaw = (gradeMap['attendance_raw'] as num?)?.toDouble() ?? 0;
+      final attendMax = (gradeMap['attendance_max'] as num?)?.toDouble() ?? 0;
 
       // Get grading config to compute grade
       final enrollmentId = gradeMap['enrollment_id'] as String;
@@ -1727,16 +2211,100 @@ class SupabaseService {
         }
       }
 
-      await _client.from('student_grades').update({
-        'quiz_raw': quizRaw,
-        'quiz_max': quizMax,
-        'exam_raw': examRaw,
-        'exam_max': examMax,
-        'computed_grade': computedGrade,
-        'updated_at': DateTime.now().toIso8601String(),
-      }).eq('id', gradeId);
+      await _client
+          .from('student_grades')
+          .update({
+            'quiz_raw': quizRaw,
+            'quiz_max': quizMax,
+            'exam_raw': examRaw,
+            'exam_max': examMax,
+            'computed_grade': computedGrade,
+            'updated_at': DateTime.now().toIso8601String(),
+          })
+          .eq('id', gradeId);
     } catch (e) {
       debugPrint('Recalculate grade totals error: $e');
+    }
+  }
+
+  // ═══════════════════════════════════════════════════
+  // STUDENT-SIDE GRADE QUERIES
+  // ═══════════════════════════════════════════════════
+
+  /// Get all grade records for a single enrollment (one student × one subject).
+  Future<List<StudentGrade>> getGradesForEnrollment(String enrollmentId) async {
+    try {
+      final response = await _client
+          .from('student_grades')
+          .select('*, enrollments(*, students(*))')
+          .eq('enrollment_id', enrollmentId)
+          .order('term');
+      return (response as List)
+          .map((e) => StudentGrade.fromSupabase(e))
+          .toList();
+    } catch (e) {
+      debugPrint('Get grades for enrollment error: $e');
+      return [];
+    }
+  }
+
+  /// Get all grade items for multiple grade IDs at once.
+  Future<Map<String, List<StudentGradeItem>>> getGradeItemsBatch(
+    List<String> gradeIds,
+  ) async {
+    if (gradeIds.isEmpty) return {};
+    try {
+      final response = await _client
+          .from('student_grade_items')
+          .select()
+          .inFilter('grade_id', gradeIds)
+          .order('created_at');
+      final items = (response as List)
+          .map((e) => StudentGradeItem.fromSupabase(e))
+          .toList();
+      final map = <String, List<StudentGradeItem>>{};
+      for (final item in items) {
+        map.putIfAbsent(item.gradeId, () => []).add(item);
+      }
+      return map;
+    } catch (e) {
+      debugPrint('Get grade items batch error: $e');
+      return {};
+    }
+  }
+
+  /// Get live attendance stats for an enrollment (not yet synced to grades).
+  Future<({int present, int late, int absent, int excused, int total})>
+  getLiveAttendanceStats(String enrollmentId) async {
+    try {
+      final records = await _client
+          .from('attendance')
+          .select('status')
+          .eq('enrollment_id', enrollmentId);
+
+      int present = 0, late = 0, absent = 0, excused = 0, total = 0;
+      for (final r in (records as List)) {
+        final status = r['status'] as String? ?? '';
+        if (status == 'no_class' ||
+            status == 'holiday' ||
+            status == 'suspended')
+          continue;
+        total++;
+        if (status == 'present') present++;
+        if (status == 'late') late++;
+        if (status == 'absent') absent++;
+        if (status == 'excused') excused++;
+      }
+      return (
+        present: present,
+        late: late,
+        absent: absent,
+        excused: excused,
+        total: total,
+      );
+    } catch (e) {
+      debugPrint('Get live attendance stats error: $e');
+      return (present: 0, late: 0, absent: 0, excused: 0, total: 0);
     }
   }
 
@@ -1749,21 +2317,30 @@ class SupabaseService {
   Future<({double raw, double max})> computeAttendanceScore({
     required String enrollmentId,
     required double maxScore,
+    DateTime? startDate,
+    DateTime? endDate,
   }) async {
     try {
-      final records = await _client
+      var query = _client
           .from('attendance')
-          .select('status')
+          .select('status, date')
           .eq('enrollment_id', enrollmentId);
+
+      if (startDate != null) {
+        query = query.gte('date', startDate.toIso8601String().split('T').first);
+      }
+      if (endDate != null) {
+        query = query.lte('date', endDate.toIso8601String().split('T').first);
+      }
+
+      final records = await query;
 
       if ((records as List).isEmpty) return (raw: 0.0, max: maxScore);
 
       int present = 0, late = 0, total = 0;
       for (final r in records) {
         final status = r['status'] as String? ?? '';
-        if (status == 'present' ||
-            status == 'late' ||
-            status == 'absent') {
+        if (status == 'present' || status == 'late' || status == 'absent') {
           total++;
           if (status == 'present') present++;
           if (status == 'late') late++;
@@ -1776,6 +2353,100 @@ class SupabaseService {
     } catch (e) {
       debugPrint('Compute attendance score error: $e');
       return (raw: 0.0, max: maxScore);
+    }
+  }
+
+  /// Syncs an attendance record to the corresponding term grade.
+  Future<void> syncAttendanceToGrade({
+    required String enrollmentId,
+    required DateTime date,
+  }) async {
+    try {
+      // 1. Get subject ID from enrollment
+      final enrollmentMap = await _client
+          .from('enrollments')
+          .select('subject_id')
+          .eq('id', enrollmentId)
+          .maybeSingle();
+      if (enrollmentMap == null) return;
+      final subjectId = enrollmentMap['subject_id'] as String;
+
+      // 2. Get grading config to determine the term for the date
+      final configMap = await _client
+          .from('subject_grading_config')
+          .select()
+          .eq('subject_id', subjectId)
+          .maybeSingle();
+      if (configMap == null) return;
+
+      final config = GradingConfig.fromSupabase(configMap);
+      final term = config.termForDate(date);
+
+      // Determine the date range for the matched term
+      DateTime? termStart, termEnd;
+      if (term == 'prelim') {
+        termStart = config.prelimStart;
+        termEnd = config.prelimEnd;
+      } else if (term == 'midterm') {
+        termStart = config.midtermStart;
+        termEnd = config.midtermEnd;
+      } else if (term == 'semi_finals') {
+        termStart = config.semiFinalsStart;
+        termEnd = config.semiFinalsEnd;
+      } else if (term == 'finals') {
+        termStart = config.finalsStart;
+        termEnd = config.finalsEnd;
+      }
+
+      // 3. Find or create StudentGrade for this enrollment + term
+      var gradeMap = await _client
+          .from('student_grades')
+          .select('id, attendance_max')
+          .eq('enrollment_id', enrollmentId)
+          .eq('term', term)
+          .maybeSingle();
+
+      String gradeId;
+      double attendMax = 0;
+      if (gradeMap != null) {
+        gradeId = gradeMap['id'] as String;
+        attendMax = (gradeMap['attendance_max'] as num?)?.toDouble() ?? 100;
+      } else {
+        // We set 100 as default max attendance score when auto-creating
+        final newGrade = await _client
+            .from('student_grades')
+            .insert({
+              'enrollment_id': enrollmentId,
+              'term': term,
+              'attendance_max': 100,
+            })
+            .select()
+            .single();
+        gradeId = newGrade['id'] as String;
+        attendMax = 100;
+      }
+
+      // 4. Compute the attendance score filtered to that term's date range
+      final score = await computeAttendanceScore(
+        enrollmentId: enrollmentId,
+        maxScore: attendMax,
+        startDate: termStart,
+        endDate: termEnd,
+      );
+
+      // 5. Update attendance_raw and recalculate totals
+      await _client
+          .from('student_grades')
+          .update({
+            'attendance_raw': score.raw,
+            'attendance_max': score.max,
+            'updated_at': DateTime.now().toIso8601String(),
+          })
+          .eq('id', gradeId);
+
+      await recalculateGradeTotals(gradeId);
+    } catch (e) {
+      debugPrint('Sync attendance to grade error: $e');
     }
   }
 }
@@ -1800,20 +2471,25 @@ class ClassCancellation {
     this.remarks,
   });
 
-  factory ClassCancellation.fromMap(Map<String, dynamic> m) => ClassCancellation(
-    id: m['id'],
-    subjectId: m['subject_id'] ?? '',
-    date: m['date'] != null ? DateTime.parse(m['date']) : DateTime.now(),
-    reason: m['reason'] ?? 'no_class',
-    remarks: m['remarks'],
-  );
+  factory ClassCancellation.fromMap(Map<String, dynamic> m) =>
+      ClassCancellation(
+        id: m['id'],
+        subjectId: m['subject_id'] ?? '',
+        date: m['date'] != null ? DateTime.parse(m['date']) : DateTime.now(),
+        reason: m['reason'] ?? 'no_class',
+        remarks: m['remarks'],
+      );
 
   String get reasonLabel {
     switch (reason) {
-      case 'no_class': return 'No Class (Instructor Leave)';
-      case 'holiday': return 'Holiday';
-      case 'suspended': return 'Class Suspended';
-      default: return reason;
+      case 'no_class':
+        return 'No Class (Instructor Leave)';
+      case 'holiday':
+        return 'Holiday';
+      case 'suspended':
+        return 'Class Suspended';
+      default:
+        return reason;
     }
   }
 }
@@ -1847,4 +2523,97 @@ class RosterEntry {
 
   String get fullName => '$firstName $lastName';
   String get sectionLabel => '$course $yearLevel $section'.trim();
+}
+
+// ═══════════════════════════════════════════════════
+// ANNOUNCEMENTS
+// ═══════════════════════════════════════════════════
+
+extension AnnouncementServiceExtension on SupabaseService {
+  /// Create a new announcement.
+  Future<Announcement?> createAnnouncement(Announcement announcement) async {
+    try {
+      final response = await client
+          .from('announcements')
+          .insert(announcement.toMap())
+          .select()
+          .single();
+      return Announcement.fromSupabase(response);
+    } catch (e) {
+      debugPrint('Create announcement error: $e');
+      rethrow;
+    }
+  }
+
+  /// Update an existing announcement.
+  Future<Announcement?> updateAnnouncement(Announcement announcement) async {
+    try {
+      final response = await client
+          .from('announcements')
+          .update(announcement.toMap())
+          .eq('id', announcement.id!)
+          .select()
+          .single();
+      return Announcement.fromSupabase(response);
+    } catch (e) {
+      debugPrint('Update announcement error: $e');
+      rethrow;
+    }
+  }
+
+  /// Delete an announcement.
+  Future<void> deleteAnnouncement(String id) async {
+    try {
+      await client.from('announcements').delete().eq('id', id);
+    } catch (e) {
+      debugPrint('Delete announcement error: $e');
+      rethrow;
+    }
+  }
+
+  /// Toggle the is_active flag.
+  Future<void> toggleAnnouncementActive(String id, bool isActive) async {
+    try {
+      await client
+          .from('announcements')
+          .update({'is_active': isActive})
+          .eq('id', id);
+    } catch (e) {
+      debugPrint('Toggle announcement error: $e');
+      rethrow;
+    }
+  }
+
+  /// Get all announcements (admin view).
+  Future<List<Announcement>> getAnnouncements() async {
+    try {
+      final response = await client
+          .from('announcements')
+          .select()
+          .order('start_date', ascending: false);
+      return (response as List)
+          .map((e) => Announcement.fromSupabase(e))
+          .toList();
+    } catch (e) {
+      debugPrint('Get announcements error: $e');
+      return [];
+    }
+  }
+
+  /// Get active announcements (student view).
+  Future<List<Announcement>> getActiveAnnouncements() async {
+    try {
+      final response = await client
+          .from('announcements')
+          .select()
+          .eq('is_active', true)
+          .order('start_date', ascending: true);
+      return (response as List)
+          .map((e) => Announcement.fromSupabase(e))
+          .toList();
+    } catch (e) {
+      debugPrint('Get active announcements error: $e');
+      return [];
+    }
+  }
 }

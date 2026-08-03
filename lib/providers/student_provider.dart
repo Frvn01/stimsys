@@ -1,12 +1,21 @@
 import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import '../main.dart'; // import to access globalScaffoldMessengerKey
 import '../models/student_model.dart';
 import '../models/enrollment_model.dart';
 import '../models/attendance_model.dart';
 import '../models/module_model.dart';
 import '../models/assessment_model.dart';
+import '../models/grading_config_model.dart';
+import '../models/student_grade_model.dart';
+import '../models/student_grade_item_model.dart';
 import '../services/supabase_service.dart';
+import '../services/notification_service.dart';
+import '../models/announcement_model.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
 
 class StudentProvider extends ChangeNotifier {
   final SupabaseService _service = SupabaseService();
@@ -17,6 +26,7 @@ class StudentProvider extends ChangeNotifier {
   List<LearningModule> _modules = [];
   List<AssessmentConfig> _availableAssessments = [];
   List<AssessmentSubmission> _mySubmissions = [];
+  List<Announcement> _announcements = [];
   bool _isLoading = false;
 
   Student? get currentStudent => _currentStudent;
@@ -25,6 +35,7 @@ class StudentProvider extends ChangeNotifier {
   List<LearningModule> get modules => _modules;
   List<AssessmentConfig> get availableAssessments => _availableAssessments;
   List<AssessmentSubmission> get mySubmissions => _mySubmissions;
+  List<Announcement> get announcements => _announcements;
   bool get isLoading => _isLoading;
   bool get isLoggedIn => _currentStudent != null;
 
@@ -48,6 +59,8 @@ class StudentProvider extends ChangeNotifier {
         _currentStudent = student;
         await loadEnrollments();
         await loadAttendance();
+        await loadAnnouncements();
+        _setupNotifications();
         notifyListeners();
       }
       return student;
@@ -135,6 +148,156 @@ class StudentProvider extends ChangeNotifier {
     }
   }
 
+  RealtimeChannel? _assessmentsChannel;
+  RealtimeChannel? _announcementsChannel;
+  void _setupNotifications() {
+    _assessmentsChannel?.unsubscribe();
+    _announcementsChannel?.unsubscribe();
+    _assessmentsChannel = _service.client
+        .channel('public:assessments_student')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.update,
+          schema: 'public',
+          table: 'assessments',
+          callback: (payload) async {
+            try {
+              final newCode = payload.newRecord['session_code'] as String?;
+              if (newCode != null && newCode.contains('-')) {
+                 final parts = newCode.split('-');
+                 final setLetter = parts.last;
+                 
+                 // Safely resolve the assessment ID because Supabase realtime payloads vary
+                 final rawId = payload.newRecord['id'] ?? payload.oldRecord['id'];
+                 if (rawId == null) return;
+                 final assessmentId = rawId.toString();
+                 
+                 // Fetch the subject_id because realtime update payloads might only contain changed columns!
+                 final data = await _service.client.from('assessments').select('subject_id').eq('id', assessmentId).single();
+                 final subjectId = data['subject_id'] as String;
+                 
+                 // Check if the student is enrolled in this subject
+                 final isEnrolled = _enrollments.any((e) => e.subjectId == subjectId);
+                 if (isEnrolled && _currentStudent != null) {
+                   // Calculate the student's deterministic set for this assessment
+                   final hash = (assessmentId + _currentStudent!.usn).hashCode;
+                   final myAssignedSet = hash % 2 == 0 ? 'A' : 'B';
+                   
+                   debugPrint('Notification Triggered: Set $setLetter started. My deterministic set is $myAssignedSet.');
+
+                   // ONLY notify the student if they actually belong to the Set that just started!
+                   if (setLetter == myAssignedSet) {
+                     NotificationService().showNotification(
+                       id: assessmentId.hashCode,
+                       title: 'Exam Set $setLetter Started!',
+                       body: 'Your Exam Set is now active! Please proceed to the room to start.',
+                     );
+
+                     // Also show an in-app SnackBar for users testing on Windows/Web
+                     if (globalScaffoldMessengerKey.currentState != null) {
+                       globalScaffoldMessengerKey.currentState!.clearSnackBars();
+                       globalScaffoldMessengerKey.currentState!.showSnackBar(
+                         SnackBar(
+                           content: Row(
+                             children: [
+                               const Icon(Icons.notifications_active_rounded, color: Colors.white),
+                               const SizedBox(width: 12),
+                               Expanded(
+                                 child: Column(
+                                   crossAxisAlignment: CrossAxisAlignment.start,
+                                   mainAxisSize: MainAxisSize.min,
+                                   children: [
+                                     Text('Your Exam Set ($setLetter) Started!', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
+                                     const Text('Please proceed to the room and scan the QR to start.', style: TextStyle(color: Colors.white)),
+                                   ],
+                                 ),
+                               ),
+                             ],
+                           ),
+                           backgroundColor: const Color(0xFF6366F1), // Accent color
+                           behavior: SnackBarBehavior.floating,
+                           duration: const Duration(seconds: 6),
+                           margin: const EdgeInsets.all(16),
+                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                         ),
+                       );
+                     }
+                   }
+                 }
+              }
+            } catch (e) {
+              debugPrint('Error in realtime notification callback: $e');
+            }
+          },
+        )
+        .subscribe();
+
+    _announcementsChannel = _service.client
+        .channel('public:announcements_student')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.insert,
+          schema: 'public',
+          table: 'announcements',
+          callback: (payload) async {
+            try {
+              final record = payload.newRecord;
+              debugPrint('Announcement realtime payload: $record');
+
+              final title = record['title'] as String? ?? 'New Announcement';
+              final desc = record['description'] as String? ?? 'Check the calendar for details.';
+              // Ensure notification ID is always non-negative (Android requirement)
+              final rawId = record['id']?.toString() ?? '';
+              final notifId = rawId.isNotEmpty
+                  ? rawId.hashCode.abs()
+                  : DateTime.now().millisecondsSinceEpoch % 100000;
+
+              debugPrint('Showing notification: $title (id: $notifId)');
+
+              await NotificationService().showNotification(
+                id: notifId,
+                title: 'Announcement: $title',
+                body: desc.isNotEmpty ? desc : 'Check the calendar for details.',
+              );
+
+              // Show in-app snackbar
+              if (globalScaffoldMessengerKey.currentState != null) {
+                globalScaffoldMessengerKey.currentState!.clearSnackBars();
+                globalScaffoldMessengerKey.currentState!.showSnackBar(
+                  SnackBar(
+                    content: Row(
+                      children: [
+                        const Icon(Icons.campaign_rounded, color: Colors.white),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text('Announcement: $title', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
+                              Text(desc.isNotEmpty ? desc : 'Check the calendar for details.', style: const TextStyle(color: Colors.white), maxLines: 1, overflow: TextOverflow.ellipsis),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    backgroundColor: const Color(0xFF6366F1),
+                    behavior: SnackBarBehavior.floating,
+                    duration: const Duration(seconds: 6),
+                    margin: const EdgeInsets.all(16),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                );
+              }
+
+              // Refresh local list
+              loadAnnouncements();
+            } catch (e) {
+              debugPrint('Error in announcement notification callback: $e');
+            }
+          },
+        )
+        .subscribe();
+  }
+
   Future<bool> restoreSession() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -151,11 +314,15 @@ class StudentProvider extends ChangeNotifier {
   }
 
   Future<void> logout() async {
+    _assessmentsChannel?.unsubscribe();
+    _announcementsChannel?.unsubscribe();
     _currentStudent = null;
     _enrollments = [];
     _attendanceRecords = [];
+    _modules = [];
     _availableAssessments = [];
     _mySubmissions = [];
+    _announcements = [];
     notifyListeners();
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -183,6 +350,38 @@ class StudentProvider extends ChangeNotifier {
       }
       return (false, 'Enrollment failed: $e');
     }
+  }
+
+  // ═══════════════════════════════════════════════════
+  // ANNOUNCEMENTS
+  // ═══════════════════════════════════════════════════
+
+  /// Load active announcements visible to students.
+  Future<void> loadAnnouncements() async {
+    try {
+      _announcements = await _service.getActiveAnnouncements();
+      notifyListeners();
+    } catch (e) {
+      debugPrint('Load announcements error: $e');
+    }
+  }
+
+  /// Get announcements that cover a specific date.
+  List<Announcement> announcementsForDate(DateTime date) {
+    return _announcements.where((a) => a.coversDate(date)).toList();
+  }
+
+  /// Get upcoming announcements (start date is in the future).
+  List<Announcement> get upcomingAnnouncements {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    return _announcements
+        .where((a) {
+          final end = DateTime(a.endDate.year, a.endDate.month, a.endDate.day);
+          return !end.isBefore(today);
+        })
+        .toList()
+      ..sort((a, b) => a.startDate.compareTo(b.startDate));
   }
 
   /// Upload a profile image (compressed bytes) to Supabase and update the student record.
@@ -218,6 +417,100 @@ class StudentProvider extends ChangeNotifier {
       debugPrint('Delete profile image error: $e');
       return (false, 'Failed to delete profile image: $e');
     }
+  }
+
+  // ═══════════════════════════════════════════════════
+  // STUDENT GRADES (class record view)
+  // ═══════════════════════════════════════════════════
+
+  /// Grading configs cached by subjectId
+  final Map<String, GradingConfig?> _gradingConfigs = {};
+
+  /// Grade records cached by enrollmentId → list of StudentGrade (per term)
+  final Map<String, List<StudentGrade>> _enrollmentGrades = {};
+
+  /// Grade items cached by gradeId → list of StudentGradeItem
+  final Map<String, List<StudentGradeItem>> _gradeItems = {};
+
+  /// Live attendance stats cached by enrollmentId
+  final Map<String, ({int present, int late, int absent, int excused, int total})>
+      _liveAttendance = {};
+
+  bool _gradesLoading = false;
+
+  bool get gradesLoading => _gradesLoading;
+
+  GradingConfig? gradingConfigFor(String subjectId) =>
+      _gradingConfigs[subjectId];
+
+  List<StudentGrade> gradesForEnrollment(String enrollmentId) =>
+      _enrollmentGrades[enrollmentId] ?? [];
+
+  StudentGrade? gradeFor(String enrollmentId, String term) {
+    final grades = _enrollmentGrades[enrollmentId];
+    if (grades == null) return null;
+    try {
+      return grades.firstWhere((g) => g.term == term);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  List<StudentGradeItem> gradeItemsFor(String gradeId) =>
+      _gradeItems[gradeId] ?? [];
+
+  ({int present, int late, int absent, int excused, int total})?
+      liveAttendanceFor(String enrollmentId) =>
+          _liveAttendance[enrollmentId];
+
+  /// Load all grade data for a subject (config + grades + items + live attendance).
+  Future<void> loadGradesForSubject(Enrollment enrollment) async {
+    if (enrollment.id == null || enrollment.subjectId == null) return;
+    _gradesLoading = true;
+    notifyListeners();
+
+    try {
+      // 1. Load grading config for the subject
+      if (!_gradingConfigs.containsKey(enrollment.subjectId)) {
+        _gradingConfigs[enrollment.subjectId!] =
+            await _service.getGradingConfig(enrollment.subjectId!);
+      }
+
+      // 2. Load grade records for this enrollment
+      final grades =
+          await _service.getGradesForEnrollment(enrollment.id!);
+      _enrollmentGrades[enrollment.id!] = grades;
+
+      // 3. Load all grade items in one batch
+      final gradeIds = grades
+          .where((g) => g.id != null)
+          .map((g) => g.id!)
+          .toList();
+      if (gradeIds.isNotEmpty) {
+        final items = await _service.getGradeItemsBatch(gradeIds);
+        _gradeItems.addAll(items);
+      }
+
+      // 4. Load live attendance stats
+      _liveAttendance[enrollment.id!] =
+          await _service.getLiveAttendanceStats(enrollment.id!);
+    } catch (e) {
+      debugPrint('Load grades for subject error: $e');
+    } finally {
+      _gradesLoading = false;
+      notifyListeners();
+    }
+  }
+
+  /// Compute weighted final grade from term grades.
+  double? computeFinalGrade(String enrollmentId, GradingConfig config) {
+    final grades = _enrollmentGrades[enrollmentId];
+    if (grades == null || grades.isEmpty) return null;
+    final termGrades = <String, double?>{};
+    for (final g in grades) {
+      termGrades[g.term] = g.computedGrade;
+    }
+    return config.computeFinalGrade(termGrades);
   }
 
   // ═══════════════════════════════════════════════════

@@ -44,8 +44,32 @@ class Subject {
         int.parse(parts[0]), int.parse(parts[1]));
   }
 
+  String get formattedStartTime {
+    if (scheduleStartTime.isEmpty) return '';
+    final parts = scheduleStartTime.split(':');
+    if (parts.length < 2) return scheduleStartTime;
+    int hr = int.tryParse(parts[0]) ?? 0;
+    final min = parts[1];
+    final period = hr >= 12 ? 'PM' : 'AM';
+    if (hr == 0) hr = 12;
+    if (hr > 12) hr -= 12;
+    return '${hr.toString().padLeft(2, '0')}:$min $period';
+  }
+
+  String get formattedEndTime {
+    if (scheduleEndTime.isEmpty) return '';
+    final parts = scheduleEndTime.split(':');
+    if (parts.length < 2) return scheduleEndTime;
+    int hr = int.tryParse(parts[0]) ?? 0;
+    final min = parts[1];
+    final period = hr >= 12 ? 'PM' : 'AM';
+    if (hr == 0) hr = 12;
+    if (hr > 12) hr -= 12;
+    return '${hr.toString().padLeft(2, '0')}:$min $period';
+  }
+
   String get formattedSchedule {
-    return '$scheduleDay $scheduleStartTime - $scheduleEndTime';
+    return '$scheduleDay $formattedStartTime - $formattedEndTime';
   }
 
   Map<String, dynamic> toSupabase() {

@@ -10,6 +10,8 @@ import 'desktop_grade_gallery_screen.dart';
 import 'desktop_modules_screen.dart';
 import 'desktop_assessment_screen.dart';
 import 'desktop_student_grades_screen.dart';
+import 'desktop_announcements_screen.dart';
+import 'desktop_admin_login_screen.dart';
 
 class DesktopAdminDashboardScreen extends StatefulWidget {
   const DesktopAdminDashboardScreen({super.key});
@@ -39,6 +41,7 @@ class _DesktopAdminDashboardScreenState
     DesktopModulesScreen(),
     DesktopAssessmentScreen(),
     DesktopStudentGradesScreen(),
+    DesktopAnnouncementsScreen(),
   ];
 
   static const _navItems = [
@@ -50,6 +53,7 @@ class _DesktopAdminDashboardScreenState
     (icon: Icons.folder_copy_rounded,     label: 'Modules'),
     (icon: Icons.assignment_rounded,      label: 'Assessments'),
     (icon: Icons.grade_rounded,           label: 'Grades'),
+    (icon: Icons.campaign_rounded,        label: 'Announcements'),
   ];
 
   @override
@@ -75,6 +79,7 @@ class _DesktopAdminDashboardScreenState
   // SIDEBAR
   // ═══════════════════════════════════════════════════════════════════
   Widget _buildSidebar() {
+    final provider = context.watch<AdminProvider>();
     return Container(
       width: 220,
       color: _sidebar,
@@ -188,7 +193,7 @@ class _DesktopAdminDashboardScreenState
             ),
             const SizedBox(width: 10),
             Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('Rens Joshua',
+              Text(provider.currentInstructor?.fullName ?? 'Instructor',
                   style: GoogleFonts.inter(
                       color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600),
                   overflow: TextOverflow.ellipsis),
@@ -206,9 +211,14 @@ class _DesktopAdminDashboardScreenState
             borderRadius: BorderRadius.circular(8),
             child: InkWell(
               borderRadius: BorderRadius.circular(8),
-              onTap: () {
-                context.read<AdminProvider>().logout();
-                Navigator.of(context).pop();
+              onTap: () async {
+                await context.read<AdminProvider>().logout();
+                if (context.mounted) {
+                  Navigator.of(context).pushAndRemoveUntil(
+                    MaterialPageRoute(builder: (_) => const DesktopAdminLoginScreen()),
+                    (_) => false,
+                  );
+                }
               },
               hoverColor: Colors.red.withValues(alpha: 0.06),
               child: Container(
@@ -299,7 +309,7 @@ class _DesktopHomeContentState extends State<_DesktopHomeContent> {
           // ── Header ────────────────────────────────────────────────
           Row(children: [
             Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('$_greeting, Rens Joshua',
+              Text('$_greeting, ${widget.provider.currentInstructor?.fullName ?? 'Instructor'}',
                   style: GoogleFonts.inter(
                       color: Colors.white, fontSize: 22, fontWeight: FontWeight.w700)),
               const SizedBox(height: 4),

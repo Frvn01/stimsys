@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
+import 'package:shared_preferences/shared_preferences.dart';
 import '../models/student_model.dart';
 import '../models/subject_model.dart';
 import '../models/enrollment_model.dart';
@@ -12,6 +13,7 @@ import '../models/grading_config_model.dart';
 import '../models/student_grade_model.dart';
 import '../models/assessment_model.dart';
 import '../models/student_grade_item_model.dart';
+import '../models/announcement_model.dart';
 import '../services/supabase_service.dart';
 
 class AdminProvider extends ChangeNotifier {
@@ -22,8 +24,16 @@ class AdminProvider extends ChangeNotifier {
   List<Instructor> _instructors = [];
   List<GradeCapture> _captures = [];
   List<LearningModule> _modules = [];
+  List<Announcement> _announcements = [];
   bool _isLoading = false;
   bool _isAuthenticated = false;
+
+  // ── Super Admin & Instructor Auth State ─────────────
+  bool _isSuperAdmin = false;
+  Instructor? _currentInstructor;
+
+  bool get isSuperAdmin => _isSuperAdmin;
+  Instructor? get currentInstructor => _currentInstructor;
 
   // ── Grading state ──────────────────────────────────
   /// Cache of grading configs keyed by subjectId
@@ -39,6 +49,7 @@ class AdminProvider extends ChangeNotifier {
   List<Instructor> get instructors => _instructors;
   List<GradeCapture> get captures => _captures;
   List<LearningModule> get modules => _modules;
+  List<Announcement> get announcements => _announcements;
   bool get isLoading => _isLoading;
   bool get isAuthenticated => _isAuthenticated;
 
@@ -54,9 +65,80 @@ class AdminProvider extends ChangeNotifier {
   int get totalSubjects => _subjects.length;
 
   // ═══════════════════════════════════════════════════
-  // ADMIN AUTH
+  // SUPER ADMIN AUTH
   // ═══════════════════════════════════════════════════
 
+  /// Hardcoded Super Admin credentials (developer-only access)
+  static const String _superAdminUsername = 'Raven_1DevStimsysSuperAdmin';
+  static const String _superAdminPassword = 'RavenDev@St1msys';
+
+  static const String _sessionKey = 'instructor_session_token';
+
+  /// Authenticate as Super Admin using username + password.
+  bool authenticateSuperAdmin(String username, String password) {
+    _isSuperAdmin = (username.trim() == _superAdminUsername &&
+        password == _superAdminPassword);
+    if (_isSuperAdmin) _isAuthenticated = true;
+    notifyListeners();
+    return _isSuperAdmin;
+  }
+
+  // ═══════════════════════════════════════════════════
+  // INSTRUCTOR QR AUTH
+  // ═══════════════════════════════════════════════════
+
+  /// Authenticate an instructor by scanning their one-time QR token.
+  /// Returns true on success; the token is immediately consumed.
+  Future<bool> authenticateInstructorQr(String token) async {
+    try {
+      final instructor = await _service.getInstructorByQrToken(token);
+      if (instructor == null || instructor.id == null) return false;
+
+      // Generate a new persistent session token
+      final sessionToken = _service.generateSessionToken();
+      final updated = await _service.markQrTokenUsed(instructor.id!, sessionToken);
+      if (updated == null) return false;
+
+      _currentInstructor = updated;
+      _isAuthenticated = true;
+
+      // Persist session
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_sessionKey, sessionToken);
+
+      notifyListeners();
+      return true;
+    } catch (e) {
+      debugPrint('QR auth error: $e');
+      return false;
+    }
+  }
+
+  /// Try to restore a previous instructor session from local storage.
+  /// Returns true if a valid session was found and restored.
+  Future<bool> restoreInstructorSession() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString(_sessionKey);
+      if (token == null || token.isEmpty) return false;
+
+      final instructor = await _service.validateSessionToken(token);
+      if (instructor == null) {
+        await prefs.remove(_sessionKey);
+        return false;
+      }
+
+      _currentInstructor = instructor;
+      _isAuthenticated = true;
+      notifyListeners();
+      return true;
+    } catch (e) {
+      debugPrint('Restore session error: $e');
+      return false;
+    }
+  }
+
+  // ── Legacy PIN auth (kept for backwards compatibility) ──
   static const String _adminPin = '1337';
 
   bool authenticatePin(String pin) {
@@ -65,8 +147,17 @@ class AdminProvider extends ChangeNotifier {
     return _isAuthenticated;
   }
 
-  void logout() {
+  Future<void> logout() async {
+    // Clear instructor session from Supabase & local storage
+    if (_currentInstructor?.id != null) {
+      await _service.clearInstructorSession(_currentInstructor!.id!);
+    }
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_sessionKey);
+
     _isAuthenticated = false;
+    _isSuperAdmin = false;
+    _currentInstructor = null;
     _students = [];
     _subjects = [];
     _captures = [];
@@ -79,17 +170,84 @@ class AdminProvider extends ChangeNotifier {
   }
 
   // ═══════════════════════════════════════════════════
+  // SUPER ADMIN: INSTRUCTOR MANAGEMENT
+  // ═══════════════════════════════════════════════════
+
+  /// Register a new instructor — Super Admin only.
+  Future<Instructor> registerInstructor({
+    required String fullName,
+    String? email,
+    String? department,
+    String? phone,
+  }) async {
+    final instructor = await _service.registerInstructor(
+      fullName: fullName,
+      email: email,
+      department: department,
+      phone: phone,
+    );
+    _instructors.insert(0, instructor);
+    notifyListeners();
+    return instructor;
+  }
+
+  /// Deactivate an instructor account.
+  Future<void> deactivateInstructor(String id) async {
+    await _service.deactivateInstructor(id);
+    final idx = _instructors.indexWhere((i) => i.id == id);
+    if (idx != -1) {
+      _instructors[idx] = _instructors[idx].copyWith(isActive: false);
+      notifyListeners();
+    }
+  }
+
+  /// Re-activate an instructor account.
+  Future<void> reactivateInstructor(String id) async {
+    await _service.reactivateInstructor(id);
+    final idx = _instructors.indexWhere((i) => i.id == id);
+    if (idx != -1) {
+      _instructors[idx] = _instructors[idx].copyWith(isActive: true);
+      notifyListeners();
+    }
+  }
+
+  /// Permanently delete an instructor.
+  Future<void> deleteInstructor(String id) async {
+    await _service.deleteInstructor(id);
+    _instructors.removeWhere((i) => i.id == id);
+    notifyListeners();
+  }
+
+  /// Re-generate a fresh QR token for an instructor (resets session too).
+  Future<Instructor?> regenerateQrToken(String id) async {
+    final updated = await _service.regenerateQrToken(id);
+    if (updated != null) {
+      final idx = _instructors.indexWhere((i) => i.id == id);
+      if (idx != -1) {
+        _instructors[idx] = updated;
+        notifyListeners();
+      }
+    }
+    return updated;
+  }
+
+  /// Re-fetches a single instructor by ID — ensures qr_token is present.
+  Future<Instructor?> getInstructorById(String id) =>
+      _service.getInstructorById(id);
+
+  // ═══════════════════════════════════════════════════
   // LOAD ALL DATA
   // ═══════════════════════════════════════════════════
 
   Future<void> loadAll() async {
     _setLoading(true);
     try {
+      await loadSubjects();
       await Future.wait([
         loadStudents(),
-        loadSubjects(),
         loadInstructors(),
         loadModules(),
+        loadAnnouncements(),
       ]);
     } finally {
       _setLoading(false);
@@ -98,7 +256,11 @@ class AdminProvider extends ChangeNotifier {
 
   Future<void> loadStudents() async {
     try {
-      _students = await _service.getStudents();
+      if (_currentInstructor != null && !_isSuperAdmin) {
+        _students = await _service.getStudentsForInstructor(_currentInstructor!.id!);
+      } else {
+        _students = await _service.getStudents();
+      }
       notifyListeners();
     } catch (e) {
       debugPrint('Load students error: $e');
@@ -107,7 +269,11 @@ class AdminProvider extends ChangeNotifier {
 
   Future<void> loadSubjects() async {
     try {
-      _subjects = await _service.getSubjects();
+      if (_currentInstructor != null && !_isSuperAdmin) {
+        _subjects = await _service.getSubjects(instructorId: _currentInstructor!.id);
+      } else {
+        _subjects = await _service.getSubjects();
+      }
       notifyListeners();
     } catch (e) {
       debugPrint('Load subjects error: $e');
@@ -190,6 +356,45 @@ class AdminProvider extends ChangeNotifier {
     }
   }
 
+  Future<Subject?> updateSubject({
+    required String subjectId,
+    required String subjectCode,
+    required String subjectTitle,
+    required int units,
+    required String scheduleStartTime,
+    required String scheduleEndTime,
+    required String scheduleDay,
+    required String room,
+    required String instructorId,
+    int lateThresholdMinutes = 15,
+  }) async {
+    try {
+      final subject = await _service.updateSubject(
+        subjectId,
+        subjectCode: subjectCode,
+        subjectTitle: subjectTitle,
+        units: units,
+        scheduleStartTime: scheduleStartTime,
+        scheduleEndTime: scheduleEndTime,
+        scheduleDay: scheduleDay,
+        room: room,
+        instructorId: instructorId,
+        lateThresholdMinutes: lateThresholdMinutes,
+      );
+      if (subject != null) {
+        final idx = _subjects.indexWhere((s) => s.id == subjectId);
+        if (idx != -1) {
+          _subjects[idx] = subject;
+          notifyListeners();
+        }
+      }
+      return subject;
+    } catch (e) {
+      debugPrint('Update subject error: $e');
+      rethrow;
+    }
+  }
+
   Future<void> deleteSubject(String id) async {
     try {
       await _service.deleteSubject(id);
@@ -241,10 +446,14 @@ class AdminProvider extends ChangeNotifier {
     required Subject subject,
   }) async {
     try {
-      return await _service.markAttendance(
+      final record = await _service.markAttendance(
         enrollmentId: enrollmentId,
         subject: subject,
       );
+      if (_gradesSubjectId == subject.id) {
+        await loadSubjectGrades(_gradesSubjectId!);
+      }
+      return record;
     } catch (e) {
       debugPrint('Mark attendance error: $e');
       rethrow;
@@ -253,7 +462,11 @@ class AdminProvider extends ChangeNotifier {
 
   Future<int> markAbsentees(String subjectId) async {
     try {
-      return await _service.markAbsentees(subjectId);
+      final count = await _service.markAbsentees(subjectId);
+      if (_gradesSubjectId == subjectId) {
+        await loadSubjectGrades(_gradesSubjectId!);
+      }
+      return count;
     } catch (e) {
       debugPrint('Mark absentees error: $e');
       rethrow;
@@ -272,7 +485,8 @@ class AdminProvider extends ChangeNotifier {
 
   Future<int> getTodayAttendanceCount() async {
     try {
-      return await _service.getTodayAttendanceCount();
+      final instId = (!_isSuperAdmin && _currentInstructor != null) ? _currentInstructor!.id : null;
+      return await _service.getTodayAttendanceCount(instructorId: instId);
     } catch (e) {
       return 0;
     }
@@ -296,6 +510,9 @@ class AdminProvider extends ChangeNotifier {
     try {
       await _service.updateAttendanceStatus(
           attendanceId, newStatus, remarks: remarks);
+      if (_gradesSubjectId != null) {
+        await loadSubjectGrades(_gradesSubjectId!);
+      }
     } catch (e) {
       debugPrint('Update attendance status error: $e');
       rethrow;
@@ -309,12 +526,16 @@ class AdminProvider extends ChangeNotifier {
     String? remarks,
   }) async {
     try {
-      return await _service.createManualAttendance(
+      final record = await _service.createManualAttendance(
         enrollmentId: enrollmentId,
         status: status,
         date: date,
         remarks: remarks,
       );
+      if (_gradesSubjectId != null) {
+        await loadSubjectGrades(_gradesSubjectId!);
+      }
+      return record;
     } catch (e) {
       debugPrint('Create manual attendance error: $e');
       rethrow;
@@ -392,7 +613,13 @@ class AdminProvider extends ChangeNotifier {
 
   Future<void> loadModules() async {
     try {
-      _modules = await _service.getModules();
+      final all = await _service.getModules();
+      if (_currentInstructor != null && !_isSuperAdmin) {
+        final allowedCodes = _subjects.map((s) => s.subjectCode).toSet();
+        _modules = all.where((m) => allowedCodes.contains(m.subject)).toList();
+      } else {
+        _modules = all;
+      }
       notifyListeners();
     } catch (e) {
       debugPrint('Load modules error: $e');
@@ -696,9 +923,17 @@ class AdminProvider extends ChangeNotifier {
     }
   }
 
-  Future<String> generateExamSessionCode(String assessmentId) async {
+  Future<String> generateExamSessionCode(String assessmentId, {String? targetSet}) async {
     try {
-      final code = await _service.generateSessionCode(assessmentId);
+      String code = await _service.generateSessionCode(assessmentId);
+      
+      if (targetSet != null) {
+        // Since _service.generateSessionCode always generates a new random code, 
+        // we append the set manually and forcefully update it
+        code = '$code-$targetSet';
+        await _service.client.from('assessments').update({'session_code': code}).eq('id', assessmentId);
+      }
+      
       final idx = _assessments.indexWhere((a) => a.id == assessmentId);
       if (idx >= 0) {
         _assessments[idx] = _assessments[idx].copyWith(sessionCode: code);
@@ -803,6 +1038,53 @@ class AdminProvider extends ChangeNotifier {
     }
   }
 
+  /// Load grade items for ALL students in the current subject for a given term.
+  /// This populates _gradeItems for every grade ID in that term.
+  Future<void> loadAllGradeItemsForTerm(String term) async {
+    try {
+      final gradeIds = _subjectGrades
+          .where((g) => g.term == term && g.id != null)
+          .map((g) => g.id!)
+          .toList();
+      if (gradeIds.isEmpty) return;
+      final batchMap = await _service.getGradeItemsBatch(gradeIds);
+      _gradeItems.addAll(batchMap);
+      // Also fill empty lists for grades that had no items
+      for (final gid in gradeIds) {
+        _gradeItems.putIfAbsent(gid, () => []);
+      }
+      notifyListeners();
+    } catch (e) {
+      debugPrint('Load all grade items for term error: $e');
+    }
+  }
+
+  /// Get unique item column labels for a term (ordered by category then label).
+  List<({String category, String label})> uniqueItemColumnsForTerm(String term) {
+    final seen = <String>{};
+    final columns = <({String category, String label})>[];
+
+    // Collect items from all students for this term
+    for (final grade in _subjectGrades.where((g) => g.term == term)) {
+      if (grade.id == null) continue;
+      for (final item in (_gradeItems[grade.id!] ?? <StudentGradeItem>[])) {
+        final key = '${item.category}::${item.label}';
+        if (seen.add(key)) {
+          columns.add((category: item.category, label: item.label));
+        }
+      }
+    }
+
+    // Sort: exams first, then quizzes, then activities
+    const order = {'exam': 0, 'quiz': 1, 'activity': 2};
+    columns.sort((a, b) {
+      final catCmp = (order[a.category] ?? 3).compareTo(order[b.category] ?? 3);
+      if (catCmp != 0) return catCmp;
+      return a.label.compareTo(b.label);
+    });
+    return columns;
+  }
+
   Future<StudentGradeItem?> saveGradeItem(StudentGradeItem item) async {
     try {
       final saved = await _service.upsertGradeItem(item);
@@ -878,5 +1160,78 @@ class AdminProvider extends ChangeNotifier {
 
   Future<(bool, String)> processGradeQR(String qrData) async {
     return await _service.processGradeQR(qrData);
+  }
+
+  // ═══════════════════════════════════════════════════
+  // ANNOUNCEMENTS
+  // ═══════════════════════════════════════════════════
+
+  Future<void> loadAnnouncements() async {
+    try {
+      final all = await _service.getAnnouncements();
+      if (_currentInstructor != null && !_isSuperAdmin) {
+        final subjectIds = _subjects.map((s) => s.id).toSet();
+        _announcements = all.where((a) => a.subjectId == null || a.subjectId == 'All' || subjectIds.contains(a.subjectId)).toList();
+      } else {
+        _announcements = all;
+      }
+      notifyListeners();
+    } catch (e) {
+      debugPrint('Load announcements error: $e');
+    }
+  }
+
+  Future<Announcement?> addAnnouncement(Announcement announcement) async {
+    try {
+      final created = await _service.createAnnouncement(announcement);
+      if (created != null) {
+        _announcements.insert(0, created);
+        notifyListeners();
+      }
+      return created;
+    } catch (e) {
+      debugPrint('Add announcement error: $e');
+      rethrow;
+    }
+  }
+
+  Future<Announcement?> editAnnouncement(Announcement announcement) async {
+    try {
+      final updated = await _service.updateAnnouncement(announcement);
+      if (updated != null) {
+        final idx = _announcements.indexWhere((a) => a.id == announcement.id);
+        if (idx != -1) _announcements[idx] = updated;
+        notifyListeners();
+      }
+      return updated;
+    } catch (e) {
+      debugPrint('Edit announcement error: $e');
+      rethrow;
+    }
+  }
+
+  Future<void> removeAnnouncement(String id) async {
+    try {
+      await _service.deleteAnnouncement(id);
+      _announcements.removeWhere((a) => a.id == id);
+      notifyListeners();
+    } catch (e) {
+      debugPrint('Remove announcement error: $e');
+      rethrow;
+    }
+  }
+
+  Future<void> toggleAnnouncementActive(String id, bool isActive) async {
+    try {
+      await _service.toggleAnnouncementActive(id, isActive);
+      final idx = _announcements.indexWhere((a) => a.id == id);
+      if (idx != -1) {
+        _announcements[idx] = _announcements[idx].copyWith(isActive: isActive);
+        notifyListeners();
+      }
+    } catch (e) {
+      debugPrint('Toggle announcement error: $e');
+      rethrow;
+    }
   }
 }

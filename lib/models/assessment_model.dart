@@ -96,7 +96,7 @@ class AssessmentConfig {
       case 'midterm':
         return 'Midterm';
       case 'semi_finals':
-        return 'Semi-Finals';
+        return 'Pre-Finals';
       case 'finals':
         return 'Finals';
       default:
@@ -135,11 +135,14 @@ class AssessmentQuestion {
   bool get isMultipleChoice => questionType == 'multiple_choice';
   bool get isIdentification => questionType == 'identification';
   bool get isEnumeration => questionType == 'enumeration';
+  bool get isEssay => questionType == 'essay';
 
   /// Check a student's answer against the correct answer.
   bool checkAnswer(String studentAnswer) {
     final sa = studentAnswer.trim().toLowerCase();
     if (sa.isEmpty) return false;
+
+    if (isEssay) return false; // Needs manual grading
 
     if (isEnumeration && enumerationAnswers != null) {
       // For enumeration, check if the student's comma-separated answers
@@ -157,6 +160,7 @@ class AssessmentQuestion {
 
   /// Compute points earned for a given answer.
   double computePoints(String studentAnswer) {
+    if (isEssay) return 0; // Default to 0 for auto-grading until manual grading is added
     if (checkAnswer(studentAnswer)) return points;
 
     // Partial credit for enumeration

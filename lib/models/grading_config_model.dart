@@ -5,20 +5,29 @@
 ///
 /// Term grade = sum of all component contributions.
 ///
-/// Cross-term final grade weighting:
-///   Semester  (4 terms): Prelim×0.2 + Midterm×0.2 + Semi-Finals×0.2 + Finals×0.4
+///   Semester  (4 terms): Prelim×0.2 + Midterm×0.2 + Pre-Finals×0.2 + Finals×0.4
 ///   Trimester (3 terms): Prelim×0.25 + Midterm×0.25 + Finals×0.5
 class GradingConfig {
   final String? id;
   final String subjectId;
 
-  /// 'semester'  → Prelim, Midterm, Semi-Finals, Finals  (4 terms)
+  /// 'semester'  → Prelim, Midterm, Pre-Finals, Finals  (4 terms)
   /// 'trimester' → Prelim, Midterm, Finals               (3 terms)
   final String termType;
 
   final double examPct;
   final double quizPct;
   final double attendancePct;
+
+  // Term Date Ranges
+  final DateTime? prelimStart;
+  final DateTime? prelimEnd;
+  final DateTime? midtermStart;
+  final DateTime? midtermEnd;
+  final DateTime? semiFinalsStart;
+  final DateTime? semiFinalsEnd;
+  final DateTime? finalsStart;
+  final DateTime? finalsEnd;
 
   const GradingConfig({
     this.id,
@@ -27,6 +36,14 @@ class GradingConfig {
     this.examPct = 60,
     this.quizPct = 30,
     this.attendancePct = 10,
+    this.prelimStart,
+    this.prelimEnd,
+    this.midtermStart,
+    this.midtermEnd,
+    this.semiFinalsStart,
+    this.semiFinalsEnd,
+    this.finalsStart,
+    this.finalsEnd,
   });
 
   // ── Helpers ──────────────────────────────────────────────────────
@@ -39,7 +56,7 @@ class GradingConfig {
     switch (term) {
       case 'prelim':      return 'Prelim';
       case 'midterm':     return 'Midterm';
-      case 'semi_finals': return 'Semi-Finals';
+      case 'semi_finals': return 'Pre-Finals';
       case 'finals':      return 'Finals';
       default:            return term;
     }
@@ -47,6 +64,76 @@ class GradingConfig {
 
   bool get isValid =>
       (examPct + quizPct + attendancePct - 100.0).abs() < 0.01;
+
+  /// Returns the term ('prelim', 'midterm', 'semi_finals', 'finals') that the given date falls into.
+  /// If the date doesn't fall into any configured term exactly, it finds the closest term,
+  /// or defaults to 'prelim' if no dates are configured.
+  String termForDate(DateTime date) {
+    final tType = termType;
+    
+    // Create a list of available terms with their start/end dates
+    final ranges = <String, ({DateTime? start, DateTime? end})>{
+      'prelim': (start: prelimStart, end: prelimEnd),
+      'midterm': (start: midtermStart, end: midtermEnd),
+      if (tType == 'semester') 'semi_finals': (start: semiFinalsStart, end: semiFinalsEnd),
+      'finals': (start: finalsStart, end: finalsEnd),
+    };
+
+    // 1. Check if it falls exactly within a range
+    for (final entry in ranges.entries) {
+      final start = entry.value.start;
+      final end = entry.value.end;
+      if (start != null && end != null) {
+        // Normalise date and bounds to just the day
+        final d = DateTime(date.year, date.month, date.day);
+        final s = DateTime(start.year, start.month, start.day);
+        final e = DateTime(end.year, end.month, end.day, 23, 59, 59);
+        
+        if (d.isAfter(s.subtract(const Duration(days: 1))) && 
+            d.isBefore(e.add(const Duration(days: 1)))) {
+          return entry.key;
+        }
+      }
+    }
+
+    // 2. If we reach here, date doesn't strictly match. 
+    // If no dates are configured at all, fallback to prelim.
+    if (ranges.values.every((r) => r.start == null && r.end == null)) {
+      return 'prelim';
+    }
+
+    // 3. Fallback: Find the closest term by date distance.
+    String closestTerm = 'prelim';
+    int minDistance = -1;
+
+    final d = DateTime(date.year, date.month, date.day);
+
+    for (final entry in ranges.entries) {
+      final start = entry.value.start;
+      final end = entry.value.end;
+      
+      if (start != null && end != null) {
+        final s = DateTime(start.year, start.month, start.day);
+        final e = DateTime(end.year, end.month, end.day);
+        
+        int dist = -1;
+        if (d.isBefore(s)) {
+          dist = s.difference(d).inDays;
+        } else if (d.isAfter(e)) {
+          dist = d.difference(e).inDays;
+        } else {
+          dist = 0; // Inside, though we should have caught this in step 1
+        }
+
+        if (minDistance == -1 || dist < minDistance) {
+          minDistance = dist;
+          closestTerm = entry.key;
+        }
+      }
+    }
+
+    return closestTerm;
+  }
 
   // ── Core Grade Computation ────────────────────────────────────────
 
@@ -70,7 +157,7 @@ class GradingConfig {
 
   // ── Cross-term final grade weighting ─────────────────────────────
   //
-  // Semester  (4 terms): Prelim×0.2 + Midterm×0.2 + Semi-Finals×0.2 + Finals×0.4 = 1.0
+  // Semester  (4 terms): Prelim×0.2 + Midterm×0.2 + Pre-Finals×0.2 + Finals×0.4 = 1.0
   // Trimester (3 terms): Prelim×0.25 + Midterm×0.25 + Finals×0.5 = 1.0
   //   (ratio 1:1:2 kept identical to semester)
 
@@ -95,7 +182,7 @@ class GradingConfig {
   /// Computes the overall final grade from a map of {term → termGrade}.
   ///
   /// Formula (semester example):
-  ///   (Prelim×0.2) + (Midterm×0.2) + (Semi-Finals×0.2) + (Finals×0.4)
+  ///   (Prelim×0.2) + (Midterm×0.2) + (Pre-Finals×0.2) + (Finals×0.4)
   ///
   /// Only includes terms that have a recorded grade.
   /// Returns null if no terms have grades yet.
@@ -125,6 +212,14 @@ class GradingConfig {
         'exam_pct': examPct,
         'quiz_pct': quizPct,
         'attendance_pct': attendancePct,
+        'prelim_start': prelimStart?.toIso8601String().split('T').first,
+        'prelim_end': prelimEnd?.toIso8601String().split('T').first,
+        'midterm_start': midtermStart?.toIso8601String().split('T').first,
+        'midterm_end': midtermEnd?.toIso8601String().split('T').first,
+        'semi_finals_start': semiFinalsStart?.toIso8601String().split('T').first,
+        'semi_finals_end': semiFinalsEnd?.toIso8601String().split('T').first,
+        'finals_start': finalsStart?.toIso8601String().split('T').first,
+        'finals_end': finalsEnd?.toIso8601String().split('T').first,
       };
 
   factory GradingConfig.fromSupabase(Map<String, dynamic> map) =>
@@ -135,6 +230,14 @@ class GradingConfig {
         examPct: (map['exam_pct'] as num?)?.toDouble() ?? 60,
         quizPct: (map['quiz_pct'] as num?)?.toDouble() ?? 30,
         attendancePct: (map['attendance_pct'] as num?)?.toDouble() ?? 10,
+        prelimStart: map['prelim_start'] != null ? DateTime.tryParse(map['prelim_start']) : null,
+        prelimEnd: map['prelim_end'] != null ? DateTime.tryParse(map['prelim_end']) : null,
+        midtermStart: map['midterm_start'] != null ? DateTime.tryParse(map['midterm_start']) : null,
+        midtermEnd: map['midterm_end'] != null ? DateTime.tryParse(map['midterm_end']) : null,
+        semiFinalsStart: map['semi_finals_start'] != null ? DateTime.tryParse(map['semi_finals_start']) : null,
+        semiFinalsEnd: map['semi_finals_end'] != null ? DateTime.tryParse(map['semi_finals_end']) : null,
+        finalsStart: map['finals_start'] != null ? DateTime.tryParse(map['finals_start']) : null,
+        finalsEnd: map['finals_end'] != null ? DateTime.tryParse(map['finals_end']) : null,
       );
 
   GradingConfig copyWith({
@@ -144,6 +247,14 @@ class GradingConfig {
     double? examPct,
     double? quizPct,
     double? attendancePct,
+    DateTime? prelimStart,
+    DateTime? prelimEnd,
+    DateTime? midtermStart,
+    DateTime? midtermEnd,
+    DateTime? semiFinalsStart,
+    DateTime? semiFinalsEnd,
+    DateTime? finalsStart,
+    DateTime? finalsEnd,
   }) =>
       GradingConfig(
         id: id ?? this.id,
@@ -152,6 +263,14 @@ class GradingConfig {
         examPct: examPct ?? this.examPct,
         quizPct: quizPct ?? this.quizPct,
         attendancePct: attendancePct ?? this.attendancePct,
+        prelimStart: prelimStart ?? this.prelimStart,
+        prelimEnd: prelimEnd ?? this.prelimEnd,
+        midtermStart: midtermStart ?? this.midtermStart,
+        midtermEnd: midtermEnd ?? this.midtermEnd,
+        semiFinalsStart: semiFinalsStart ?? this.semiFinalsStart,
+        semiFinalsEnd: semiFinalsEnd ?? this.semiFinalsEnd,
+        finalsStart: finalsStart ?? this.finalsStart,
+        finalsEnd: finalsEnd ?? this.finalsEnd,
       );
 }
 

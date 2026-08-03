@@ -283,7 +283,7 @@ class _QuizPageState extends State<QuizPage> {
     bool isDark,
     Color subjectColor,
   ) {
-    final terms = ['Prelim', 'Midterm', 'Semi-Finals', 'Finals'];
+    final terms = ['Prelim', 'Midterm', 'Pre-Finals', 'Finals'];
     final subjectTitle = enrollment.subjectTitle ?? 'Unknown Subject';
 
     showModalBottomSheet(
@@ -385,7 +385,7 @@ class _QuizPageState extends State<QuizPage> {
       switch (t) {
         case 'Prelim': return 'prelim';
         case 'Midterm': return 'midterm';
-        case 'Semi-Finals': return 'semi_finals';
+        case 'Pre-Finals': return 'semi_finals';
         case 'Finals': return 'finals';
         default: return t.toLowerCase();
       }
@@ -513,20 +513,32 @@ class _QuizPageState extends State<QuizPage> {
                     isDark: isDark,
                   )));
                 } else {
-                  final code = await Navigator.push<String>(
-                    context,
-                    MaterialPageRoute(builder: (_) => const QRScannerScreen()),
-                  );
-                  if (code != null && context.mounted) {
-                    final parts = code.split('|');
-                    if (parts.length >= 4 && parts[0] == 'STIMSYS_EXAM' && parts[1] == assessment.id) {
-                      Navigator.push(context, MaterialPageRoute(builder: (_) => TakeAssessmentPage(
-                        assessment: assessment,
-                        isDark: isDark,
-                        prefilledSessionCode: parts[3],
-                      )));
-                    } else {
-                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Invalid or mismatched Exam QR Code'), backgroundColor: Colors.red));
+                  if (isExam) {
+                    // For exams, push TakeAssessmentPage directly to show the Set A/B assignment screen
+                    Navigator.push(context, MaterialPageRoute(builder: (_) => TakeAssessmentPage(
+                      assessment: assessment,
+                      isDark: isDark,
+                    )));
+                  } else {
+                    // For quizzes, require QR scan first (as quizzes don't have sets)
+                    final code = await Navigator.push<String>(
+                      context,
+                      MaterialPageRoute(builder: (_) => const QRScannerScreen()),
+                    );
+                    if (code != null && context.mounted) {
+                      final parts = code.split('|');
+                      if (parts.length >= 4 && parts[0] == 'STIMSYS_EXAM' && parts[1] == assessment.id) {
+                        Navigator.push(context, MaterialPageRoute(builder: (_) => TakeAssessmentPage(
+                          assessment: assessment,
+                          isDark: isDark,
+                          prefilledSessionCode: parts[3],
+                        )));
+                      } else {
+                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                          content: Text('Invalid or mismatched Quiz QR Code'),
+                          backgroundColor: Colors.red,
+                        ));
+                      }
                     }
                   }
                 }

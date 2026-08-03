@@ -379,10 +379,25 @@ class _DesktopStudentRowState extends State<_DesktopStudentRow> {
                 color: _accent.withValues(alpha: 0.12),
                 borderRadius: BorderRadius.circular(8),
               ),
-              child: Center(
-                child: Text(s.firstName[0].toUpperCase(),
-                    style: GoogleFonts.inter(
-                        color: _accent, fontSize: 14, fontWeight: FontWeight.w800)),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: s.profileImageUrl != null && s.profileImageUrl!.isNotEmpty
+                    ? Image.network(
+                        s.profileImageUrl!,
+                        width: 34,
+                        height: 34,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) => Center(
+                          child: Text(s.firstName[0].toUpperCase(),
+                              style: GoogleFonts.inter(
+                                  color: _accent, fontSize: 14, fontWeight: FontWeight.w800)),
+                        ),
+                      )
+                    : Center(
+                        child: Text(s.firstName[0].toUpperCase(),
+                            style: GoogleFonts.inter(
+                                color: _accent, fontSize: 14, fontWeight: FontWeight.w800)),
+                      ),
               ),
             ),
             const SizedBox(width: 10),

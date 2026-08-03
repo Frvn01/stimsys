@@ -5,6 +5,7 @@ import 'package:qr_flutter/qr_flutter.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import '../../providers/admin_provider.dart';
 import '../../models/assessment_model.dart';
+import '../../core/supabase_config.dart';
 
 class DesktopAssessmentScreen extends StatefulWidget {
   const DesktopAssessmentScreen({super.key});
@@ -30,7 +31,7 @@ class _DesktopAssessmentScreenState extends State<DesktopAssessmentScreen> {
   static const _terms = [
     ('prelim', 'Prelim'),
     ('midterm', 'Midterm'),
-    ('semi_finals', 'Semi-Finals'),
+    ('semi_finals', 'Pre-Finals'),
     ('finals', 'Finals'),
   ];
 
@@ -306,7 +307,10 @@ class _DesktopAssessmentScreenState extends State<DesktopAssessmentScreen> {
               if (isExam && assessment.sessionCode != null) ...[
                 const SizedBox(width: 10),
                 _infoChip(
-                    Icons.vpn_key_rounded, 'Code: ${assessment.sessionCode}'),
+                    Icons.check_circle_rounded, 
+                    assessment.sessionCode!.contains('-') 
+                        ? 'Notified: Set ${assessment.sessionCode!.split('-').last}'
+                        : 'Notified'),
               ],
               const Spacer(),
               _actionBtn(
@@ -326,10 +330,21 @@ class _DesktopAssessmentScreenState extends State<DesktopAssessmentScreen> {
                     assessment.id!, !assessment.isPublished),
               ),
               if (isExam) ...[
-                const SizedBox(width: 6),
-                _actionBtn(Icons.qr_code_rounded, 'QR', _amber, () {
-                  _showExamQRDialog(provider, assessment);
-                }),
+                if (assessment.setCount > 1) ...[
+                  const SizedBox(width: 6),
+                  _actionBtn(Icons.notifications_active_rounded, 'Notify Set A', _green, () {
+                    provider.generateExamSessionCode(assessment.id!, targetSet: 'A');
+                  }),
+                  const SizedBox(width: 6),
+                  _actionBtn(Icons.notifications_active_rounded, 'Notify Set B', _green, () {
+                    provider.generateExamSessionCode(assessment.id!, targetSet: 'B');
+                  }),
+                ] else ...[
+                  const SizedBox(width: 6),
+                  _actionBtn(Icons.notifications_active_rounded, 'Start Exam', _green, () {
+                    provider.generateExamSessionCode(assessment.id!);
+                  }),
+                ],
               ],
               const SizedBox(width: 6),
               _actionBtn(Icons.people_rounded, 'Submissions', const Color(0xFF3B82F6), () {
@@ -441,6 +456,10 @@ class _DesktopAssessmentScreenState extends State<DesktopAssessmentScreen> {
               _buildCreateButton2('Enumeration', () {
                 _showAddQuestionDialog(provider, 'enumeration');
               }),
+              const SizedBox(width: 8),
+              _buildCreateButton2('Essay', () {
+                _showAddQuestionDialog(provider, 'essay');
+              }),
             ],
           ),
         ),
@@ -496,12 +515,16 @@ class _DesktopAssessmentScreenState extends State<DesktopAssessmentScreen> {
         ? _accent
         : question.isIdentification
             ? _green
-            : _amber;
+            : question.isEnumeration
+                ? _amber
+                : Colors.purpleAccent;
     final typeLabel = question.isMultipleChoice
         ? 'MC'
         : question.isIdentification
             ? 'ID'
-            : 'ENUM';
+            : question.isEnumeration
+                ? 'ENUM'
+                : 'ESSAY';
 
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
@@ -657,6 +680,7 @@ class _DesktopAssessmentScreenState extends State<DesktopAssessmentScreen> {
     String type = 'quiz';
     int timeLimit = 30;
     int setCount = 1;
+    bool isCreating = false;
 
     showDialog(
       context: context,
@@ -755,23 +779,42 @@ class _DesktopAssessmentScreenState extends State<DesktopAssessmentScreen> {
                   backgroundColor: _accent,
                   shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(8))),
-              onPressed: () async {
+              onPressed: isCreating ? null : () async {
                 if (titleCtrl.text.trim().isEmpty) return;
-                final config = AssessmentConfig(
-                  subjectId: _selectedSubjectId!,
-                  term: _selectedTerm,
-                  type: type,
-                  title: titleCtrl.text.trim(),
-                  timeLimitSecs: timeLimit * 60,
-                  setCount: setCount,
-                );
-                await context
-                    .read<AdminProvider>()
-                    .createAssessment(config);
-                if (ctx.mounted) Navigator.pop(ctx);
+                
+                setDialogState(() => isCreating = true);
+                try {
+                  final config = AssessmentConfig(
+                    subjectId: _selectedSubjectId!,
+                    term: _selectedTerm,
+                    type: type,
+                    title: titleCtrl.text.trim(),
+                    timeLimitSecs: timeLimit * 60,
+                    setCount: setCount,
+                  );
+                  await context
+                      .read<AdminProvider>()
+                      .createAssessment(config);
+                  if (ctx.mounted) Navigator.pop(ctx);
+                } catch (e) {
+                  if (ctx.mounted) {
+                    ScaffoldMessenger.of(ctx).showSnackBar(
+                      SnackBar(
+                        content: Text('Failed to create assessment: $e'),
+                        backgroundColor: Colors.red,
+                      )
+                    );
+                  }
+                } finally {
+                  if (ctx.mounted) {
+                    setDialogState(() => isCreating = false);
+                  }
+                }
               },
-              child: Text('Create',
-                  style: GoogleFonts.inter(fontWeight: FontWeight.w700)),
+              child: isCreating
+                  ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                  : Text('Create',
+                      style: GoogleFonts.inter(fontWeight: FontWeight.w700)),
             ),
           ],
         ),
@@ -849,7 +892,7 @@ class _DesktopAssessmentScreenState extends State<DesktopAssessmentScreen> {
             shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(14)),
             title: Text(
-              'Add ${questionType == 'multiple_choice' ? 'Multiple Choice' : questionType == 'identification' ? 'Identification' : 'Enumeration'}',
+              'Add ${questionType == 'multiple_choice' ? 'Multiple Choice' : questionType == 'identification' ? 'Identification' : questionType == 'essay' ? 'Essay' : 'Enumeration'}',
               style: GoogleFonts.inter(
                   color: Colors.white,
                   fontSize: 16,
@@ -919,6 +962,13 @@ class _DesktopAssessmentScreenState extends State<DesktopAssessmentScreen> {
                     ] else if (questionType == 'identification') ...[
                       _dialogField(
                           'Correct Answer', answerCtrl, 'Enter correct answer'),
+                    ] else if (questionType == 'essay') ...[
+                      const SizedBox(height: 12),
+                      Text('Essays do not have predefined correct answers. They will require manual grading.',
+                          style: GoogleFonts.inter(
+                              color: const Color(0xFF8B9AB2),
+                              fontSize: 12,
+                              fontWeight: FontWeight.w500)),
                     ] else ...[
                       Text('Correct Answers (fill in all)',
                           style: GoogleFonts.inter(
@@ -983,6 +1033,8 @@ class _DesktopAssessmentScreenState extends State<DesktopAssessmentScreen> {
                   } else if (questionType == 'identification') {
                     correctAnswer = answerCtrl.text.trim();
                     if (correctAnswer.isEmpty) return;
+                  } else if (questionType == 'essay') {
+                    correctAnswer = 'Requires Manual Grading';
                   } else {
                     enumAnswers = enumCtrls
                         .map((c) => c.text.trim())
@@ -1002,8 +1054,20 @@ class _DesktopAssessmentScreenState extends State<DesktopAssessmentScreen> {
                     enumerationAnswers: enumAnswers,
                     points: double.tryParse(pointsCtrl.text) ?? 1,
                   );
-                  await provider.addQuestion(question);
-                  if (ctx.mounted) Navigator.pop(ctx);
+                  
+                  try {
+                    await provider.addQuestion(question);
+                    if (ctx.mounted) Navigator.pop(ctx);
+                  } catch (e) {
+                    if (ctx.mounted) {
+                      ScaffoldMessenger.of(ctx).showSnackBar(
+                        SnackBar(
+                          content: Text('Failed to add question: $e'),
+                          backgroundColor: Colors.red,
+                        )
+                      );
+                    }
+                  }
                 },
                 child: Text('Add',
                     style: GoogleFonts.inter(fontWeight: FontWeight.w700)),
@@ -1074,80 +1138,7 @@ class _DesktopAssessmentScreenState extends State<DesktopAssessmentScreen> {
     );
   }
 
-  void _showExamQRDialog(
-      AdminProvider provider, AssessmentConfig assessment) async {
-    // Generate session code if none
-    String code = assessment.sessionCode ?? '';
-    if (code.isEmpty) {
-      code = await provider.generateExamSessionCode(assessment.id!);
-    }
 
-    final qrData =
-        'STIMSYS_EXAM|${assessment.id}|${assessment.subjectId}|$code';
-
-    if (!mounted) return;
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: _surface,
-        shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(14)),
-        title: Text('Exam Session QR',
-            style: GoogleFonts.inter(
-                color: Colors.white, fontWeight: FontWeight.w700)),
-        content: SizedBox(
-          width: 300,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: QrImageView(
-                  data: qrData,
-                  size: 200,
-                  backgroundColor: Colors.white,
-                ),
-              ),
-              const SizedBox(height: 14),
-              Text('Session Code: $code',
-                  style: GoogleFonts.inter(
-                      color: _amber,
-                      fontSize: 18,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: 2)),
-              const SizedBox(height: 8),
-              Text('Students scan this to start the exam',
-                  style: GoogleFonts.inter(
-                      color: const Color(0xFF4B5E78), fontSize: 12)),
-              const SizedBox(height: 12),
-              ElevatedButton.icon(
-                style: ElevatedButton.styleFrom(
-                    backgroundColor: _amber,
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8))),
-                onPressed: () async {
-                  final newCode =
-                      await provider.generateExamSessionCode(assessment.id!);
-                  if (ctx.mounted) {
-                    Navigator.pop(ctx);
-                    _showExamQRDialog(provider,
-                        assessment.copyWith(sessionCode: newCode));
-                  }
-                },
-                icon: const Icon(Icons.refresh_rounded, size: 16),
-                label: Text('Regenerate',
-                    style: GoogleFonts.inter(fontWeight: FontWeight.w700)),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
 
   void _showSubmissionsDialog(
       AdminProvider provider, AssessmentConfig assessment) async {

@@ -5,7 +5,13 @@ import 'package:provider/provider.dart';
 import '../providers/student_provider.dart';
 import '../models/assessment_model.dart';
 import '../services/answer_cache_service.dart';
+import '../services/notification_service.dart';
 import 'assessment_result_page.dart';
+import 'dart:math';
+import 'package:mobile_scanner/mobile_scanner.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import '../core/supabase_config.dart';
 
 class TakeAssessmentPage extends StatefulWidget {
   final AssessmentConfig assessment;
@@ -23,7 +29,7 @@ class TakeAssessmentPage extends StatefulWidget {
   State<TakeAssessmentPage> createState() => _TakeAssessmentPageState();
 }
 
-class _TakeAssessmentPageState extends State<TakeAssessmentPage> {
+class _TakeAssessmentPageState extends State<TakeAssessmentPage> with WidgetsBindingObserver {
   bool _loading = true;
   bool _submitting = false;
   List<AssessmentQuestion> _questions = [];
@@ -34,35 +40,136 @@ class _TakeAssessmentPageState extends State<TakeAssessmentPage> {
   // Exam session validation (if it's an exam)
   bool _sessionVerified = false;
   final _sessionCodeCtrl = TextEditingController();
+  
+  bool _isScanning = false;
+  final MobileScannerController _scannerController = MobileScannerController();
 
   // Timer
   Timer? _timer;
   int _secondsLeft = 0;
 
+  // Anti-Cheat
+  int _leaveCount = 0;
+  double _penaltyPoints = 0.0;
+  bool _isInvalidated = false;
+
+  // Set A/B Logic
+  String? _assignedSet;
+  String? _currentSessionCode;
+  RealtimeChannel? _realtimeChannel;
+
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _secondsLeft = widget.assessment.timeLimitSecs;
+    _currentSessionCode = widget.assessment.sessionCode;
     
+    _initializeSetAndSession();
+  }
+
+  Future<void> _initializeSetAndSession() async {
+    final provider = context.read<StudentProvider>();
+    if (widget.assessment.setCount > 1) {
+      // Deterministic set assignment based on student USN and assessment ID
+      final hash = (widget.assessment.id! + provider.usn).hashCode;
+      final assignedSet = hash % 2 == 0 ? 'A' : 'B';
+      setState(() => _assignedSet = assignedSet);
+    }
+
     if (widget.prefilledSessionCode != null && widget.assessment.sessionCode != null) {
-      if (widget.prefilledSessionCode!.toUpperCase() == widget.assessment.sessionCode!.toUpperCase()) {
-        _sessionVerified = true;
-        _loadDataAndCache();
-        return;
+      final prefilled = widget.prefilledSessionCode!.toUpperCase();
+      final expected = widget.assessment.sessionCode!.toUpperCase();
+      if (prefilled == expected) {
+        bool canProceed = true;
+        if (widget.assessment.setCount > 1 && _assignedSet != null) {
+          if (!prefilled.endsWith('-$_assignedSet')) {
+            canProceed = false;
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('Invalid QR code for Set $_assignedSet', style: GoogleFonts.inter(fontWeight: FontWeight.w600)), backgroundColor: Colors.red)
+              );
+            });
+          }
+        }
+        if (canProceed) {
+          setState(() => _sessionVerified = true);
+          _loadDataAndCache();
+          return;
+        }
       }
     }
 
     if (widget.assessment.isQuiz) {
-      _sessionVerified = true;
+      setState(() => _sessionVerified = true);
       _loadDataAndCache();
+    } else {
+      // Listen for session code updates (Set A/B start)
+      _realtimeChannel = SupabaseConfig.client
+          .channel('public:assessments')
+          .onPostgresChanges(
+            event: PostgresChangeEvent.update,
+            schema: 'public',
+            table: 'assessments',
+            filter: PostgresChangeFilter(
+              type: PostgresChangeFilterType.eq,
+              column: 'id',
+              value: widget.assessment.id,
+            ),
+            callback: (payload) {
+              final newCode = payload.newRecord['session_code'] as String?;
+              if (mounted && newCode != null) {
+                setState(() {
+                  _currentSessionCode = newCode;
+                });
+              }
+              if (newCode != null && _assignedSet != null) {
+                if (newCode.endsWith('-$_assignedSet')) {
+                  NotificationService().showNotification(
+                    id: widget.assessment.id.hashCode,
+                    title: 'Exam Set $_assignedSet Started!',
+                    body: 'Your exam set is now active. You may enter the session code to begin.',
+                  );
+                }
+              }
+            },
+          )
+          .subscribe();
     }
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _realtimeChannel?.unsubscribe();
     _timer?.cancel();
-    _sessionCodeCtrl.dispose();
+    _scannerController.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused) {
+      if (_sessionVerified && !_submitting && _secondsLeft > 0 && !_isInvalidated) {
+        _leaveCount++;
+        if (_leaveCount >= 3) {
+          _isInvalidated = true;
+          _autoSubmit();
+        } else {
+          _penaltyPoints += 5.0;
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Warning: Do not leave the app. -5 pts deduction! ($_leaveCount/3)', 
+                  style: GoogleFonts.inter(fontWeight: FontWeight.w700)),
+                backgroundColor: Colors.red,
+                duration: const Duration(seconds: 4),
+              )
+            );
+          }
+        }
+      }
+    }
   }
 
   Future<void> _loadDataAndCache() async {
@@ -71,7 +178,15 @@ class _TakeAssessmentPageState extends State<TakeAssessmentPage> {
 
     try {
       _questions = await provider.loadQuestions(widget.assessment.id!);
+      
+      // Sort to establish deterministic baseline
       _questions.sort((a, b) => a.questionOrder.compareTo(b.questionOrder));
+      
+      // Shuffle using the Set's deterministic seed, matching the web projector exactly
+      if (widget.assessment.setCount > 1 && _assignedSet != null) {
+        final seed = _assignedSet!.codeUnitAt(0);
+        _questions.shuffle(Random(seed));
+      }
 
       // Check cache
       final cached = await AnswerCacheService.restoreAnswers(widget.assessment.id!, usn);
@@ -108,18 +223,39 @@ class _TakeAssessmentPageState extends State<TakeAssessmentPage> {
     });
   }
 
-  void _verifySessionCode() {
-    if (_sessionCodeCtrl.text.trim().toUpperCase() == widget.assessment.sessionCode?.toUpperCase()) {
-      setState(() => _sessionVerified = true);
-      _loadDataAndCache();
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Invalid session code', style: GoogleFonts.inter(fontWeight: FontWeight.w600)),
-          backgroundColor: Colors.red,
-        )
-      );
+  void _verifyScannedCode(String scannedData) {
+    // Expected format: STIMSYS_EXAM|assessmentId|subjectId|sessionCode
+    final parts = scannedData.split('|');
+    if (parts.length >= 4 && parts[0] == 'STIMSYS_EXAM' && parts[1] == widget.assessment.id) {
+      final enteredCode = parts[3].trim().toUpperCase();
+      
+      final rawSessionCode = _currentSessionCode?.trim();
+      final expectedCode = (rawSessionCode == null || rawSessionCode.isEmpty) ? 'N/A' : rawSessionCode.toUpperCase();
+      
+      String targetCode = expectedCode;
+      if (widget.assessment.setCount > 1 && _assignedSet != null) {
+        if (!targetCode.endsWith('-$_assignedSet')) {
+          targetCode = '$expectedCode-$_assignedSet';
+        }
+      }
+
+      if (enteredCode == targetCode || enteredCode == expectedCode) {
+        setState(() {
+          _isScanning = false;
+          _sessionVerified = true;
+        });
+        _loadDataAndCache();
+        return;
+      }
     }
+    
+    // If it reaches here, it's invalid
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Invalid QR Code for your assigned set.', style: GoogleFonts.inter(fontWeight: FontWeight.w600)),
+        backgroundColor: Colors.red,
+      )
+    );
   }
 
   void _updateAnswer(String qId, String answer) {
@@ -182,9 +318,15 @@ class _TakeAssessmentPageState extends State<TakeAssessmentPage> {
       ));
     }
 
+    if (_isInvalidated) {
+      totalScore = 0;
+    } else {
+      totalScore -= _penaltyPoints;
+      if (totalScore < 0) totalScore = 0;
+    }
+
     final usn = provider.usn;
-    final lastDigit = int.tryParse(usn.characters.last) ?? 0;
-    final setLabel = widget.assessment.setCount > 1 ? (lastDigit % 2 != 0 ? 'B' : 'A') : null;
+    final setLabel = widget.assessment.setCount > 1 ? _assignedSet : null;
 
     final submission = AssessmentSubmission(
       assessmentId: widget.assessment.id!,
@@ -329,6 +471,50 @@ class _TakeAssessmentPageState extends State<TakeAssessmentPage> {
   }
 
   Widget _buildSessionVerification(Color bg, Color surface, Color textCol, Color subCol, Color accent) {
+    if (_isScanning) {
+      return Scaffold(
+        backgroundColor: Colors.black,
+        appBar: AppBar(
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          leading: BackButton(color: Colors.white, onPressed: () => setState(() => _isScanning = false)),
+          title: Text('Scan QR Code', style: GoogleFonts.inter(color: Colors.white, fontWeight: FontWeight.w700)),
+        ),
+        body: Stack(
+          alignment: Alignment.center,
+          children: [
+            MobileScanner(
+              controller: _scannerController,
+              onDetect: (capture) {
+                final List<Barcode> barcodes = capture.barcodes;
+                if (barcodes.isNotEmpty && barcodes.first.rawValue != null) {
+                  _scannerController.stop();
+                  _verifyScannedCode(barcodes.first.rawValue!);
+                }
+              },
+            ),
+            Container(
+              decoration: BoxDecoration(
+                border: Border.all(color: accent, width: 4),
+                borderRadius: BorderRadius.circular(16),
+              ),
+              width: 250,
+              height: 250,
+            ),
+            Positioned(
+              bottom: 40,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                decoration: BoxDecoration(color: Colors.black54, borderRadius: BorderRadius.circular(20)),
+                child: Text('Point camera at the projector QR code',
+                    style: GoogleFonts.inter(color: Colors.white, fontSize: 14)),
+              ),
+            )
+          ],
+        ),
+      );
+    }
+
     return Scaffold(
       backgroundColor: bg,
       appBar: AppBar(backgroundColor: Colors.transparent, elevation: 0, leading: const BackButton()),
@@ -344,35 +530,39 @@ class _TakeAssessmentPageState extends State<TakeAssessmentPage> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(Icons.lock_rounded, size: 48, color: accent),
+                Icon(Icons.qr_code_scanner_rounded, size: 48, color: accent),
                 const SizedBox(height: 16),
-                Text('Exam Session Locked', style: GoogleFonts.inter(color: textCol, fontSize: 18, fontWeight: FontWeight.w800)),
+                Text('Ready to Start?', style: GoogleFonts.inter(color: textCol, fontSize: 18, fontWeight: FontWeight.w800)),
                 const SizedBox(height: 8),
-                Text('Please ask your instructor for the 4-character session code.',
+                if (widget.assessment.setCount > 1 && _assignedSet != null) ...[
+                  Container(
+                    margin: const EdgeInsets.symmetric(vertical: 16),
+                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                    decoration: BoxDecoration(
+                      color: accent.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: accent.withValues(alpha: 0.3)),
+                    ),
+                    child: Text('You are assigned to: SET $_assignedSet',
+                        style: GoogleFonts.inter(color: accent, fontSize: 16, fontWeight: FontWeight.w800)),
+                  ),
+                ],
+                Text('Scan the QR code displayed on the board to begin your exam.',
                     textAlign: TextAlign.center,
                     style: GoogleFonts.inter(color: subCol, fontSize: 13)),
-                const SizedBox(height: 24),
-                TextField(
-                  controller: _sessionCodeCtrl,
-                  textAlign: TextAlign.center,
-                  textCapitalization: TextCapitalization.characters,
-                  style: GoogleFonts.inter(color: textCol, fontSize: 24, fontWeight: FontWeight.w800, letterSpacing: 8),
-                  decoration: InputDecoration(
-                    hintText: 'CODE',
-                    filled: true,
-                    fillColor: widget.isDark ? const Color(0xFF0F172A) : Colors.grey[100],
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-                  ),
-                ),
-                const SizedBox(height: 24),
-                ElevatedButton(
-                  onPressed: _verifySessionCode,
+                const SizedBox(height: 32),
+                ElevatedButton.icon(
+                  onPressed: () {
+                    setState(() => _isScanning = true);
+                  },
+                  icon: const Icon(Icons.camera_alt_rounded),
+                  label: Text('Scan QR Code', style: GoogleFonts.inter(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w700)),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: accent,
-                    minimumSize: const Size(double.infinity, 50),
+                    foregroundColor: Colors.white,
+                    minimumSize: const Size(double.infinity, 54),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                   ),
-                  child: Text('Start Exam', style: GoogleFonts.inter(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w700)),
                 )
               ],
             ),
@@ -383,7 +573,7 @@ class _TakeAssessmentPageState extends State<TakeAssessmentPage> {
   }
 
   Widget _buildQuestionCard(int index, AssessmentQuestion q, Color surface, Color textCol, Color subCol, Color accent) {
-    final typeLabel = q.isMultipleChoice ? 'Multiple Choice' : q.isIdentification ? 'Identification' : 'Enumeration';
+    final typeLabel = q.isMultipleChoice ? 'Multiple Choice' : q.isIdentification ? 'Identification' : q.isEssay ? 'Essay' : 'Enumeration';
     final ans = _answers[q.id] ?? '';
 
     return Container(
@@ -449,6 +639,23 @@ class _TakeAssessmentPageState extends State<TakeAssessmentPage> {
               style: GoogleFonts.inter(color: textCol, fontSize: 14),
               decoration: InputDecoration(
                 hintText: 'Type your answer here',
+                hintStyle: GoogleFonts.inter(color: subCol, fontSize: 13),
+                filled: true,
+                fillColor: widget.isDark ? const Color(0xFF0F172A) : Colors.grey[50],
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              ),
+            )
+          else if (q.isEssay)
+            TextField(
+              onChanged: (v) => _updateAnswer(q.id!, v),
+              controller: TextEditingController.fromValue(
+                TextEditingValue(text: ans, selection: TextSelection.collapsed(offset: ans.length))
+              ),
+              maxLines: 6,
+              style: GoogleFonts.inter(color: textCol, fontSize: 14),
+              decoration: InputDecoration(
+                hintText: 'Type your essay answer here...',
                 hintStyle: GoogleFonts.inter(color: subCol, fontSize: 13),
                 filled: true,
                 fillColor: widget.isDark ? const Color(0xFF0F172A) : Colors.grey[50],

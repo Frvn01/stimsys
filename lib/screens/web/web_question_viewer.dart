@@ -3,6 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'dart:async';
+import 'dart:math';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../providers/student_provider.dart';
 import '../../models/assessment_model.dart';
@@ -20,12 +21,43 @@ class _WebQuestionViewerState extends State<WebQuestionViewer> {
   bool _loading = true;
   Timer? _pollingTimer;
   List<Map<String, dynamic>> _scannedStudents = [];
+  String? _selectedSet;
 
   @override
   void initState() {
     super.initState();
+    if (widget.assessment.setCount > 1) {
+      _selectedSet = 'A';
+    }
     _loadQuestions();
     _startPolling();
+  }
+
+  Widget _buildSkeleton() {
+    return Container();
+  }
+
+  Widget _buildSetTab(String setLabel) {
+    final isSelected = _selectedSet == setLabel;
+    return GestureDetector(
+      onTap: () => setState(() => _selectedSet = setLabel),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        decoration: BoxDecoration(
+          color: isSelected ? const Color(0xFF6366F1) : const Color(0xFF1E293B),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: isSelected ? const Color(0xFF6366F1) : const Color(0xFF2D3B52)),
+        ),
+        child: Text(
+          'Set $setLabel',
+          style: GoogleFonts.inter(
+            color: isSelected ? Colors.white : Colors.grey[400],
+            fontSize: 14,
+            fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+          ),
+        ),
+      ),
+    );
   }
 
   @override
@@ -73,6 +105,25 @@ class _WebQuestionViewerState extends State<WebQuestionViewer> {
 
   @override
   Widget build(BuildContext context) {
+    // Both sets use ALL questions, but shuffled deterministically
+    final displayedQuestions = List<AssessmentQuestion>.from(_questions);
+    
+    // Sort by original order to ensure a deterministic baseline
+    displayedQuestions.sort((a, b) => a.questionOrder.compareTo(b.questionOrder));
+    
+    if (widget.assessment.setCount > 1 && _selectedSet != null) {
+      // Use the character code of the set ('A' = 65, 'B' = 66) as the random seed
+      final seed = _selectedSet!.codeUnitAt(0);
+      displayedQuestions.shuffle(Random(seed));
+    }
+    
+    // Ensure we don't double-append the set (e.g., QQQQ-B-B)
+    final baseCode = widget.assessment.sessionCode ?? "N/A";
+    String displayCode = baseCode;
+    if (_selectedSet != null && !baseCode.endsWith('-$_selectedSet')) {
+      displayCode = '$baseCode-$_selectedSet';
+    }
+
     return Scaffold(
       backgroundColor: const Color(0xFF0F172A),
       body: SafeArea(
@@ -104,18 +155,24 @@ class _WebQuestionViewerState extends State<WebQuestionViewer> {
                       ],
                     ),
                   ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    decoration: BoxDecoration(color: const Color(0xFF6366F1).withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.key_rounded, color: Color(0xFF818CF8), size: 20),
-                        const SizedBox(width: 8),
-                        Text('Session Code: ${widget.assessment.sessionCode ?? "N/A"}',
-                            style: GoogleFonts.inter(color: const Color(0xFF818CF8), fontSize: 18, fontWeight: FontWeight.w800)),
-                      ],
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      decoration: BoxDecoration(color: const Color(0xFF6366F1).withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)),
+                      child: Row(
+                        children: [
+                          if (widget.assessment.setCount > 1) ...[
+                            _buildSetTab('A'),
+                            const SizedBox(width: 8),
+                            _buildSetTab('B'),
+                            const SizedBox(width: 24),
+                          ],
+                          const Icon(Icons.key_rounded, color: Color(0xFF818CF8), size: 20),
+                          const SizedBox(width: 8),
+                          Text('Session Code: $displayCode',
+                              style: GoogleFonts.inter(color: const Color(0xFF818CF8), fontSize: 18, fontWeight: FontWeight.w800)),
+                        ],
+                      ),
                     ),
-                  ),
                 ],
               ),
             ),
@@ -144,7 +201,7 @@ class _WebQuestionViewerState extends State<WebQuestionViewer> {
                           padding: const EdgeInsets.all(12),
                           decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16)),
                           child: QrImageView(
-                            data: 'STIMSYS_EXAM|${widget.assessment.id}|${widget.assessment.subjectId}|${widget.assessment.sessionCode ?? ""}',
+                            data: 'STIMSYS_EXAM|${widget.assessment.id}|${widget.assessment.subjectId}|$displayCode',
                             version: QrVersions.auto,
                             size: 180,
                             backgroundColor: Colors.white,
@@ -223,13 +280,13 @@ class _WebQuestionViewerState extends State<WebQuestionViewer> {
                   Expanded(
                     child: _loading
                         ? const Center(child: CircularProgressIndicator(color: Color(0xFF6366F1)))
-                        : ListView.builder(
+                        : ListView.separated(
                             padding: const EdgeInsets.all(40),
-                            itemCount: _questions.length,
+                            itemCount: displayedQuestions.length,
+                            separatorBuilder: (context, index) => const SizedBox(height: 24),
                             itemBuilder: (context, index) {
-                              final q = _questions[index];
+                              final q = displayedQuestions[index];
                               return Container(
-                                margin: const EdgeInsets.only(bottom: 32),
                                 padding: const EdgeInsets.all(32),
                                 decoration: BoxDecoration(
                                   color: const Color(0xFF1E293B),

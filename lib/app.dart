@@ -1,11 +1,12 @@
-import 'dart:io' show Platform;
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'theme/theme_provider.dart';
 import 'screens/splash_screen.dart';
 import 'screens/admin/desktop_admin_login_screen.dart';
 import 'screens/web/web_portal_screen.dart';
+
+import '../main.dart'; // import to access globalScaffoldMessengerKey
 
 class MyApp extends StatefulWidget {
   const MyApp({super.key});
@@ -18,7 +19,10 @@ class _MyAppState extends State<MyApp> {
   late ThemeProvider _themeProvider;
 
   bool get _isDesktop =>
-      !kIsWeb && (Platform.isWindows || Platform.isMacOS || Platform.isLinux);
+      !kIsWeb && 
+      (defaultTargetPlatform == TargetPlatform.windows || 
+       defaultTargetPlatform == TargetPlatform.macOS || 
+       defaultTargetPlatform == TargetPlatform.linux);
 
   @override
   void initState() {
@@ -33,6 +37,7 @@ class _MyAppState extends State<MyApp> {
       builder: (context, child) {
         return MaterialApp(
           title: 'STIMSYS',
+          scaffoldMessengerKey: globalScaffoldMessengerKey,
           debugShowCheckedModeBanner: false,
           theme: _buildLightTheme(),
           darkTheme: _buildDarkTheme(),

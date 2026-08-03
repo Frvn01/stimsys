@@ -156,6 +156,7 @@ class _SubjectCardState extends State<_SubjectCard> {
 
   @override
   Widget build(BuildContext context) {
+    final provider = context.watch<AdminProvider>();
     final s = widget.subject;
     return Container(
       decoration: BoxDecoration(
@@ -211,7 +212,7 @@ class _SubjectCardState extends State<_SubjectCard> {
             // Title
             Text(s.subjectTitle, style: GoogleFonts.inter(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w800)),
             const SizedBox(height: 4),
-            Text(s.instructorName ?? 'Rens Joshua Cardaña',
+            Text(s.instructorName ?? provider.currentInstructor?.fullName ?? 'Instructor',
               style: GoogleFonts.inter(color: const Color(0xFF818CF8), fontSize: 12, fontWeight: FontWeight.w600)),
 
             const SizedBox(height: 12),
@@ -409,7 +410,7 @@ class _CreateSubjectSheetState extends State<_CreateSubjectSheet> {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please fill all required fields')));
       return;
     }
-    final instructor = widget.provider.instructors.isNotEmpty ? widget.provider.instructors.first : null;
+    final instructor = widget.provider.currentInstructor ?? (widget.provider.instructors.isNotEmpty ? widget.provider.instructors.first : null);
     if (instructor == null) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No instructor found. Run the SQL schema first.')));
       return;
@@ -453,7 +454,7 @@ class _CreateSubjectSheetState extends State<_CreateSubjectSheet> {
 
           Text('Create New Subject', style: GoogleFonts.inter(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w800)),
           const SizedBox(height: 4),
-          Text('Instructor: Rens Joshua Cardaña', style: GoogleFonts.inter(color: const Color(0xFF818CF8), fontSize: 12, fontWeight: FontWeight.w600)),
+          Text('Instructor: ${widget.provider.currentInstructor?.fullName ?? 'Instructor'}', style: GoogleFonts.inter(color: const Color(0xFF818CF8), fontSize: 12, fontWeight: FontWeight.w600)),
           const SizedBox(height: 20),
 
           _sheetField(_codeCtrl, 'Subject Code *', 'e.g. IT6205A'),

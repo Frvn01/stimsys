@@ -7,6 +7,7 @@ import 'student_registry_screen.dart';
 import 'subject_management_screen.dart';
 import 'attendance_scanner_screen.dart';
 import 'grade_capture_screen.dart';
+import 'admin_login_screen.dart';
 import '../qr_scanner_screen.dart';
 
 class AdminDashboardScreen extends StatefulWidget {
@@ -151,9 +152,14 @@ class _AdminHomeTabState extends State<_AdminHomeTab> {
                 ])),
                 _circleBtn(Icons.refresh_rounded, () => _load()),
                 const SizedBox(width: 10),
-                _circleBtn(Icons.logout_rounded, () {
-                  provider.logout();
-                  Navigator.of(context).pop();
+                _circleBtn(Icons.logout_rounded, () async {
+                  await provider.logout();
+                  if (context.mounted) {
+                    Navigator.of(context).pushAndRemoveUntil(
+                      MaterialPageRoute(builder: (_) => const AdminLoginScreen()),
+                      (_) => false,
+                    );
+                  }
                 }, color: Colors.red[800]!),
               ]),
 
@@ -191,7 +197,7 @@ class _AdminHomeTabState extends State<_AdminHomeTab> {
                   const SizedBox(height: 14),
                   Text('Instructor\nPortal', style: GoogleFonts.inter(color: Colors.white, fontSize: 26, fontWeight: FontWeight.w900, height: 1.1)),
                   const SizedBox(height: 8),
-                  Text('Rens Joshua Cardaña', style: GoogleFonts.inter(color: const Color(0xFF818CF8), fontSize: 13, fontWeight: FontWeight.w600)),
+                  Text(provider.currentInstructor?.fullName ?? 'Instructor', style: GoogleFonts.inter(color: const Color(0xFF818CF8), fontSize: 13, fontWeight: FontWeight.w600)),
                   const SizedBox(height: 4),
                   Text(DateFormat('EEEE, MMMM d, yyyy').format(DateTime.now()),
                     style: GoogleFonts.inter(color: Colors.grey[500], fontSize: 12)),
