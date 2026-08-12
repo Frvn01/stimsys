@@ -5,6 +5,7 @@ import 'dart:io';
 import 'dart:convert';
 import 'package:image_picker/image_picker.dart';
 import 'package:image_cropper/image_cropper.dart';
+import '../services/biometric_service.dart';
 import '../theme/theme_provider.dart';
 import '../models/student_model.dart';
 import '../widgets/common/custom_text_field.dart';
@@ -52,6 +53,9 @@ class _ProfilePageState extends State<ProfilePage> {
   late TextEditingController _customTagController;
 
   bool _isLoaded = false;
+  bool _biometricEnabled = false;
+  bool _biometricAvailable = false;
+  String _biometricLabel = 'Biometrics';
 
   @override
   void initState() {
@@ -62,6 +66,8 @@ class _ProfilePageState extends State<ProfilePage> {
     _usnController = TextEditingController();
     _phoneController = TextEditingController();
     _customTagController = TextEditingController(text: _serverTag);
+
+    _checkBiometrics();
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final provider = context.read<StudentProvider>();
@@ -85,6 +91,44 @@ class _ProfilePageState extends State<ProfilePage> {
       }
       setState(() => _isLoaded = true);
     });
+  }
+
+  Future<void> _checkBiometrics() async {
+    final available = await BiometricService.isBiometricAvailable();
+    final enabled = await BiometricService.isBiometricEnabled();
+    final label = await BiometricService.getBiometricTypeLabel();
+    if (mounted) {
+      setState(() {
+        _biometricAvailable = available;
+        _biometricEnabled = enabled;
+        _biometricLabel = label;
+      });
+    }
+  }
+
+  Future<void> _toggleBiometric(bool value) async {
+    if (value) {
+      final authenticated = await BiometricService.authenticate(
+        reason: 'Authenticate to enable $_biometricLabel login',
+      );
+      if (authenticated) {
+        await BiometricService.setBiometricEnabled(true);
+        if (mounted) {
+          setState(() => _biometricEnabled = true);
+          _showSnackBar('$_biometricLabel login enabled successfully!');
+        }
+      } else {
+        if (mounted) {
+          _showSnackBar('Biometric authentication failed', isError: true);
+        }
+      }
+    } else {
+      await BiometricService.setBiometricEnabled(false);
+      if (mounted) {
+        setState(() => _biometricEnabled = false);
+        _showSnackBar('$_biometricLabel login disabled.');
+      }
+    }
   }
 
   @override
@@ -855,6 +899,64 @@ class _ProfilePageState extends State<ProfilePage> {
                 ],
               ),
             ),
+          if (_biometricAvailable) ...[
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              decoration: BoxDecoration(
+                color: surfaceColor,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: borderColor),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF6366F1).withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Icon(
+                      _biometricLabel.contains('Face')
+                          ? Icons.face_rounded
+                          : Icons.fingerprint_rounded,
+                      color: const Color(0xFF6366F1),
+                      size: 24,
+                    ),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '$_biometricLabel Login',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                            color: isDark ? Colors.white : const Color(0xFF0F172A),
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          'Unlock app quickly using your device biometrics',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Switch(
+                    value: _biometricEnabled,
+                    activeColor: const Color(0xFF6366F1),
+                    onChanged: _toggleBiometric,
+                  ),
+                ],
+              ),
+            ),
+          ],
           const SizedBox(height: 24),
 
           // ── Minimalist Logout Button ──────────────────────────────────────

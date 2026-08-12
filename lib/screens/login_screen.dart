@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import '../services/biometric_service.dart';
 import '../theme/theme_provider.dart';
 import '../providers/student_provider.dart';
 import '../widgets/common/custom_text_field.dart';
@@ -24,6 +25,81 @@ class _LoginScreenState extends State<LoginScreen> {
   final _passwordController = TextEditingController();
   bool _passwordVisible = false;
   bool _isLoading = false;
+  bool _canUseBiometrics = false;
+  String _biometricLabel = 'Biometrics';
+
+  @override
+  void initState() {
+    super.initState();
+    _checkBiometrics();
+  }
+
+  Future<void> _checkBiometrics() async {
+    final available = await BiometricService.isBiometricAvailable();
+    final enabled = await BiometricService.isBiometricEnabled();
+    final prefs = await SharedPreferences.getInstance();
+    final savedUsn = prefs.getString('usn');
+    final savedPassword = prefs.getString('password');
+    final label = await BiometricService.getBiometricTypeLabel();
+
+    if (mounted) {
+      setState(() {
+        _canUseBiometrics =
+            available && enabled && savedUsn != null && savedPassword != null;
+        _biometricLabel = label;
+      });
+    }
+  }
+
+  Future<void> _handleBiometricLogin() async {
+    final prefs = await SharedPreferences.getInstance();
+    final savedUsn = prefs.getString('usn');
+    final savedPassword = prefs.getString('password');
+
+    if (savedUsn == null || savedPassword == null) {
+      _showSnackBar('No saved credentials for biometric login', isError: true);
+      return;
+    }
+
+    final authenticated = await BiometricService.authenticate(
+      reason: 'Scan fingerprint or Face ID to sign in to STIMSYS',
+    );
+
+    if (authenticated && mounted) {
+      setState(() => _isLoading = true);
+      try {
+        final student = await context
+            .read<StudentProvider>()
+            .login(savedUsn, savedPassword);
+
+        if (student != null && mounted) {
+          if (!student.isConfirmed) {
+            _showUnconfirmedDialog(student.fullName, student.usn);
+            return;
+          }
+
+          Navigator.of(context).pushReplacement(
+            MaterialPageRoute(
+              builder: (context) => DashboardScreen(
+                email: student.usn,
+                themeProvider: widget.themeProvider,
+              ),
+            ),
+          );
+        } else if (mounted) {
+          _showSnackBar(
+              'Saved credentials invalid. Please enter password manually.',
+              isError: true);
+        }
+      } catch (e) {
+        if (mounted) {
+          _showSnackBar('Biometric login error: $e', isError: true);
+        }
+      } finally {
+        if (mounted) setState(() => _isLoading = false);
+      }
+    }
+  }
 
   @override
   void dispose() {
@@ -250,6 +326,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
                 const SizedBox(height: 28),
                 _buildLoginButton(),
+                if (_canUseBiometrics) _buildBiometricButton(isDark),
                 const SizedBox(height: 24),
                 _buildSignUpLink(isDark),
                 const SizedBox(height: 24),
@@ -382,6 +459,38 @@ class _LoginScreenState extends State<LoginScreen> {
         style: TextStyle(
           fontSize: 11,
           color: isDark ? Colors.grey[600] : Colors.grey[500],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBiometricButton(bool isDark) {
+    return Container(
+      width: double.infinity,
+      height: 52,
+      margin: const EdgeInsets.only(top: 14),
+      child: OutlinedButton.icon(
+        onPressed: _isLoading ? null : _handleBiometricLogin,
+        icon: Icon(
+          _biometricLabel.contains('Face')
+              ? Icons.face_rounded
+              : Icons.fingerprint_rounded,
+          size: 22,
+          color: const Color(0xFF6366F1),
+        ),
+        label: Text(
+          'Login with $_biometricLabel',
+          style: const TextStyle(
+            fontSize: 15,
+            fontWeight: FontWeight.w600,
+            color: Color(0xFF6366F1),
+          ),
+        ),
+        style: OutlinedButton.styleFrom(
+          side: const BorderSide(color: Color(0xFF6366F1), width: 1.5),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
         ),
       ),
     );

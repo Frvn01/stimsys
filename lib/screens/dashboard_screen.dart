@@ -115,40 +115,49 @@ class _DashboardScreenState extends State<DashboardScreen> {
     ];
 
     return Container(
-      margin: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+      margin: const EdgeInsets.fromLTRB(14, 8, 14, 16),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(24),
         child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+          filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
           child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
             decoration: BoxDecoration(
               color: isDark
-                  ? Colors.white.withOpacity(0.05)
-                  : Colors.black.withOpacity(0.02),
-              borderRadius: BorderRadius.circular(20),
+                  ? const Color(0xFF1E293B).withValues(alpha: 0.85)
+                  : Colors.white.withValues(alpha: 0.85),
+              borderRadius: BorderRadius.circular(24),
               border: Border.all(
                 color: isDark
-                    ? Colors.white.withOpacity(0.1)
-                    : Colors.black.withOpacity(0.08),
+                    ? Colors.white.withValues(alpha: 0.12)
+                    : Colors.black.withValues(alpha: 0.08),
                 width: 1.5,
               ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: isDark ? 0.35 : 0.08),
+                  blurRadius: 20,
+                  offset: const Offset(0, 4),
+                ),
+              ],
             ),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                children: List.generate(
-                  items.length,
-                  (index) => Expanded(
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: List.generate(
+                items.length,
+                (index) {
+                  final isActive = _currentIndex == index;
+                  return Expanded(
+                    flex: isActive ? 5 : 2,
                     child: _buildNavItem(
                       icon: items[index]['icon'] as IconData,
                       label: items[index]['label'] as String,
-                      isActive: _currentIndex == index,
+                      isActive: isActive,
                       isDark: isDark,
                       onTap: () => _updateIndex(index),
                     ),
-                  ),
-                ),
+                  );
+                },
               ),
             ),
           ),
@@ -164,50 +173,73 @@ class _DashboardScreenState extends State<DashboardScreen> {
     required bool isDark,
     required VoidCallback onTap,
   }) {
+    final activeColor = const Color(0xFF6366F1);
+    final inactiveColor =
+        isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B);
+
     return GestureDetector(
       onTap: onTap,
+      behavior: HitTestBehavior.opaque,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOutCubic,
+        margin: const EdgeInsets.symmetric(horizontal: 2),
         padding: EdgeInsets.symmetric(
-          horizontal: isActive ? 10 : 4,
-          vertical: 8,
+          horizontal: isActive ? 12 : 6,
+          vertical: 10,
         ),
         decoration: BoxDecoration(
           color: isActive
-              ? const Color(0xFF6366F1).withOpacity(0.15)
+              ? activeColor.withValues(alpha: isDark ? 0.2 : 0.12)
               : Colors.transparent,
-          borderRadius: BorderRadius.circular(12),
-          border: isActive
-              ? Border.all(
-                  color: const Color(0xFF6366F1).withOpacity(0.3),
-                  width: 1,
-                )
-              : null,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: isActive
+                ? activeColor.withValues(alpha: isDark ? 0.35 : 0.25)
+                : Colors.transparent,
+            width: 1.2,
+          ),
+          boxShadow: isActive
+              ? [
+                  BoxShadow(
+                    color: activeColor.withValues(alpha: isDark ? 0.25 : 0.15),
+                    blurRadius: 10,
+                    offset: const Offset(0, 2),
+                  ),
+                ]
+              : [],
         ),
         child: Row(
-          mainAxisSize: MainAxisSize.min,
           mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              icon,
-              size: 20,
-              color: isActive
-                  ? const Color(0xFF6366F1)
-                  : (isDark ? Colors.grey[500] : Colors.grey[600]),
+            AnimatedScale(
+              scale: isActive ? 1.1 : 1.0,
+              duration: const Duration(milliseconds: 250),
+              child: Icon(
+                icon,
+                size: 20,
+                color: isActive ? activeColor : inactiveColor,
+              ),
             ),
             if (isActive) ...[
-              const SizedBox(width: 4),
+              const SizedBox(width: 6),
               Flexible(
-                child: Text(
-                  label,
-                  style: const TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                    color: Color(0xFF6366F1),
-                    letterSpacing: 0.1,
+                child: AnimatedOpacity(
+                  duration: const Duration(milliseconds: 250),
+                  opacity: isActive ? 1.0 : 0.0,
+                  child: Text(
+                    label,
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: activeColor,
+                      letterSpacing: 0.2,
+                    ),
+                    maxLines: 1,
+                    softWrap: false,
+                    overflow: TextOverflow.fade,
                   ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
                 ),
               ),
             ],

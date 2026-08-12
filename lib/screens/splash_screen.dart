@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
 import 'dart:ui';
+import '../services/biometric_service.dart';
 import '../theme/theme_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:provider/provider.dart';
@@ -56,14 +57,35 @@ class _SplashScreenState extends State<SplashScreen>
 
     if (mounted) {
       if (isRestored && provider.currentStudent != null) {
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(
-            builder: (context) => DashboardScreen(
-              email: provider.currentStudent!.usn,
-              themeProvider: widget.themeProvider,
-            ),
-          ),
-        );
+        final biometricEnabled = await BiometricService.isBiometricEnabled();
+        final biometricAvailable = await BiometricService.isBiometricAvailable();
+
+        bool authenticated = true;
+        if (biometricEnabled && biometricAvailable) {
+          authenticated = await BiometricService.authenticate(
+            reason: 'Unlock STIMSYS Student App',
+          );
+        }
+
+        if (mounted) {
+          if (authenticated) {
+            Navigator.of(context).pushReplacement(
+              MaterialPageRoute(
+                builder: (context) => DashboardScreen(
+                  email: provider.currentStudent!.usn,
+                  themeProvider: widget.themeProvider,
+                ),
+              ),
+            );
+          } else {
+            Navigator.of(context).pushReplacement(
+              MaterialPageRoute(
+                builder: (context) =>
+                    LoginScreen(themeProvider: widget.themeProvider),
+              ),
+            );
+          }
+        }
       } else {
         final prefs = await SharedPreferences.getInstance();
         final hasRegistered = prefs.getBool('hasRegistered') ?? false;
