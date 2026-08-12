@@ -87,8 +87,8 @@ class AdminProvider extends ChangeNotifier {
   // INSTRUCTOR QR AUTH
   // ═══════════════════════════════════════════════════
 
-  /// Authenticate an instructor by scanning their one-time QR token.
-  /// Returns true on success; the token is immediately consumed.
+  /// Authenticate an instructor by scanning their QR token.
+  /// Returns true on success; generates a new session token.
   Future<bool> authenticateInstructorQr(String token) async {
     try {
       final instructor = await _service.getInstructorByQrToken(token);
@@ -256,11 +256,8 @@ class AdminProvider extends ChangeNotifier {
 
   Future<void> loadStudents() async {
     try {
-      if (_currentInstructor != null && !_isSuperAdmin) {
-        _students = await _service.getStudentsForInstructor(_currentInstructor!.id!);
-      } else {
-        _students = await _service.getStudents();
-      }
+      // Always load all students so the registry shows everyone
+      _students = await _service.getStudents();
       notifyListeners();
     } catch (e) {
       debugPrint('Load students error: $e');

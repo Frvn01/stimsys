@@ -8,7 +8,9 @@ import 'package:qr_flutter/qr_flutter.dart';
 
 import '../../providers/admin_provider.dart';
 import '../../models/subject_model.dart';
+import '../../models/student_model.dart';
 import '../../models/grading_config_model.dart';
+import '../../services/supabase_service.dart';
 
 class DesktopSubjectManagementScreen extends StatefulWidget {
   const DesktopSubjectManagementScreen({super.key});
@@ -122,7 +124,7 @@ class _DesktopSubjectManagementScreenState
                   _th('Schedule', flex: 2),
                   _th('Room', flex: 1),
                   _th('Units', flex: 1),
-                  _th('Actions', flex: 1, align: TextAlign.right),
+                  _th('Actions', flex: 2, align: TextAlign.right),
                 ],
               ),
             ),
@@ -158,6 +160,8 @@ class _DesktopSubjectManagementScreenState
                                   _confirmDelete(context, provider, s),
                               onGrading: () =>
                                   _showGradingSetup(context, provider, s),
+                              onStudents: () =>
+                                  _showEnrolledStudents(context, s),
                             );
                           },
                         ),
@@ -459,18 +463,33 @@ class _DesktopSubjectManagementScreenState
       builder: (_) => _GradingSetupDialog(provider: provider, subject: s),
     );
   }
+
+  void _showEnrolledStudents(BuildContext ctx, Subject s) {
+    showDialog(
+      context: ctx,
+      builder: (_) => _EnrolledStudentsDialog(subject: s),
+    );
+  }
+
+  void _showEnrollMasterlist(BuildContext ctx, AdminProvider provider) {
+    showDialog(
+      context: ctx,
+      builder: (_) => _EnrollMasterlistDialog(provider: provider),
+    );
+  }
 }
 
 // ── Subject table row ─────────────────────────────────────────────────────────
 class _SubjectRow extends StatefulWidget {
   final Subject subject;
-  final VoidCallback onEdit, onQR, onDelete, onGrading;
+  final VoidCallback onEdit, onQR, onDelete, onGrading, onStudents;
   const _SubjectRow({
     required this.subject,
     required this.onEdit,
     required this.onQR,
     required this.onDelete,
     required this.onGrading,
+    required this.onStudents,
   });
   @override
   State<_SubjectRow> createState() => _SubjectRowState();
@@ -545,10 +564,17 @@ class _SubjectRowState extends State<_SubjectRow> {
               ),
             ),
             Expanded(
-              flex: 1,
+              flex: 2,
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
+                  _btn(
+                    Icons.people_rounded,
+                    const Color(0xFF0EA5E9),
+                    widget.onStudents,
+                    'Enrolled Students',
+                  ),
+                  const SizedBox(width: 6),
                   _btn(
                     Icons.edit_rounded,
                     Colors.blue,
@@ -617,14 +643,28 @@ class _DesktopSubjectDialog extends StatefulWidget {
   State<_DesktopSubjectDialog> createState() => _DesktopSubjectDialogState();
 }
 
+class _ScheduleRowInput {
+  final TextEditingController dayCtrl;
+  TimeOfDay start;
+  TimeOfDay end;
+
+  _ScheduleRowInput({
+    required String day,
+    required this.start,
+    required this.end,
+  }) : dayCtrl = TextEditingController(text: day);
+
+  void dispose() {
+    dayCtrl.dispose();
+  }
+}
+
 class _DesktopSubjectDialogState extends State<_DesktopSubjectDialog> {
   final _formKey = GlobalKey<FormState>();
   final _codeCtrl = TextEditingController();
   final _titleCtrl = TextEditingController();
   final _roomCtrl = TextEditingController();
-  String _day = 'MWF';
-  TimeOfDay _start = const TimeOfDay(hour: 7, minute: 30);
-  TimeOfDay _end = const TimeOfDay(hour: 9, minute: 0);
+  final List<_ScheduleRowInput> _scheduleRows = [];
   int _units = 3;
   String _instructorId = '';
   bool _loading = false;
@@ -641,28 +681,46 @@ class _DesktopSubjectDialogState extends State<_DesktopSubjectDialog> {
       _codeCtrl.text = s.subjectCode;
       _titleCtrl.text = s.subjectTitle;
       _roomCtrl.text = s.room;
-      _day = s.scheduleDay;
       _units = s.units;
       _instructorId = s.instructorId;
 
-      final startParts = s.scheduleStartTime.split(':');
-      if (startParts.length >= 2) {
-        _start = TimeOfDay(
-          hour: int.tryParse(startParts[0]) ?? 7,
-          minute: int.tryParse(startParts[1]) ?? 30,
-        );
-      }
-      final endParts = s.scheduleEndTime.split(':');
-      if (endParts.length >= 2) {
-        _end = TimeOfDay(
-          hour: int.tryParse(endParts[0]) ?? 9,
-          minute: int.tryParse(endParts[1]) ?? 0,
-        );
+      for (final slot in s.scheduleSlots) {
+        TimeOfDay startTd = const TimeOfDay(hour: 7, minute: 30);
+        TimeOfDay endTd = const TimeOfDay(hour: 9, minute: 0);
+
+        final sParts = slot.startTime.split(':');
+        if (sParts.length >= 2) {
+          startTd = TimeOfDay(
+            hour: int.tryParse(sParts[0]) ?? 7,
+            minute: int.tryParse(sParts[1]) ?? 30,
+          );
+        }
+        final eParts = slot.endTime.split(':');
+        if (eParts.length >= 2) {
+          endTd = TimeOfDay(
+            hour: int.tryParse(eParts[0]) ?? 9,
+            minute: int.tryParse(eParts[1]) ?? 0,
+          );
+        }
+
+        _scheduleRows.add(_ScheduleRowInput(
+          day: slot.day,
+          start: startTd,
+          end: endTd,
+        ));
       }
     } else {
       if (!widget.provider.isSuperAdmin && widget.provider.currentInstructor != null) {
         _instructorId = widget.provider.currentInstructor!.id ?? '';
       }
+    }
+
+    if (_scheduleRows.isEmpty) {
+      _scheduleRows.add(_ScheduleRowInput(
+        day: 'MWF',
+        start: const TimeOfDay(hour: 7, minute: 30),
+        end: const TimeOfDay(hour: 9, minute: 0),
+      ));
     }
   }
 
@@ -671,6 +729,9 @@ class _DesktopSubjectDialogState extends State<_DesktopSubjectDialog> {
     _codeCtrl.dispose();
     _titleCtrl.dispose();
     _roomCtrl.dispose();
+    for (final r in _scheduleRows) {
+      r.dispose();
+    }
     super.dispose();
   }
 
@@ -679,7 +740,7 @@ class _DesktopSubjectDialogState extends State<_DesktopSubjectDialog> {
     return Dialog(
       backgroundColor: Colors.transparent,
       child: Container(
-        width: 480,
+        width: 540,
         padding: const EdgeInsets.all(28),
         decoration: BoxDecoration(
           color: _surface,
@@ -724,43 +785,12 @@ class _DesktopSubjectDialogState extends State<_DesktopSubjectDialog> {
               Row(
                 children: [
                   Expanded(
-                    child: _dropdown('Day', _day, [
-                      'MWF',
-                      'TTH',
-                      'MON',
-                      'TUE',
-                      'WED',
-                      'THU',
-                      'FRI',
-                      'SAT',
-                    ], (v) => setState(() => _day = v!)),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
+                    flex: 2,
                     child: _field(_roomCtrl, 'Room', hint: 'e.g. Room 301'),
                   ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  Expanded(
-                    child: _timePickerField(
-                      'Start',
-                      _start,
-                      (v) => setState(() => _start = v),
-                    ),
-                  ),
                   const SizedBox(width: 12),
                   Expanded(
-                    child: _timePickerField(
-                      'End',
-                      _end,
-                      (v) => setState(() => _end = v),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
+                    flex: 1,
                     child: _dropdown(
                       'Units',
                       '$_units',
@@ -770,6 +800,98 @@ class _DesktopSubjectDialogState extends State<_DesktopSubjectDialog> {
                   ),
                 ],
               ),
+              const SizedBox(height: 16),
+
+              // Dynamic Schedule Rows Header
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'Schedules',
+                    style: GoogleFonts.inter(
+                      color: Colors.grey[300],
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  TextButton.icon(
+                    onPressed: () {
+                      setState(() {
+                        _scheduleRows.add(_ScheduleRowInput(
+                          day: 'TTH',
+                          start: const TimeOfDay(hour: 13, minute: 0),
+                          end: const TimeOfDay(hour: 15, minute: 0),
+                        ));
+                      });
+                    },
+                    icon: const Icon(Icons.add_rounded, size: 16, color: _accent),
+                    label: Text(
+                      'Add Schedule',
+                      style: GoogleFonts.inter(
+                        color: _accent,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+
+              // Dynamic Schedule Rows List
+              ...List.generate(_scheduleRows.length, (i) {
+                final row = _scheduleRows[i];
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        flex: 3,
+                        child: _field(
+                          row.dayCtrl,
+                          i == 0 ? 'Day(s)' : 'Day(s)',
+                          hint: 'e.g. MON or TTH',
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        flex: 2,
+                        child: _timePickerField(
+                          'Start',
+                          row.start,
+                          (v) => setState(() => row.start = v),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        flex: 2,
+                        child: _timePickerField(
+                          'End',
+                          row.end,
+                          (v) => setState(() => row.end = v),
+                        ),
+                      ),
+                      if (_scheduleRows.length > 1) ...[
+                        const SizedBox(width: 4),
+                        IconButton(
+                          icon: const Icon(
+                            Icons.remove_circle_outline_rounded,
+                            color: Color(0xFFEF4444),
+                            size: 20,
+                          ),
+                          onPressed: () {
+                            setState(() {
+                              _scheduleRows[i].dispose();
+                              _scheduleRows.removeAt(i);
+                            });
+                          },
+                        ),
+                      ],
+                    ],
+                  ),
+                );
+              }),
+
               const SizedBox(height: 12),
               if (widget.provider.isSuperAdmin) _instructorDropdown(),
               if (widget.provider.isSuperAdmin) const SizedBox(height: 24),
@@ -873,7 +995,7 @@ class _DesktopSubjectDialogState extends State<_DesktopSubjectDialog> {
     final hr = t.hourOfPeriod == 0 ? 12 : t.hourOfPeriod;
     final min = t.minute.toString().padLeft(2, '0');
     final period = t.period == DayPeriod.am ? 'AM' : 'PM';
-    return '${hr.toString().padLeft(2, '0')}:$min $period';
+    return '$hr:$min $period';
   }
 
   String _toDbTime(TimeOfDay t) {
@@ -902,15 +1024,18 @@ class _DesktopSubjectDialogState extends State<_DesktopSubjectDialog> {
             context: context,
             initialTime: time,
             builder: (context, child) {
-              return Theme(
-                data: Theme.of(context).copyWith(
-                  colorScheme: const ColorScheme.dark(
-                    primary: _accent,
-                    surface: _surface,
-                    onSurface: Colors.white,
+              return MediaQuery(
+                data: MediaQuery.of(context).copyWith(alwaysUse24HourFormat: false),
+                child: Theme(
+                  data: Theme.of(context).copyWith(
+                    colorScheme: const ColorScheme.dark(
+                      primary: _accent,
+                      surface: _surface,
+                      onSurface: Colors.white,
+                    ),
                   ),
+                  child: child!,
                 ),
-                child: child!,
               );
             },
           );
@@ -1034,13 +1159,17 @@ class _DesktopSubjectDialogState extends State<_DesktopSubjectDialog> {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _loading = true);
     try {
+      final scheduleDayStr = _scheduleRows.map((r) => r.dayCtrl.text.trim()).join('; ');
+      final scheduleStartStr = _scheduleRows.map((r) => _toDbTime(r.start)).join('; ');
+      final scheduleEndStr = _scheduleRows.map((r) => _toDbTime(r.end)).join('; ');
+
       if (widget.subject == null) {
         await widget.provider.createSubject(
           subjectCode: _codeCtrl.text.trim(),
           subjectTitle: _titleCtrl.text.trim(),
-          scheduleDay: _day,
-          scheduleStartTime: _toDbTime(_start),
-          scheduleEndTime: _toDbTime(_end),
+          scheduleDay: scheduleDayStr,
+          scheduleStartTime: scheduleStartStr,
+          scheduleEndTime: scheduleEndStr,
           room: _roomCtrl.text.trim(),
           units: _units,
           instructorId: _instructorId,
@@ -1050,9 +1179,9 @@ class _DesktopSubjectDialogState extends State<_DesktopSubjectDialog> {
           subjectId: widget.subject!.id!,
           subjectCode: _codeCtrl.text.trim(),
           subjectTitle: _titleCtrl.text.trim(),
-          scheduleDay: _day,
-          scheduleStartTime: _toDbTime(_start),
-          scheduleEndTime: _toDbTime(_end),
+          scheduleDay: scheduleDayStr,
+          scheduleStartTime: scheduleStartStr,
+          scheduleEndTime: scheduleEndStr,
           room: _roomCtrl.text.trim(),
           units: _units,
           instructorId: _instructorId,
@@ -1700,6 +1829,614 @@ class _GradingSetupDialogState extends State<_GradingSetupDialog> {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+// ── Enrolled Students Dialog ──────────────────────────────────────────────────
+class _EnrolledStudentsDialog extends StatefulWidget {
+  final Subject subject;
+  const _EnrolledStudentsDialog({required this.subject});
+  @override
+  State<_EnrolledStudentsDialog> createState() => _EnrolledStudentsDialogState();
+}
+
+class _EnrolledStudentsDialogState extends State<_EnrolledStudentsDialog> {
+  List<Student> _students = [];
+  bool _loading = true;
+
+  static const _surface = Color(0xFF1E293B);
+  static const _border = Color(0xFF2D3B52);
+  static const _accent = Color(0xFF6366F1);
+  static const _green = Color(0xFF10B981);
+
+  @override
+  void initState() {
+    super.initState();
+    _loadStudents();
+  }
+
+  Future<void> _loadStudents() async {
+    setState(() => _loading = true);
+    try {
+      final service = SupabaseService();
+      final response = await service.getStudentsForSubject(widget.subject.id!);
+      if (mounted) setState(() => _students = response);
+    } catch (e) {
+      debugPrint('Load enrolled students error: $e');
+    }
+    if (mounted) setState(() => _loading = false);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      child: Container(
+        width: 520,
+        constraints: const BoxConstraints(maxHeight: 560),
+        padding: const EdgeInsets.all(24),
+        decoration: BoxDecoration(
+          color: _surface,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: _border),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Header
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: _accent.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(Icons.people_rounded, color: _accent, size: 20),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Enrolled Students',
+                        style: GoogleFonts.inter(
+                          color: Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      Text(
+                        '${widget.subject.subjectCode} • ${widget.subject.subjectTitle}',
+                        style: GoogleFonts.inter(color: Colors.grey[500], fontSize: 12),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: _green.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: _green.withValues(alpha: 0.25)),
+                  ),
+                  child: Text(
+                    '${_students.length} students',
+                    style: GoogleFonts.inter(
+                      color: _green,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                IconButton(
+                  onPressed: () => Navigator.pop(context),
+                  icon: Icon(Icons.close_rounded, color: Colors.grey[500], size: 20),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+
+            // Table header
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              decoration: BoxDecoration(
+                color: const Color(0xFF0F172A),
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(10)),
+                border: Border.all(color: _border),
+              ),
+              child: Row(
+                children: [
+                  Expanded(flex: 3, child: Text('Student', style: _thStyle)),
+                  Expanded(flex: 2, child: Text('USN', style: _thStyle)),
+                  Expanded(flex: 2, child: Text('Course / Section', style: _thStyle)),
+                ],
+              ),
+            ),
+
+            // Table body
+            Flexible(
+              child: _loading
+                  ? const Center(
+                      child: Padding(
+                        padding: EdgeInsets.all(32),
+                        child: CircularProgressIndicator(color: _accent),
+                      ),
+                    )
+                  : _students.isEmpty
+                      ? Center(
+                          child: Padding(
+                            padding: const EdgeInsets.all(32),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.people_outline, color: Colors.grey[700], size: 40),
+                                const SizedBox(height: 8),
+                                Text(
+                                  'No students enrolled yet',
+                                  style: GoogleFonts.inter(color: Colors.grey[600], fontSize: 13),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  'Share the enrollment QR so students can self-enroll',
+                                  style: GoogleFonts.inter(color: Colors.grey[700], fontSize: 11),
+                                ),
+                              ],
+                            ),
+                          ),
+                        )
+                      : Container(
+                          decoration: BoxDecoration(
+                            border: Border.all(color: _border),
+                            borderRadius: const BorderRadius.vertical(bottom: Radius.circular(10)),
+                          ),
+                          child: ClipRRect(
+                            borderRadius: const BorderRadius.vertical(bottom: Radius.circular(10)),
+                            child: ListView.separated(
+                              shrinkWrap: true,
+                              itemCount: _students.length,
+                              separatorBuilder: (_, __) => Divider(height: 1, color: _border),
+                              itemBuilder: (_, i) {
+                                final s = _students[i];
+                                return Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                                  color: _surface,
+                                  child: Row(
+                                    children: [
+                                      Expanded(
+                                        flex: 3,
+                                        child: Row(
+                                          children: [
+                                            Container(
+                                              width: 30, height: 30,
+                                              decoration: BoxDecoration(
+                                                color: _accent.withValues(alpha: 0.1),
+                                                borderRadius: BorderRadius.circular(7),
+                                              ),
+                                              child: Center(
+                                                child: Text(
+                                                  s.firstName.isNotEmpty ? s.firstName[0].toUpperCase() : '?',
+                                                  style: GoogleFonts.inter(
+                                                    color: _accent,
+                                                    fontSize: 13,
+                                                    fontWeight: FontWeight.w800,
+                                                  ),
+                                                ),
+                                              ),
+                                            ),
+                                            const SizedBox(width: 10),
+                                            Expanded(
+                                              child: Text(
+                                                s.fullName,
+                                                style: GoogleFonts.inter(
+                                                  color: Colors.white,
+                                                  fontSize: 13,
+                                                  fontWeight: FontWeight.w600,
+                                                ),
+                                                overflow: TextOverflow.ellipsis,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      Expanded(
+                                        flex: 2,
+                                        child: Text(
+                                          s.usn,
+                                          style: GoogleFonts.robotoMono(
+                                            color: Colors.grey[400],
+                                            fontSize: 12,
+                                          ),
+                                        ),
+                                      ),
+                                      Expanded(
+                                        flex: 2,
+                                        child: Text(
+                                          '${s.course} ${s.yearSection}',
+                                          style: GoogleFonts.inter(
+                                            color: Colors.grey[400],
+                                            fontSize: 12,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
+                        ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  TextStyle get _thStyle => GoogleFonts.inter(
+    color: Colors.grey[500],
+    fontSize: 11,
+    fontWeight: FontWeight.w700,
+    letterSpacing: 0.5,
+  );
+}
+
+// ── Enroll Masterlist Dialog ──────────────────────────────────────────────────
+class _EnrollMasterlistDialog extends StatefulWidget {
+  final AdminProvider provider;
+  const _EnrollMasterlistDialog({required this.provider});
+  @override
+  State<_EnrollMasterlistDialog> createState() => _EnrollMasterlistDialogState();
+}
+
+class _EnrollMasterlistDialogState extends State<_EnrollMasterlistDialog> {
+  Subject? _selectedSubject;
+  List<Student> _students = [];
+  bool _loading = false;
+  String _searchQuery = '';
+
+  static const _bg = Color(0xFF0F172A);
+  static const _surface = Color(0xFF1E293B);
+  static const _border = Color(0xFF2D3B52);
+  static const _accent = Color(0xFF6366F1);
+  static const _green = Color(0xFF10B981);
+  static const _sky = Color(0xFF0EA5E9);
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.provider.subjects.isNotEmpty) {
+      _selectedSubject = widget.provider.subjects.first;
+      _loadStudents();
+    }
+  }
+
+  Future<void> _loadStudents() async {
+    if (_selectedSubject == null) return;
+    setState(() => _loading = true);
+    try {
+      final service = SupabaseService();
+      _students = await service.getStudentsForSubject(_selectedSubject!.id!);
+    } catch (e) {
+      debugPrint('Load masterlist error: $e');
+    }
+    if (mounted) setState(() => _loading = false);
+  }
+
+  Map<String, List<Student>> get _groupedStudents {
+    final filtered = _searchQuery.isEmpty
+        ? _students
+        : _students.where((s) {
+            final q = _searchQuery.toLowerCase();
+            return s.fullName.toLowerCase().contains(q) ||
+                s.usn.toLowerCase().contains(q) ||
+                s.course.toLowerCase().contains(q) ||
+                s.yearSection.toLowerCase().contains(q);
+          }).toList();
+
+    final groups = <String, List<Student>>{};
+    for (final s in filtered) {
+      final key = '${s.course} ${s.yearSection}';
+      groups.putIfAbsent(key, () => []).add(s);
+    }
+
+    // Sort keys
+    final sortedKeys = groups.keys.toList()..sort();
+    return {for (final k in sortedKeys) k: groups[k]!};
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final grouped = _groupedStudents;
+
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      child: Container(
+        width: 680,
+        constraints: const BoxConstraints(maxHeight: 640),
+        decoration: BoxDecoration(
+          color: _surface,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: _border),
+        ),
+        child: Column(
+          children: [
+            // ── Header ─────────────────────────────────────────────────
+            Container(
+              padding: const EdgeInsets.fromLTRB(24, 20, 24, 16),
+              decoration: BoxDecoration(
+                color: _surface,
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(18)),
+                border: Border(bottom: BorderSide(color: _border)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: _sky.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: const Icon(Icons.assignment_ind_rounded, color: _sky, size: 22),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          'Enrollment Masterlist',
+                          style: GoogleFonts.inter(
+                            color: Colors.white,
+                            fontSize: 18,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                      if (!_loading)
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                          decoration: BoxDecoration(
+                            color: _green.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: _green.withValues(alpha: 0.25)),
+                          ),
+                          child: Text(
+                            '${_students.length} enrolled',
+                            style: GoogleFonts.inter(color: _green, fontSize: 12, fontWeight: FontWeight.w700),
+                          ),
+                        ),
+                      const SizedBox(width: 8),
+                      IconButton(
+                        onPressed: () => Navigator.pop(context),
+                        icon: Icon(Icons.close_rounded, color: Colors.grey[500], size: 20),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+
+                  // Subject dropdown + search
+                  Row(
+                    children: [
+                      // Subject Dropdown
+                      Expanded(
+                        flex: 3,
+                        child: Container(
+                          height: 40,
+                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                          decoration: BoxDecoration(
+                            color: _bg,
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: _border),
+                          ),
+                          child: DropdownButtonHideUnderline(
+                            child: DropdownButton<String>(
+                              value: _selectedSubject?.id,
+                              onChanged: (v) {
+                                final subj = widget.provider.subjects.firstWhere((s) => s.id == v);
+                                setState(() => _selectedSubject = subj);
+                                _loadStudents();
+                              },
+                              dropdownColor: _surface,
+                              iconEnabledColor: Colors.grey[500],
+                              isExpanded: true,
+                              style: GoogleFonts.inter(color: Colors.white, fontSize: 13),
+                              items: widget.provider.subjects.map((s) => DropdownMenuItem(
+                                value: s.id,
+                                child: Text(
+                                  '${s.subjectCode} — ${s.subjectTitle}',
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              )).toList(),
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      // Search
+                      Expanded(
+                        flex: 2,
+                        child: Container(
+                          height: 40,
+                          decoration: BoxDecoration(
+                            color: _bg,
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: _border),
+                          ),
+                          child: TextField(
+                            onChanged: (v) => setState(() => _searchQuery = v),
+                            style: GoogleFonts.inter(color: Colors.white, fontSize: 13),
+                            decoration: InputDecoration(
+                              hintText: 'Search name or USN...',
+                              hintStyle: GoogleFonts.inter(color: Colors.grey[600], fontSize: 12),
+                              prefixIcon: Icon(Icons.search, color: Colors.grey[600], size: 18),
+                              border: InputBorder.none,
+                              contentPadding: const EdgeInsets.symmetric(vertical: 10),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+
+            // ── Body ─────────────────────────────────────────────────
+            Expanded(
+              child: _loading
+                  ? const Center(child: CircularProgressIndicator(color: _accent))
+                  : _students.isEmpty
+                      ? Center(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.people_outline, color: Colors.grey[700], size: 48),
+                              const SizedBox(height: 8),
+                              Text('No students enrolled', style: GoogleFonts.inter(color: Colors.grey[600], fontSize: 14)),
+                              const SizedBox(height: 4),
+                              Text('Share the enrollment QR so students can self-enroll',
+                                  style: GoogleFonts.inter(color: Colors.grey[700], fontSize: 12)),
+                            ],
+                          ),
+                        )
+                      : ListView.builder(
+                          padding: const EdgeInsets.fromLTRB(24, 12, 24, 24),
+                          itemCount: grouped.keys.length,
+                          itemBuilder: (_, gi) {
+                            final sectionKey = grouped.keys.elementAt(gi);
+                            final sectionStudents = grouped[sectionKey]!;
+
+                            return Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                // Section header
+                                if (gi > 0) const SizedBox(height: 16),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                  decoration: BoxDecoration(
+                                    color: _accent.withValues(alpha: 0.08),
+                                    borderRadius: BorderRadius.circular(8),
+                                    border: Border.all(color: _accent.withValues(alpha: 0.18)),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Icon(Icons.school_rounded, color: _accent, size: 15),
+                                      const SizedBox(width: 8),
+                                      Text(
+                                        sectionKey,
+                                        style: GoogleFonts.inter(
+                                          color: _accent,
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w800,
+                                          letterSpacing: 0.5,
+                                        ),
+                                      ),
+                                      const Spacer(),
+                                      Text(
+                                        '${sectionStudents.length} student${sectionStudents.length != 1 ? 's' : ''}',
+                                        style: GoogleFonts.inter(color: Colors.grey[500], fontSize: 11),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(height: 6),
+
+                                // Student rows
+                                Container(
+                                  decoration: BoxDecoration(
+                                    borderRadius: BorderRadius.circular(10),
+                                    border: Border.all(color: _border),
+                                  ),
+                                  child: ClipRRect(
+                                    borderRadius: BorderRadius.circular(10),
+                                    child: Column(
+                                      children: List.generate(sectionStudents.length, (si) {
+                                        final s = sectionStudents[si];
+                                        return Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                                          decoration: BoxDecoration(
+                                            color: _surface,
+                                            border: si > 0 ? Border(top: BorderSide(color: _border)) : null,
+                                          ),
+                                          child: Row(
+                                            children: [
+                                              // Index
+                                              SizedBox(
+                                                width: 28,
+                                                child: Text(
+                                                  '${si + 1}',
+                                                  style: GoogleFonts.inter(color: Colors.grey[600], fontSize: 12),
+                                                ),
+                                              ),
+                                              // Avatar
+                                              Container(
+                                                width: 30, height: 30,
+                                                decoration: BoxDecoration(
+                                                  color: _accent.withValues(alpha: 0.1),
+                                                  borderRadius: BorderRadius.circular(7),
+                                                ),
+                                                child: Center(
+                                                  child: Text(
+                                                    s.firstName.isNotEmpty ? s.firstName[0].toUpperCase() : '?',
+                                                    style: GoogleFonts.inter(color: _accent, fontSize: 13, fontWeight: FontWeight.w800),
+                                                  ),
+                                                ),
+                                              ),
+                                              const SizedBox(width: 10),
+                                              // Name
+                                              Expanded(
+                                                flex: 3,
+                                                child: Text(
+                                                  s.fullName,
+                                                  style: GoogleFonts.inter(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600),
+                                                  overflow: TextOverflow.ellipsis,
+                                                ),
+                                              ),
+                                              // USN
+                                              Expanded(
+                                                flex: 2,
+                                                child: Text(
+                                                  s.usn,
+                                                  style: GoogleFonts.robotoMono(color: Colors.grey[400], fontSize: 12),
+                                                ),
+                                              ),
+                                              // Status chip
+                                              Container(
+                                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                                decoration: BoxDecoration(
+                                                  color: (s.isConfirmed ? _green : const Color(0xFFF59E0B)).withValues(alpha: 0.1),
+                                                  borderRadius: BorderRadius.circular(6),
+                                                ),
+                                                child: Text(
+                                                  s.isConfirmed ? 'Confirmed' : 'Pending',
+                                                  style: GoogleFonts.inter(
+                                                    color: s.isConfirmed ? _green : const Color(0xFFF59E0B),
+                                                    fontSize: 10,
+                                                    fontWeight: FontWeight.w700,
+                                                  ),
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        );
+                                      }),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            );
+                          },
+                        ),
+            ),
+          ],
+        ),
       ),
     );
   }

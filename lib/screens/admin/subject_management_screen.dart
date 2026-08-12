@@ -386,27 +386,52 @@ class _CreateSubjectSheet extends StatefulWidget {
   State<_CreateSubjectSheet> createState() => _CreateSubjectSheetState();
 }
 
+class _MobileScheduleRow {
+  final TextEditingController dayCtrl;
+  TimeOfDay start;
+  TimeOfDay end;
+
+  _MobileScheduleRow({
+    required String day,
+    required this.start,
+    required this.end,
+  }) : dayCtrl = TextEditingController(text: day);
+
+  void dispose() {
+    dayCtrl.dispose();
+  }
+}
+
 class _CreateSubjectSheetState extends State<_CreateSubjectSheet> {
   final _codeCtrl = TextEditingController();
   final _titleCtrl = TextEditingController();
   final _unitsCtrl = TextEditingController(text: '3');
   final _roomCtrl = TextEditingController();
-  String? _selectedDay;
-  TimeOfDay _startTime = const TimeOfDay(hour: 7, minute: 30);
-  TimeOfDay _endTime = const TimeOfDay(hour: 10, minute: 0);
+  final List<_MobileScheduleRow> _scheduleRows = [];
   int _threshold = 15;
   bool _isLoading = false;
 
-  final _days = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'MWF', 'TTH', 'MTWTHF'];
+  @override
+  void initState() {
+    super.initState();
+    _scheduleRows.add(_MobileScheduleRow(
+      day: 'MWF',
+      start: const TimeOfDay(hour: 7, minute: 30),
+      end: const TimeOfDay(hour: 10, minute: 0),
+    ));
+  }
 
   @override
   void dispose() {
     _codeCtrl.dispose(); _titleCtrl.dispose(); _unitsCtrl.dispose(); _roomCtrl.dispose();
+    for (final r in _scheduleRows) {
+      r.dispose();
+    }
     super.dispose();
   }
 
   Future<void> _submit() async {
-    if (_codeCtrl.text.isEmpty || _titleCtrl.text.isEmpty || _roomCtrl.text.isEmpty || _selectedDay == null) {
+    if (_codeCtrl.text.isEmpty || _titleCtrl.text.isEmpty || _roomCtrl.text.isEmpty || _scheduleRows.any((r) => r.dayCtrl.text.isEmpty)) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please fill all required fields')));
       return;
     }
@@ -419,13 +444,17 @@ class _CreateSubjectSheetState extends State<_CreateSubjectSheet> {
     setState(() => _isLoading = true);
     try {
       final fmtTime = (TimeOfDay t) => '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
+      final scheduleDayStr = _scheduleRows.map((r) => r.dayCtrl.text.trim()).join('; ');
+      final scheduleStartStr = _scheduleRows.map((r) => fmtTime(r.start)).join('; ');
+      final scheduleEndStr = _scheduleRows.map((r) => fmtTime(r.end)).join('; ');
+
       await widget.provider.createSubject(
         subjectCode: _codeCtrl.text,
         subjectTitle: _titleCtrl.text,
         units: int.tryParse(_unitsCtrl.text) ?? 3,
-        scheduleStartTime: fmtTime(_startTime),
-        scheduleEndTime: fmtTime(_endTime),
-        scheduleDay: _selectedDay!,
+        scheduleStartTime: scheduleStartStr,
+        scheduleEndTime: scheduleEndStr,
+        scheduleDay: scheduleDayStr,
         room: _roomCtrl.text,
         instructorId: instructor.id!,
         lateThresholdMinutes: _threshold,
@@ -466,25 +495,68 @@ class _CreateSubjectSheetState extends State<_CreateSubjectSheet> {
             const SizedBox(width: 12),
             Expanded(child: _sheetField(_roomCtrl, 'Room *', 'e.g. CL3')),
           ]),
-          const SizedBox(height: 12),
+          const SizedBox(height: 16),
 
-          // Day picker
-          DropdownButtonFormField<String>(
-            value: _selectedDay,
-            dropdownColor: const Color(0xFF1A2140),
-            decoration: _sheetDeco('Schedule Day *'),
-            style: GoogleFonts.inter(color: Colors.white, fontSize: 14),
-            items: _days.map((d) => DropdownMenuItem(value: d, child: Text(d))).toList(),
-            onChanged: (v) => setState(() => _selectedDay = v),
+          // Dynamic Schedule Rows Header
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text('Schedules', style: GoogleFonts.inter(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w700)),
+              TextButton.icon(
+                onPressed: () {
+                  setState(() {
+                    _scheduleRows.add(_MobileScheduleRow(
+                      day: 'TTH',
+                      start: const TimeOfDay(hour: 13, minute: 0),
+                      end: const TimeOfDay(hour: 15, minute: 0),
+                    ));
+                  });
+                },
+                icon: const Icon(Icons.add_rounded, size: 16, color: Color(0xFF818CF8)),
+                label: Text('Add Schedule', style: GoogleFonts.inter(color: const Color(0xFF818CF8), fontSize: 12, fontWeight: FontWeight.w700)),
+              ),
+            ],
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 8),
 
-          // Time pickers
-          Row(children: [
-            Expanded(child: _timePicker('Start', _startTime, (t) => setState(() => _startTime = t))),
-            const SizedBox(width: 12),
-            Expanded(child: _timePicker('End', _endTime, (t) => setState(() => _endTime = t))),
-          ]),
+          ...List.generate(_scheduleRows.length, (i) {
+            final row = _scheduleRows[i];
+            return Container(
+              margin: const EdgeInsets.only(bottom: 12),
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.03),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
+              ),
+              child: Column(
+                children: [
+                  Row(
+                    children: [
+                      Expanded(child: _sheetField(row.dayCtrl, 'Schedule Day(s) *', 'e.g. TTH')),
+                      if (_scheduleRows.length > 1) ...[
+                        IconButton(
+                          icon: const Icon(Icons.remove_circle_outline_rounded, color: Color(0xFFEF4444), size: 20),
+                          onPressed: () {
+                            setState(() {
+                              _scheduleRows[i].dispose();
+                              _scheduleRows.removeAt(i);
+                            });
+                          },
+                        ),
+                      ],
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  Row(children: [
+                    Expanded(child: _timePicker('Start', row.start, (t) => setState(() => row.start = t))),
+                    const SizedBox(width: 12),
+                    Expanded(child: _timePicker('End', row.end, (t) => setState(() => row.end = t))),
+                  ]),
+                ],
+              ),
+            );
+          }),
           const SizedBox(height: 12),
 
           // Late threshold
@@ -547,7 +619,10 @@ class _CreateSubjectSheetState extends State<_CreateSubjectSheet> {
     return GestureDetector(
       onTap: () async {
         final picked = await showTimePicker(context: context, initialTime: time,
-          builder: (ctx, child) => Theme(data: ThemeData.dark().copyWith(colorScheme: const ColorScheme.dark(primary: Color(0xFF6366F1))), child: child!));
+          builder: (ctx, child) => MediaQuery(
+            data: MediaQuery.of(ctx).copyWith(alwaysUse24HourFormat: false),
+            child: Theme(data: ThemeData.dark().copyWith(colorScheme: const ColorScheme.dark(primary: Color(0xFF6366F1))), child: child!),
+          ));
         if (picked != null) onPick(picked);
       },
       child: Container(

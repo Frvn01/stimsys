@@ -89,7 +89,7 @@ class _DesktopAdminLoginScreenState extends State<DesktopAdminLoginScreen>
       setState(() {
         _isError = true;
         _isLoading = false;
-        _errorMsg = 'Invalid or already-used QR token. Contact your Super Admin.';
+        _errorMsg = 'Invalid or inactive QR token. Contact your Super Admin.';
       });
       _shakeCtrl.forward(from: 0);
       _tokenFocus.requestFocus();

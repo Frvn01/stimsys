@@ -2,19 +2,24 @@ import '../models/subject_model.dart';
 
 /// Maps a scheduleDay code to Dart weekday integers (1=Mon … 7=Sun).
 List<int> scheduleDayToWeekdays(String scheduleDay) {
-  switch (scheduleDay.toUpperCase().trim()) {
-    case 'MON':    return [DateTime.monday];
-    case 'TUE':    return [DateTime.tuesday];
-    case 'WED':    return [DateTime.wednesday];
-    case 'THU':    return [DateTime.thursday];
-    case 'FRI':    return [DateTime.friday];
-    case 'SAT':    return [DateTime.saturday];
-    case 'SUN':    return [DateTime.sunday];
-    case 'MWF':    return [DateTime.monday, DateTime.wednesday, DateTime.friday];
-    case 'TTH':    return [DateTime.tuesday, DateTime.thursday];
-    case 'MTWTHF': return [DateTime.monday, DateTime.tuesday, DateTime.wednesday, DateTime.thursday, DateTime.friday];
-    default:       return [];
+  final parts = scheduleDay.split(';').map((e) => e.trim()).where((e) => e.isNotEmpty);
+  final weekdays = <int>{};
+  for (final part in parts) {
+    switch (part.toUpperCase().trim()) {
+      case 'MON':    weekdays.add(DateTime.monday); break;
+      case 'TUE':    weekdays.add(DateTime.tuesday); break;
+      case 'WED':    weekdays.add(DateTime.wednesday); break;
+      case 'THU':    weekdays.add(DateTime.thursday); break;
+      case 'FRI':    weekdays.add(DateTime.friday); break;
+      case 'SAT':    weekdays.add(DateTime.saturday); break;
+      case 'SUN':    weekdays.add(DateTime.sunday); break;
+      case 'MWF':    weekdays.addAll([DateTime.monday, DateTime.wednesday, DateTime.friday]); break;
+      case 'TTH':    weekdays.addAll([DateTime.tuesday, DateTime.thursday]); break;
+      case 'MTWTHF': weekdays.addAll([DateTime.monday, DateTime.tuesday, DateTime.wednesday, DateTime.thursday, DateTime.friday]); break;
+      default:       break;
+    }
   }
+  return weekdays.toList();
 }
 
 /// Returns all dates within [rangeStart, rangeEnd] that match the subject's

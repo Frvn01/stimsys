@@ -15,7 +15,7 @@ dependencies:
   # Supabase
   supabase_flutter: ^2.8.0
   
-  # QR Code
+  # QR Code1
   qr_flutter: ^4.1.0
   mobile_scanner: ^6.0.0
   

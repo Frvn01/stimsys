@@ -29,36 +29,24 @@ class ScheduleValidationException implements Exception {
 
 /// Maps a scheduleDay code to the list of Dart weekday integers (1=Mon … 7=Sun).
 List<int> _scheduleDayToWeekdays(String scheduleDay) {
-  switch (scheduleDay.toUpperCase().trim()) {
-    case 'MON':
-      return [DateTime.monday];
-    case 'TUE':
-      return [DateTime.tuesday];
-    case 'WED':
-      return [DateTime.wednesday];
-    case 'THU':
-      return [DateTime.thursday];
-    case 'FRI':
-      return [DateTime.friday];
-    case 'SAT':
-      return [DateTime.saturday];
-    case 'SUN':
-      return [DateTime.sunday];
-    case 'MWF':
-      return [DateTime.monday, DateTime.wednesday, DateTime.friday];
-    case 'TTH':
-      return [DateTime.tuesday, DateTime.thursday];
-    case 'MTWTHF':
-      return [
-        DateTime.monday,
-        DateTime.tuesday,
-        DateTime.wednesday,
-        DateTime.thursday,
-        DateTime.friday,
-      ];
-    default:
-      return [];
+  final parts = scheduleDay.split(';').map((e) => e.trim()).where((e) => e.isNotEmpty);
+  final weekdays = <int>{};
+  for (final part in parts) {
+    switch (part.toUpperCase().trim()) {
+      case 'MON': weekdays.add(DateTime.monday); break;
+      case 'TUE': weekdays.add(DateTime.tuesday); break;
+      case 'WED': weekdays.add(DateTime.wednesday); break;
+      case 'THU': weekdays.add(DateTime.thursday); break;
+      case 'FRI': weekdays.add(DateTime.friday); break;
+      case 'SAT': weekdays.add(DateTime.saturday); break;
+      case 'SUN': weekdays.add(DateTime.sunday); break;
+      case 'MWF': weekdays.addAll([DateTime.monday, DateTime.wednesday, DateTime.friday]); break;
+      case 'TTH': weekdays.addAll([DateTime.tuesday, DateTime.thursday]); break;
+      case 'MTWTHF': weekdays.addAll([DateTime.monday, DateTime.tuesday, DateTime.wednesday, DateTime.thursday, DateTime.friday]); break;
+      default: break;
+    }
   }
+  return weekdays.toList();
 }
 
 class SupabaseService {
@@ -184,6 +172,30 @@ class SupabaseService {
     }
   }
 
+  /// Get students enrolled in a specific subject.
+  Future<List<Student>> getStudentsForSubject(String subjectId) async {
+    try {
+      final response = await _client
+          .from('enrollments')
+          .select('students!inner(*)')
+          .eq('subject_id', subjectId);
+
+      final studentMaps = <String, Map<String, dynamic>>{};
+      for (final item in (response as List)) {
+        final sMap = item['students'] as Map<String, dynamic>?;
+        if (sMap != null && sMap['id'] != null) {
+          studentMaps[sMap['id'].toString()] = sMap;
+        }
+      }
+      final students = studentMaps.values.map((e) => Student.fromSupabase(e)).toList();
+      students.sort((a, b) => a.lastName.compareTo(b.lastName));
+      return students;
+    } catch (e) {
+      debugPrint('Get students for subject error: $e');
+      return [];
+    }
+  }
+
   Future<Student?> getStudentByUsn(String usn) async {
     try {
       final response = await _client
@@ -299,19 +311,18 @@ class SupabaseService {
     }
   }
 
-  /// Looks up an instructor by their one-time QR token.
-  /// Returns null if not found, already used, or inactive.
+  /// Looks up an instructor by their QR token.
+  /// Returns null if not found or inactive.
   Future<Instructor?> getInstructorByQrToken(String token) async {
     try {
       final response = await _client
           .from('instructors')
           .select()
           .eq('qr_token', token.trim())
-          .eq('qr_used', false)
           .eq('is_active', true)
           .maybeSingle();
       if (response == null) {
-        debugPrint('QR lookup: no match for token (may be used, inactive, or RLS blocked)');
+        debugPrint('QR lookup: no match for token (may be inactive or RLS blocked)');
         return null;
       }
       return Instructor.fromSupabase(response);
@@ -321,14 +332,12 @@ class SupabaseService {
     }
   }
 
-  /// Marks the QR token as used and stores a persistent session token.
-  /// Called immediately after a successful first-time QR login.
+  /// Stores a persistent session token upon QR login.
   Future<Instructor?> markQrTokenUsed(String instructorId, String sessionToken) async {
     try {
       final response = await _client
           .from('instructors')
           .update({
-            'qr_used': true,
             'session_token': sessionToken,
           })
           .eq('id', instructorId)
@@ -677,9 +686,18 @@ class SupabaseService {
       final now = DateTime.now();
       final today = DateTime(now.year, now.month, now.day);
 
-      // ── Schedule Day Validation ─── strict rejection ─────────────
-      final validDays = _scheduleDayToWeekdays(subject.scheduleDay);
-      if (validDays.isNotEmpty && !validDays.contains(now.weekday)) {
+      // ── Schedule Validation ─── strict rejection ─────────────
+      final slots = subject.scheduleSlots;
+      final todaySlots = <ScheduleSlot>[];
+
+      for (final slot in slots) {
+        final slotDays = _scheduleDayToWeekdays(slot.day);
+        if (slotDays.contains(now.weekday)) {
+          todaySlots.add(slot);
+        }
+      }
+
+      if (todaySlots.isEmpty) {
         const dayNames = [
           '',
           'Monday',
@@ -692,26 +710,70 @@ class SupabaseService {
         ];
         final todayName = dayNames[now.weekday];
         throw ScheduleValidationException(
-          'No class today ($todayName). This subject is only scheduled on ${subject.scheduleDay}.',
+          'No class today ($todayName). This subject is scheduled on ${subject.formattedSchedule}.',
         );
       }
 
       // ── Time Window Validation ────────────────────────────────────
-      final startTime = subject.startTimeToday;
-      final endTime = subject.endTimeToday;
+      ScheduleSlot? activeSlot;
+      DateTime? matchingStart;
+      DateTime? matchingEnd;
 
-      if (now.isBefore(startTime)) {
-        final diff = startTime.difference(now).inMinutes;
-        throw ScheduleValidationException(
-          'Class hasn\'t started yet. Starts in $diff minute${diff == 1 ? '' : 's'}.',
-        );
+      for (final slot in todaySlots) {
+        final sParts = slot.startTime.split(':');
+        final eParts = slot.endTime.split(':');
+        final sHr = sParts.isNotEmpty ? (int.tryParse(sParts[0]) ?? 0) : 0;
+        final sMin = sParts.length > 1 ? (int.tryParse(sParts[1]) ?? 0) : 0;
+        final eHr = eParts.isNotEmpty ? (int.tryParse(eParts[0]) ?? 0) : 0;
+        final eMin = eParts.length > 1 ? (int.tryParse(eParts[1]) ?? 0) : 0;
+
+        final slotStart = DateTime(now.year, now.month, now.day, sHr, sMin);
+        final slotEnd = DateTime(now.year, now.month, now.day, eHr, eMin);
+
+        if (!now.isBefore(slotStart) && !now.isAfter(slotEnd)) {
+          activeSlot = slot;
+          matchingStart = slotStart;
+          matchingEnd = slotEnd;
+          break;
+        }
       }
 
-      if (now.isAfter(endTime)) {
-        throw ScheduleValidationException(
-          'Class has already ended. Attendance can no longer be recorded.',
-        );
+      if (activeSlot == null || matchingStart == null) {
+        DateTime? earliestStart;
+        DateTime? latestEnd;
+
+        for (final slot in todaySlots) {
+          final sParts = slot.startTime.split(':');
+          final eParts = slot.endTime.split(':');
+          final sHr = sParts.isNotEmpty ? (int.tryParse(sParts[0]) ?? 0) : 0;
+          final sMin = sParts.length > 1 ? (int.tryParse(sParts[1]) ?? 0) : 0;
+          final eHr = eParts.isNotEmpty ? (int.tryParse(eParts[0]) ?? 0) : 0;
+          final eMin = eParts.length > 1 ? (int.tryParse(eParts[1]) ?? 0) : 0;
+
+          final sDt = DateTime(now.year, now.month, now.day, sHr, sMin);
+          final eDt = DateTime(now.year, now.month, now.day, eHr, eMin);
+
+          if (earliestStart == null || sDt.isBefore(earliestStart)) earliestStart = sDt;
+          if (latestEnd == null || eDt.isAfter(latestEnd)) latestEnd = eDt;
+        }
+
+        if (earliestStart != null && now.isBefore(earliestStart)) {
+          final diff = earliestStart.difference(now).inMinutes;
+          throw ScheduleValidationException(
+            'Class hasn\'t started yet. Starts in $diff minute${diff == 1 ? '' : 's'}.',
+          );
+        }
+
+        if (latestEnd != null && now.isAfter(latestEnd)) {
+          throw ScheduleValidationException(
+            'Class has already ended. Attendance can no longer be recorded.',
+          );
+        }
+
+        matchingStart = subject.startTimeToday;
       }
+
+      final startTime = matchingStart;
 
       // ── Duplicate Check ──────────────────────────────────────────
       final existing = await _client

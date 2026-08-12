@@ -86,7 +86,7 @@ class _AdminLoginScreenState extends State<AdminLoginScreen>
       setState(() {
         _isLoading = false;
         _isError = true;
-        _errorMsg = 'Invalid or already-used QR code.\nContact your Super Admin for a new one.';
+        _errorMsg = 'Invalid or inactive QR code.\nContact your Super Admin for a new one.';
       });
     }
   }
@@ -169,7 +169,7 @@ class _AdminLoginScreenState extends State<AdminLoginScreen>
               const SizedBox(height: 10),
 
               Text(
-                'Scan your one-time QR code\nto access the admin panel',
+                'Scan your instructor QR code\nto access the admin panel',
                 textAlign: TextAlign.center,
                 style: GoogleFonts.inter(
                     color: Colors.grey[500], fontSize: 14, height: 1.5),
@@ -249,7 +249,7 @@ class _AdminLoginScreenState extends State<AdminLoginScreen>
                   const SizedBox(width: 6),
                   Expanded(
                     child: Text(
-                      'Your QR code is provided by the Super Admin. Each code is valid for one use only.',
+                      'Your QR code is provided by the Super Admin.',
                       textAlign: TextAlign.center,
                       style: GoogleFonts.inter(
                           color: Colors.grey[700], fontSize: 11, height: 1.4),
