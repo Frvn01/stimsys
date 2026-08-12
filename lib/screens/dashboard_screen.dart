@@ -169,7 +169,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 300),
         padding: EdgeInsets.symmetric(
-          horizontal: isActive ? 6 : 4,
+          horizontal: isActive ? 10 : 4,
           vertical: 8,
         ),
         decoration: BoxDecoration(
@@ -195,26 +195,26 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   ? const Color(0xFF6366F1)
                   : (isDark ? Colors.grey[500] : Colors.grey[600]),
             ),
-            if (isActive)
+            if (isActive) ...[
+              const SizedBox(width: 4),
               Flexible(
-                child: Padding(
-                  padding: const EdgeInsets.only(left: 4),
-                  child: Text(
-                    label,
-                    style: const TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                      color: Color(0xFF6366F1),
-                      letterSpacing: 0.1,
-                    ),
-                    overflow: TextOverflow.ellipsis,
-                    maxLines: 1,
+                child: Text(
+                  label,
+                  style: const TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF6366F1),
+                    letterSpacing: 0.1,
                   ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
+            ],
           ],
         ),
       ),
     );
   }
-}
+}
+

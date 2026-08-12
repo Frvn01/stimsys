@@ -10,6 +10,7 @@ class Subject {
   final String instructorId;
   final int lateThresholdMinutes;
   final DateTime? createdAt;
+  final String? themeColor;
 
   // Joined fields
   final String? instructorName;
@@ -26,6 +27,7 @@ class Subject {
     required this.instructorId,
     this.lateThresholdMinutes = 15,
     this.createdAt,
+    this.themeColor,
     this.instructorName,
   });
 
@@ -137,6 +139,7 @@ class Subject {
       'room': room,
       'instructor_id': instructorId,
       'late_threshold_minutes': lateThresholdMinutes,
+      'theme_color': themeColor,
     };
   }
 
@@ -172,6 +175,7 @@ class Subject {
       createdAt: map['created_at'] != null
           ? DateTime.parse(map['created_at'])
           : null,
+      themeColor: map['theme_color'],
       instructorName: map['instructors'] != null
           ? map['instructors']['full_name']
           : null,

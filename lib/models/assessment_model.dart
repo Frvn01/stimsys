@@ -14,6 +14,7 @@ class AssessmentConfig {
   final bool isPublished;
   final int setCount;       // 1 for quiz, 2 for exam (Set A/B)
   final String? sessionCode;
+  final String? themeColor; // hex color for student UI
   final DateTime? createdAt;
   final DateTime? updatedAt;
 
@@ -27,6 +28,7 @@ class AssessmentConfig {
     this.isPublished = false,
     this.setCount = 1,
     this.sessionCode,
+    this.themeColor,
     this.createdAt,
     this.updatedAt,
   });
@@ -43,6 +45,7 @@ class AssessmentConfig {
         'is_published': isPublished,
         'set_count': setCount,
         'session_code': sessionCode,
+        'theme_color': themeColor,
       };
 
   factory AssessmentConfig.fromSupabase(Map<String, dynamic> map) =>
@@ -56,6 +59,7 @@ class AssessmentConfig {
         isPublished: map['is_published'] ?? false,
         setCount: map['set_count'] ?? 1,
         sessionCode: map['session_code'],
+        themeColor: map['theme_color'],
         createdAt: map['created_at'] != null
             ? DateTime.tryParse(map['created_at'])
             : null,
@@ -74,6 +78,7 @@ class AssessmentConfig {
     bool? isPublished,
     int? setCount,
     String? sessionCode,
+    String? themeColor,
   }) =>
       AssessmentConfig(
         id: id ?? this.id,
@@ -85,6 +90,7 @@ class AssessmentConfig {
         isPublished: isPublished ?? this.isPublished,
         setCount: setCount ?? this.setCount,
         sessionCode: sessionCode ?? this.sessionCode,
+        themeColor: themeColor ?? this.themeColor,
         createdAt: createdAt,
         updatedAt: updatedAt,
       );

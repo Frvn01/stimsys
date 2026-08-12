@@ -129,12 +129,13 @@ class _QuizPageState extends State<QuizPage> {
   }
 
   static const _cardColors = [
-    Color(0xFF6366F1),
-    Color(0xFF10B981),
-    Color(0xFFF59E0B),
-    Color(0xFF8B5CF6),
-    Color(0xFF3B82F6),
-    Color(0xFFEF4444),
+    Color(0xFF6366F1), // Indigo
+    Color(0xFF10B981), // Emerald
+    Color(0xFFF59E0B), // Amber
+    Color(0xFF8B5CF6), // Purple
+    Color(0xFF3B82F6), // Blue
+    Color(0xFF0EA5E9), // Sky Blue
+    Color(0xFFEC4899), // Rose
   ];
 
   Color _getColorForSubject(String code) {
@@ -151,7 +152,14 @@ class _QuizPageState extends State<QuizPage> {
     final instructor =
         enrollment.subject?.instructorName ?? 'Unknown Instructor';
     final code = enrollment.subjectCode ?? '';
-    final color = _getColorForSubject(code);
+    
+    Color color = _getColorForSubject(code);
+    if (enrollment.subject?.themeColor != null) {
+      try {
+        final hexString = enrollment.subject!.themeColor!.replaceFirst('#', '');
+        color = Color(int.parse(hexString, radix: 16) + 0xFF000000);
+      } catch (_) {}
+    }
 
     return GestureDetector(
       onTap: () async {

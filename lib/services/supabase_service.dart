@@ -491,6 +491,7 @@ class SupabaseService {
     required String room,
     required String instructorId,
     int lateThresholdMinutes = 15,
+    String? themeColor,
   }) async {
     try {
       final data = {
@@ -503,15 +504,31 @@ class SupabaseService {
         'room': room.trim(),
         'instructor_id': instructorId.isEmpty ? null : instructorId,
         'late_threshold_minutes': lateThresholdMinutes,
+        if (themeColor != null) 'theme_color': themeColor,
       };
 
-      final response = await _client
-          .from('subjects')
-          .insert(data)
-          .select('*, instructors(full_name)')
-          .single();
+      try {
+        final response = await _client
+            .from('subjects')
+            .insert(data)
+            .select('*, instructors(full_name)')
+            .single();
 
-      return Subject.fromSupabase(response);
+        return Subject.fromSupabase(response);
+      } catch (e) {
+        if (data.containsKey('theme_color') &&
+            (e.toString().contains('theme_color') || e.toString().contains('PGRST204'))) {
+          data.remove('theme_color');
+          final response = await _client
+              .from('subjects')
+              .insert(data)
+              .select('*, instructors(full_name)')
+              .single();
+          return Subject.fromSupabase(response);
+        }
+        debugPrint('Create subject error: $e');
+        rethrow;
+      }
     } catch (e) {
       debugPrint('Create subject error: $e');
       rethrow;
@@ -529,9 +546,10 @@ class SupabaseService {
     required String room,
     required String instructorId,
     int lateThresholdMinutes = 15,
+    String? themeColor,
   }) async {
     try {
-      final data = {
+      final data = <String, dynamic>{
         'subject_code': subjectCode.trim().toUpperCase(),
         'subject_title': subjectTitle.trim(),
         'units': units,
@@ -541,16 +559,33 @@ class SupabaseService {
         'room': room.trim(),
         'instructor_id': instructorId.isEmpty ? null : instructorId,
         'late_threshold_minutes': lateThresholdMinutes,
+        if (themeColor != null) 'theme_color': themeColor,
       };
 
-      final response = await _client
-          .from('subjects')
-          .update(data)
-          .eq('id', subjectId)
-          .select('*, instructors(full_name)')
-          .single();
+      try {
+        final response = await _client
+            .from('subjects')
+            .update(data)
+            .eq('id', subjectId)
+            .select('*, instructors(full_name)')
+            .single();
 
-      return Subject.fromSupabase(response);
+        return Subject.fromSupabase(response);
+      } catch (e) {
+        if (data.containsKey('theme_color') &&
+            (e.toString().contains('theme_color') || e.toString().contains('PGRST204'))) {
+          data.remove('theme_color');
+          final response = await _client
+              .from('subjects')
+              .update(data)
+              .eq('id', subjectId)
+              .select('*, instructors(full_name)')
+              .single();
+          return Subject.fromSupabase(response);
+        }
+        debugPrint('Update subject error: $e');
+        rethrow;
+      }
     } catch (e) {
       debugPrint('Update subject error: $e');
       rethrow;
@@ -1282,14 +1317,23 @@ class SupabaseService {
     Uint8List imageBytes,
     String extension,
   ) async {
-    final bucket = _client.storage.from('student-profiles');
-    final fileName = '$studentId.$extension';
-    await bucket.uploadBinary(
-      fileName,
-      imageBytes,
-      fileOptions: const FileOptions(upsert: true, contentType: 'image/jpeg'),
-    );
-    final url = bucket.getPublicUrl(fileName);
+    String url;
+    try {
+      final bucket = _client.storage.from('student-profiles');
+      final fileName = '$studentId.$extension';
+      await bucket.uploadBinary(
+        fileName,
+        imageBytes,
+        fileOptions: const FileOptions(upsert: true, contentType: 'image/jpeg'),
+      );
+      url = bucket.getPublicUrl(fileName);
+    } catch (e) {
+      debugPrint('Storage upload fallback to base64 data URI: $e');
+      final base64Str = base64Encode(imageBytes);
+      final mime = extension == 'png' ? 'image/png' : 'image/jpeg';
+      url = 'data:$mime;base64,$base64Str';
+    }
+
     // Update the student record
     await _client
         .from('students')

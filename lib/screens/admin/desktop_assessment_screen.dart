@@ -681,6 +681,16 @@ class _DesktopAssessmentScreenState extends State<DesktopAssessmentScreen> {
     int timeLimit = 30;
     int setCount = 1;
     bool isCreating = false;
+    String? themeColor = '#6366F1';
+
+    final colorOptions = [
+      ('#6366F1', 'Indigo (Focus & Calm)'),
+      ('#10B981', 'Emerald (Balance & Relief)'),
+      ('#0EA5E9', 'Sky Blue (Clarity & Peace)'),
+      ('#8B5CF6', 'Purple (Wisdom & Thought)'),
+      ('#F59E0B', 'Amber (Energy & Warmth)'),
+      ('#EC4899', 'Rose (Soft Accent)'),
+    ];
 
     showDialog(
       context: context,
@@ -765,6 +775,28 @@ class _DesktopAssessmentScreenState extends State<DesktopAssessmentScreen> {
                     ],
                   ),
                 ],
+                const SizedBox(height: 14),
+                Text('Theme Color',
+                    style: GoogleFonts.inter(
+                        color: const Color(0xFF8B9AB2),
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600)),
+                const SizedBox(height: 6),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: colorOptions.map((c) {
+                    final hex = c.$1;
+                    final name = c.$2;
+                    final colorObj = Color(int.parse(hex.substring(1), radix: 16) + 0xFF000000);
+                    return _typeChip(
+                      name,
+                      themeColor == hex,
+                      colorObj,
+                      () => setDialogState(() => themeColor = hex),
+                    );
+                  }).toList(),
+                ),
               ],
             ),
           ),
@@ -791,6 +823,7 @@ class _DesktopAssessmentScreenState extends State<DesktopAssessmentScreen> {
                     title: titleCtrl.text.trim(),
                     timeLimitSecs: timeLimit * 60,
                     setCount: setCount,
+                    themeColor: themeColor,
                   );
                   await context
                       .read<AdminProvider>()

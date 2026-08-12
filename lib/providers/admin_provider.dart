@@ -329,6 +329,7 @@ class AdminProvider extends ChangeNotifier {
     required String room,
     required String instructorId,
     int lateThresholdMinutes = 15,
+    String? themeColor,
   }) async {
     try {
       final subject = await _service.createSubject(
@@ -341,6 +342,7 @@ class AdminProvider extends ChangeNotifier {
         room: room,
         instructorId: instructorId,
         lateThresholdMinutes: lateThresholdMinutes,
+        themeColor: themeColor,
       );
       if (subject != null) {
         _subjects.insert(0, subject);
@@ -364,6 +366,7 @@ class AdminProvider extends ChangeNotifier {
     required String room,
     required String instructorId,
     int lateThresholdMinutes = 15,
+    String? themeColor,
   }) async {
     try {
       final subject = await _service.updateSubject(
@@ -377,6 +380,7 @@ class AdminProvider extends ChangeNotifier {
         room: room,
         instructorId: instructorId,
         lateThresholdMinutes: lateThresholdMinutes,
+        themeColor: themeColor,
       );
       if (subject != null) {
         final idx = _subjects.indexWhere((s) => s.id == subjectId);

@@ -119,12 +119,12 @@ class _DesktopSubjectManagementScreenState
               ),
               child: Row(
                 children: [
-                  _th('Code', flex: 1),
-                  _th('Subject Title', flex: 3),
-                  _th('Schedule', flex: 2),
-                  _th('Room', flex: 1),
+                  _th('Code', flex: 2),
+                  _th('Subject Title', flex: 4),
+                  _th('Schedule', flex: 4),
+                  _th('Room', flex: 2),
                   _th('Units', flex: 1),
-                  _th('Actions', flex: 2, align: TextAlign.right),
+                  _th('Actions', flex: 3, align: TextAlign.right),
                 ],
               ),
             ),
@@ -513,7 +513,7 @@ class _SubjectRowState extends State<_SubjectRow> {
         child: Row(
           children: [
             Expanded(
-              flex: 1,
+              flex: 2,
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
                 decoration: BoxDecoration(
@@ -527,11 +527,13 @@ class _SubjectRowState extends State<_SubjectRow> {
                     fontSize: 11,
                     fontWeight: FontWeight.w700,
                   ),
+                  overflow: TextOverflow.ellipsis,
+                  maxLines: 1,
                 ),
               ),
             ),
             Expanded(
-              flex: 3,
+              flex: 4,
               child: Text(
                 s.subjectTitle,
                 style: GoogleFonts.inter(
@@ -540,20 +542,34 @@ class _SubjectRowState extends State<_SubjectRow> {
                   fontWeight: FontWeight.w600,
                 ),
                 overflow: TextOverflow.ellipsis,
+                maxLines: 2,
+              ),
+            ),
+            Expanded(
+              flex: 4,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: s.scheduleSlots
+                    .map((slot) => Text(
+                          '${slot.day}  ${slot.formattedStartTime}–${slot.formattedEndTime}',
+                          style: GoogleFonts.inter(
+                            color: Colors.grey[400],
+                            fontSize: 12,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                          maxLines: 1,
+                        ))
+                    .toList(),
               ),
             ),
             Expanded(
               flex: 2,
               child: Text(
-                '${s.scheduleDay}  ${s.formattedStartTime}–${s.formattedEndTime}',
-                style: GoogleFonts.inter(color: Colors.grey[400], fontSize: 12),
-              ),
-            ),
-            Expanded(
-              flex: 1,
-              child: Text(
                 s.room,
                 style: GoogleFonts.inter(color: Colors.grey[400], fontSize: 12),
+                overflow: TextOverflow.ellipsis,
+                maxLines: 1,
               ),
             ),
             Expanded(
@@ -561,10 +577,12 @@ class _SubjectRowState extends State<_SubjectRow> {
               child: Text(
                 '${s.units} units',
                 style: GoogleFonts.inter(color: Colors.grey[500], fontSize: 12),
+                overflow: TextOverflow.ellipsis,
+                maxLines: 1,
               ),
             ),
             Expanded(
-              flex: 2,
+              flex: 3,
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
@@ -668,6 +686,16 @@ class _DesktopSubjectDialogState extends State<_DesktopSubjectDialog> {
   int _units = 3;
   String _instructorId = '';
   bool _loading = false;
+  String? _themeColor = '#6366F1';
+
+  final _colorOptions = [
+    ('#6366F1', 'Indigo (Focus & Calm)'),
+    ('#10B981', 'Emerald (Balance & Relief)'),
+    ('#0EA5E9', 'Sky Blue (Clarity & Peace)'),
+    ('#8B5CF6', 'Purple (Wisdom & Thought)'),
+    ('#F59E0B', 'Amber (Energy & Warmth)'),
+    ('#EC4899', 'Rose (Soft Accent)'),
+  ];
 
   static const _surface = Color(0xFF1E293B);
   static const _border = Color(0xFF2D3B52);
@@ -683,6 +711,7 @@ class _DesktopSubjectDialogState extends State<_DesktopSubjectDialog> {
       _roomCtrl.text = s.room;
       _units = s.units;
       _instructorId = s.instructorId;
+      _themeColor = s.themeColor ?? '#6366F1';
 
       for (final slot in s.scheduleSlots) {
         TimeOfDay startTd = const TimeOfDay(hour: 7, minute: 30);
@@ -847,11 +876,7 @@ class _DesktopSubjectDialogState extends State<_DesktopSubjectDialog> {
                     children: [
                       Expanded(
                         flex: 3,
-                        child: _field(
-                          row.dayCtrl,
-                          i == 0 ? 'Day(s)' : 'Day(s)',
-                          hint: 'e.g. MON or TTH',
-                        ),
+                        child: _dayDropdown(row),
                       ),
                       const SizedBox(width: 8),
                       Expanded(
@@ -891,7 +916,48 @@ class _DesktopSubjectDialogState extends State<_DesktopSubjectDialog> {
                   ),
                 );
               }),
-
+              const SizedBox(height: 12),
+              Text(
+                'Theme Color',
+                style: GoogleFonts.inter(
+                  color: Colors.grey[400],
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: _colorOptions.map((c) {
+                  final hex = c.$1;
+                  final name = c.$2;
+                  final colorObj = Color(int.parse(hex.substring(1), radix: 16) + 0xFF000000);
+                  final isSelected = _themeColor == hex;
+                  return GestureDetector(
+                    onTap: () => setState(() => _themeColor = hex),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: isSelected ? colorObj.withValues(alpha: 0.15) : const Color(0xFF0F172A),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: isSelected ? colorObj : _border,
+                          width: isSelected ? 1.5 : 1,
+                        ),
+                      ),
+                      child: Text(
+                        name,
+                        style: GoogleFonts.inter(
+                          color: isSelected ? colorObj : Colors.grey[400],
+                          fontSize: 12,
+                          fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                  );
+                }).toList(),
+              ),
               const SizedBox(height: 12),
               if (widget.provider.isSuperAdmin) _instructorDropdown(),
               if (widget.provider.isSuperAdmin) const SizedBox(height: 24),
@@ -940,6 +1006,62 @@ class _DesktopSubjectDialogState extends State<_DesktopSubjectDialog> {
           ),
         ),
       ),
+    );
+  }
+
+  static const _dayOptions = [
+    'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT',
+    'MWF', 'TTH',
+  ];
+
+  Widget _dayDropdown(_ScheduleRowInput row) {
+    final current = row.dayCtrl.text.trim().toUpperCase();
+    final value = _dayOptions.contains(current) ? current : null;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Day(s)',
+          style: GoogleFonts.inter(
+            color: Colors.grey[400],
+            fontSize: 11,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const SizedBox(height: 5),
+        Container(
+          height: 42,
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          decoration: BoxDecoration(
+            color: const Color(0xFF0F172A),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: _border),
+          ),
+          child: DropdownButtonHideUnderline(
+            child: DropdownButton<String>(
+              value: value,
+              hint: Text(
+                'Select day',
+                style: GoogleFonts.inter(color: Colors.grey[700], fontSize: 12),
+              ),
+              onChanged: (v) {
+                if (v != null) {
+                  setState(() => row.dayCtrl.text = v);
+                }
+              },
+              dropdownColor: const Color(0xFF1E293B),
+              iconEnabledColor: Colors.grey[500],
+              isExpanded: true,
+              style: GoogleFonts.inter(color: Colors.white, fontSize: 13),
+              items: _dayOptions.map((d) => DropdownMenuItem(
+                value: d,
+                child: Text(d),
+              )).toList(),
+            ),
+          ),
+        ),
+      ],
     );
   }
 
@@ -1173,6 +1295,7 @@ class _DesktopSubjectDialogState extends State<_DesktopSubjectDialog> {
           room: _roomCtrl.text.trim(),
           units: _units,
           instructorId: _instructorId,
+          themeColor: _themeColor,
         );
       } else {
         await widget.provider.updateSubject(
@@ -1185,6 +1308,7 @@ class _DesktopSubjectDialogState extends State<_DesktopSubjectDialog> {
           room: _roomCtrl.text.trim(),
           units: _units,
           instructorId: _instructorId,
+          themeColor: _themeColor,
         );
       }
       if (mounted) Navigator.pop(context);

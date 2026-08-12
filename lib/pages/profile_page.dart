@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'dart:ui';
 import 'dart:io';
 import 'package:image_picker/image_picker.dart';
+import 'package:image_cropper/image_cropper.dart';
 import '../theme/theme_provider.dart';
 import '../models/student_model.dart';
 import '../widgets/common/custom_text_field.dart';
@@ -11,6 +12,8 @@ import '../screens/welcome_screen.dart';
 import '../providers/student_provider.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart'; 
+import 'package:flutter_animate/flutter_animate.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class ProfilePage extends StatefulWidget {
   final String email;
@@ -42,6 +45,11 @@ class _ProfilePageState extends State<ProfilePage> {
   String? _selectedYear;
   String? _selectedSection;
 
+  String _selectedFrame = 'cyber'; // 'cyber', 'flame', 'rgb', 'diamond', 'none'
+  String _serverTag = '⚡ STIM';
+  String _selectedHouse = 'azul'; // 'vierrdy', 'giallio', 'roxxo', 'azul', 'cahel'
+  late TextEditingController _customTagController;
+
   bool _isLoaded = false;
 
   @override
@@ -52,6 +60,7 @@ class _ProfilePageState extends State<ProfilePage> {
     _middleNameController = TextEditingController();
     _usnController = TextEditingController();
     _phoneController = TextEditingController();
+    _customTagController = TextEditingController(text: _serverTag);
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final provider = context.read<StudentProvider>();
@@ -70,6 +79,8 @@ class _ProfilePageState extends State<ProfilePage> {
             ? student.yearLevel : null;
         _selectedSection = StudentConstants.sections.contains(student.section) 
             ? student.section : null;
+
+        _loadCustomizations(student.usn);
       }
       setState(() => _isLoaded = true);
     });
@@ -82,12 +93,11 @@ class _ProfilePageState extends State<ProfilePage> {
     _middleNameController.dispose();
     _usnController.dispose();
     _phoneController.dispose();
+    _customTagController.dispose();
     super.dispose();
   }
 
   Future<void> _pickImage() async {
-    if (!_isEditing) return;
-
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
@@ -184,16 +194,80 @@ class _ProfilePageState extends State<ProfilePage> {
         source: source,
         maxWidth: 600,
         maxHeight: 600,
-        imageQuality: 70, // compress aggressively — keeps file ~50-150KB
+        imageQuality: 75,
       );
 
       if (pickedFile != null) {
+        File finalFile = File(pickedFile.path);
+
+        if (Platform.isAndroid || Platform.isIOS) {
+          try {
+            final isDark = Theme.of(context).brightness == Brightness.dark;
+            final croppedFile = await ImageCropper().cropImage(
+              sourcePath: pickedFile.path,
+              uiSettings: [
+                AndroidUiSettings(
+                  toolbarTitle: 'Crop Profile Photo',
+                  toolbarColor: isDark ? const Color(0xFF1E293B) : Colors.white,
+                  toolbarWidgetColor: isDark ? Colors.white : Colors.black87,
+                  initAspectRatio: CropAspectRatioPreset.square,
+                  lockAspectRatio: true,
+                  hideBottomControls: false,
+                ),
+                IOSUiSettings(
+                  title: 'Crop Profile Photo',
+                  aspectRatioLockEnabled: true,
+                  resetAspectRatioEnabled: false,
+                ),
+              ],
+            );
+            if (croppedFile != null) {
+              finalFile = File(croppedFile.path);
+            }
+          } catch (_) {
+            // Ignore cropper errors on unsupported platforms
+          }
+        }
+
         setState(() {
-          _imageFile = File(pickedFile.path);
+          _imageFile = finalFile;
         });
+
+        // Automatically upload image to Supabase
+        await _autoUploadImage(finalFile);
       }
     } catch (e) {
-      _showSnackBar('Failed to pick image', isError: true);
+      _showSnackBar('Failed to pick image: $e', isError: true);
+    }
+  }
+
+  Future<void> _autoUploadImage(File file) async {
+    setState(() => _isSaving = true);
+    try {
+      final bytes = await file.readAsBytes();
+      final ext = file.path.split('.').last.toLowerCase();
+      final (success, msg) = await context
+          .read<StudentProvider>()
+          .uploadProfileImage(bytes, ext);
+
+      if (mounted) {
+        if (success) {
+          _showSnackBar('Profile photo updated successfully!');
+          setState(() {
+            _imageFile = null;
+          });
+        } else {
+          _showSnackBar('Photo upload failed: $msg', isError: true);
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        _showSnackBar('Photo upload error: $e', isError: true);
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isSaving = false);
+      }
     }
   }
 
@@ -269,6 +343,12 @@ class _ProfilePageState extends State<ProfilePage> {
       // TODO: persist name/course edits to Supabase when that endpoint is added
       await Future.delayed(const Duration(milliseconds: 400));
 
+      // Persist frame, tag, and house
+      final student = context.read<StudentProvider>().currentStudent;
+      if (student != null) {
+        await _saveCustomizations(student.usn);
+      }
+
       if (mounted) {
         setState(() {
           _isEditing = false;
@@ -326,518 +406,1168 @@ class _ProfilePageState extends State<ProfilePage> {
       return const Center(child: CircularProgressIndicator());
     }
 
+    final surfaceColor = isDark ? const Color(0xFF1E293B) : Colors.white;
+    final borderColor = isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0);
+
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _buildHeader(isDark),
+          // ── Header Title & Actions ─────────────────────────────────────
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Profile',
+                    style: TextStyle(
+                      fontSize: 26,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: -0.5,
+                      color: isDark ? Colors.white : const Color(0xFF0F172A),
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    _isEditing ? 'Update details' : 'Personal information',
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
+                    ),
+                  ),
+                ],
+              ),
+              Row(
+                children: [
+                  if (_isEditing)
+                    IconButton(
+                      onPressed: _cancelEdit,
+                      icon: const Icon(Icons.close_rounded, size: 20),
+                      color: const Color(0xFFEF4444),
+                      tooltip: 'Cancel',
+                    ),
+                  GestureDetector(
+                    onTap: _isSaving ? null : _toggleEdit,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: _isEditing
+                            ? const Color(0xFF6366F1)
+                            : (isDark ? const Color(0xFF334155) : const Color(0xFFF1F5F9)),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: _isEditing ? const Color(0xFF6366F1) : borderColor,
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (_isSaving)
+                            const SizedBox(
+                              width: 14,
+                              height: 14,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            )
+                          else
+                            Icon(
+                              _isEditing ? Icons.check_rounded : Icons.edit_outlined,
+                              size: 16,
+                              color: _isEditing
+                                  ? Colors.white
+                                  : (isDark ? Colors.white : const Color(0xFF0F172A)),
+                            ),
+                          const SizedBox(width: 6),
+                          Text(
+                            _isEditing ? 'Save' : 'Edit',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: _isEditing
+                                  ? Colors.white
+                                  : (isDark ? Colors.white : const Color(0xFF0F172A)),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          const SizedBox(height: 28),
+
+          // ── Minimalist Hero Section (Avatar + Name + Pills) ───────────────
+          Center(
+            child: Column(
+              children: [
+                GestureDetector(
+                  onTap: _pickImage,
+                  child: Stack(
+                    children: [
+                      _buildAnimatedAvatarFrame(
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(50),
+                          child: _imageFile != null
+                              ? Image.file(
+                                  _imageFile!,
+                                  width: 96,
+                                  height: 96,
+                                  fit: BoxFit.cover,
+                                )
+                              : (student.profileImageUrl != null &&
+                                      student.profileImageUrl!.isNotEmpty)
+                                  ? Image.network(
+                                      student.profileImageUrl!,
+                                      width: 96,
+                                      height: 96,
+                                      fit: BoxFit.cover,
+                                      errorBuilder: (_, __, ___) =>
+                                          _avatarFallback(),
+                                    )
+                                  : _avatarFallback(),
+                        ),
+                        _selectedFrame,
+                      ),
+                      if (_isEditing)
+                        Positioned(
+                          bottom: 2,
+                          right: 2,
+                          child: Container(
+                            padding: const EdgeInsets.all(6),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF6366F1),
+                              shape: BoxShape.circle,
+                              border: Border.all(
+                                color: isDark ? const Color(0xFF0F172A) : Colors.white,
+                                width: 2,
+                              ),
+                            ),
+                            child: const Icon(Icons.camera_alt_rounded,
+                                size: 14, color: Colors.white),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 14),
+                // Name + Clan Server Tag Row
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Flexible(
+                      child: Text(
+                        student.fullName,
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: -0.3,
+                          color: isDark ? Colors.white : const Color(0xFF0F172A),
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                    if (_serverTag.isNotEmpty) ...[
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: isDark
+                              ? const Color(0xFF2B2D31)
+                              : const Color(0xFFE2E8F0),
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(
+                            color: isDark
+                                ? const Color(0xFF3F4248)
+                                : const Color(0xFFCBD5E1),
+                          ),
+                        ),
+                        child: Text(
+                          _serverTag,
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            color: isDark ? Colors.white : const Color(0xFF0F172A),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'USN: ${student.usn}',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                    color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF6366F1).withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: const Color(0xFF6366F1).withValues(alpha: 0.2),
+                    ),
+                  ),
+                  child: Text(
+                    '${student.course} • Year ${student.yearLevel}-${student.section}',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFF6366F1),
+                    ),
+                  ),
+                ),
+
+                // ── Official STIMSYS House Badge Banner ──
+                const SizedBox(height: 14),
+                _buildHouseBannerWidget(_selectedHouse),
+
+                // Discord-style Profile Badges (Raven Privilege)
+                if (student.usn == '23002137800') ...[
+                  const SizedBox(height: 14),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: isDark ? const Color(0xFF111214) : const Color(0xFFE3E5E8),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: isDark ? const Color(0xFF2B2D31) : const Color(0xFFD1D5DB),
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.06),
+                          blurRadius: 8,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: Wrap(
+                      spacing: 8,
+                      runSpacing: 6,
+                      alignment: WrapAlignment.center,
+                      children: [
+                        _discordBadge(
+                          icon: Icons.workspace_premium_rounded,
+                          label: 'Founder Developer',
+                          tooltip: 'Founder Developer — Original Architect',
+                          gradientColors: const [Color(0xFFFEE75C), Color(0xFFF59E0B)],
+                          badgeColor: const Color(0xFFFEE75C),
+                          textColor: Colors.black87,
+                        ),
+                        _discordBadge(
+                          icon: Icons.terminal_rounded,
+                          label: 'Core Developer',
+                          tooltip: 'Core Developer — Systems Engineer',
+                          gradientColors: const [Color(0xFF5865F2), Color(0xFF3B82F6)],
+                          badgeColor: const Color(0xFF5865F2),
+                        ),
+                        _discordBadge(
+                          icon: Icons.stars_rounded,
+                          label: 'krepsusenpai',
+                          tooltip: 'krepsusenpai — Creator',
+                          gradientColors: const [Color(0xFFEC4899), Color(0xFF8B5CF6)],
+                          badgeColor: const Color(0xFFEC4899),
+                        ),
+                        _discordBadge(
+                          icon: Icons.bolt_rounded,
+                          label: 'Full-Stack Dev',
+                          tooltip: 'Full-Stack Engineer',
+                          gradientColors: const [Color(0xFF57F287), Color(0xFF10B981)],
+                          badgeColor: const Color(0xFF57F287),
+                          textColor: Colors.black87,
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+
+                if (_isEditing) ...[
+                  const SizedBox(height: 14),
+                  OutlinedButton.icon(
+                    onPressed: _showFrameAndTagCustomizer,
+                    icon: const Icon(Icons.palette_outlined, size: 16),
+                    label: const Text('Customize Frame & Student Tag', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: const Color(0xFF6366F1),
+                      side: BorderSide(color: const Color(0xFF6366F1).withValues(alpha: 0.3)),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          const SizedBox(height: 28),
+
+          // ── Minimalist Stats Row ─────────────────────────────────────────
+          Row(
+            children: [
+              _minimalStatCard('Subjects', '${provider.enrollments.length}', isDark, surfaceColor, borderColor),
+              const SizedBox(width: 12),
+              _minimalStatCard('Year', student.yearLevel, isDark, surfaceColor, borderColor),
+              const SizedBox(width: 12),
+              _minimalStatCard('Section', student.section, isDark, surfaceColor, borderColor),
+            ],
+          ),
           const SizedBox(height: 24),
-          _buildProfileImage(isDark, student),
-          const SizedBox(height: 32),
-          _buildPersonalInfoSection(isDark, student),
-          const SizedBox(height: 32),
-          _buildLogoutButton(),
+
+          // ── Personal Info Grouped Card / Edit Form ───────────────────────
+          if (_isEditing)
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: surfaceColor,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: borderColor),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Edit Details',
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                      color: isDark ? Colors.white : const Color(0xFF0F172A),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  CustomTextField(
+                    label: 'Last Name',
+                    hint: 'Enter last name',
+                    icon: Icons.person_outline_rounded,
+                    controller: _lastNameController,
+                    enabled: true,
+                  ),
+                  const SizedBox(height: 12),
+                  CustomTextField(
+                    label: 'First Name',
+                    hint: 'Enter first name',
+                    icon: Icons.person_outline_rounded,
+                    controller: _firstNameController,
+                    enabled: true,
+                  ),
+                  const SizedBox(height: 12),
+                  CustomTextField(
+                    label: 'Middle Name',
+                    hint: 'Enter middle name',
+                    icon: Icons.person_outline_rounded,
+                    controller: _middleNameController,
+                    enabled: true,
+                  ),
+                  const SizedBox(height: 12),
+                  CustomTextField(
+                    label: 'USN',
+                    hint: 'Enter USN',
+                    icon: Icons.badge_rounded,
+                    controller: _usnController,
+                    keyboardType: TextInputType.number,
+                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                    enabled: true,
+                  ),
+                  const SizedBox(height: 12),
+                  CustomDropdown<String>(
+                    label: 'Course',
+                    hint: 'Select course',
+                    icon: Icons.school_rounded,
+                    value: _selectedCourse,
+                    items: StudentConstants.courses,
+                    onChanged: (v) => setState(() => _selectedCourse = v),
+                    enabled: true,
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: CustomDropdown<String>(
+                          label: 'Year',
+                          hint: 'Year',
+                          icon: Icons.calendar_today_rounded,
+                          value: _selectedYear,
+                          items: StudentConstants.years,
+                          onChanged: (v) => setState(() => _selectedYear = v),
+                          enabled: true,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: CustomDropdown<String>(
+                          label: 'Section',
+                          hint: 'Section',
+                          icon: Icons.class_rounded,
+                          value: _selectedSection,
+                          items: StudentConstants.sections,
+                          onChanged: (v) => setState(() => _selectedSection = v),
+                          enabled: true,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  CustomTextField(
+                    label: 'Phone',
+                    hint: 'Enter phone number',
+                    icon: Icons.phone_rounded,
+                    controller: _phoneController,
+                    keyboardType: TextInputType.phone,
+                    enabled: true,
+                  ),
+                ],
+              ),
+            )
+          else
+            Container(
+              decoration: BoxDecoration(
+                color: surfaceColor,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: borderColor),
+              ),
+              child: Column(
+                children: [
+                  _minimalInfoTile('Full Name', student.fullName, Icons.person_outline_rounded, isDark, showDivider: true),
+                  _minimalInfoTile('USN', student.usn, Icons.badge_outlined, isDark, showDivider: true),
+                  _minimalInfoTile('Program', student.course, Icons.school_outlined, isDark, showDivider: true),
+                  _minimalInfoTile('Year & Section', student.yearSection, Icons.class_outlined, isDark, showDivider: true),
+                  _minimalInfoTile('Phone', student.phone ?? 'Not provided', Icons.phone_outlined, isDark, showDivider: true),
+                  _minimalInfoTile(
+                    'Registered Date',
+                    student.createdAt != null
+                        ? DateFormat('MMMM d, yyyy').format(student.createdAt!)
+                        : 'N/A',
+                    Icons.calendar_today_outlined,
+                    isDark,
+                    showDivider: false,
+                  ),
+                ],
+              ),
+            ),
+          const SizedBox(height: 24),
+
+          // ── Minimalist Logout Button ──────────────────────────────────────
+          SizedBox(
+            width: double.infinity,
+            height: 48,
+            child: OutlinedButton.icon(
+              onPressed: () {
+                context.read<StudentProvider>().logout();
+                Navigator.of(context).pushReplacement(
+                  MaterialPageRoute(
+                    builder: (context) =>
+                        WelcomeScreen(themeProvider: widget.themeProvider),
+                  ),
+                );
+              },
+              icon: const Icon(Icons.logout_rounded, size: 18),
+              label: const Text(
+                'Logout',
+                style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+              ),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: const Color(0xFFEF4444),
+                side: BorderSide(
+                  color: const Color(0xFFEF4444).withValues(alpha: 0.3),
+                ),
+                backgroundColor: const Color(0xFFEF4444).withValues(alpha: 0.05),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+            ),
+          ),
           const SizedBox(height: 20),
-          _buildFooter(isDark),
+
+          // ── Minimalist Footer ─────────────────────────────────────────────
+          Center(
+            child: Text(
+              'Powered by krepsusenpai & Rensusama',
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w500,
+                color: isDark ? const Color(0xFF64748B) : const Color(0xFF94A3B8),
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
         ],
       ),
     );
   }
 
-  Widget _buildHeader(bool isDark) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Profile',
-              style: TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.w700,
-                letterSpacing: -0.3,
-              ),
+  Widget _discordBadge({
+    required IconData icon,
+    required String label,
+    required String tooltip,
+    required List<Color> gradientColors,
+    required Color badgeColor,
+    Color textColor = Colors.white,
+  }) {
+    return Tooltip(
+      message: tooltip,
+      decoration: BoxDecoration(
+        color: const Color(0xFF111214),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: const Color(0xFF2B2D31)),
+      ),
+      textStyle: const TextStyle(
+        color: Colors.white,
+        fontSize: 11,
+        fontWeight: FontWeight.w600,
+      ),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: gradientColors,
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(8),
+          boxShadow: [
+            BoxShadow(
+              color: badgeColor.withValues(alpha: 0.4),
+              blurRadius: 8,
+              spreadRadius: 1,
+              offset: const Offset(0, 2),
             ),
-            const SizedBox(height: 4),
+          ],
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 13, color: textColor)
+                .animate(onPlay: (c) => c.repeat(reverse: true))
+                .scale(begin: const Offset(1, 1), end: const Offset(1.15, 1.15), duration: 1200.ms, curve: Curves.easeInOut),
+            const SizedBox(width: 5),
             Text(
-              _isEditing ? 'Edit your information' : 'Your personal information',
+              label,
               style: TextStyle(
-                fontSize: 13,
-                color: isDark ? Colors.grey[500] : Colors.grey[600],
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+                color: textColor,
+                letterSpacing: 0.2,
               ),
             ),
           ],
         ),
-        Row(
+      )
+          .animate(onPlay: (c) => c.repeat(reverse: true))
+          .scaleXY(begin: 1.0, end: 1.04, duration: 1800.ms, curve: Curves.easeInOut)
+          .animate(onPlay: (c) => c.repeat())
+          .shimmer(duration: 2400.ms, color: Colors.white.withValues(alpha: 0.35)),
+    );
+  }
+
+  Widget _minimalStatCard(String label, String value, bool isDark, Color surface, Color border) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 12),
+        decoration: BoxDecoration(
+          color: surface,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: border),
+        ),
+        child: Column(
           children: [
-            if (_isEditing)
-              GestureDetector(
-                onTap: _cancelEdit,
-                child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                  margin: const EdgeInsets.only(right: 8),
-                  decoration: BoxDecoration(
-                    color: Colors.red.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: Colors.red.withValues(alpha: 0.3)),
-                  ),
-                  child: Text(
-                    'Cancel',
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.red[400],
-                    ),
-                  ),
-                ),
+            Text(
+              value,
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w800,
+                color: isDark ? Colors.white : const Color(0xFF0F172A),
               ),
-            GestureDetector(
-              onTap: _isSaving ? null : _toggleEdit,
-              child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF6366F1).withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(
-                    color: const Color(0xFF6366F1).withValues(alpha: 0.3),
-                  ),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
+            ),
+            const SizedBox(height: 2),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w500,
+                color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _minimalInfoTile(String label, String value, IconData icon, bool isDark, {required bool showDivider}) {
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          child: Row(
+            children: [
+              Icon(
+                icon,
+                size: 18,
+                color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    if (_isSaving)
-                      const SizedBox(
-                        width: 14,
-                        height: 14,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          valueColor: AlwaysStoppedAnimation<Color>(
-                            Color(0xFF6366F1),
-                          ),
-                        ),
-                      )
-                    else
-                      Icon(
-                        _isEditing ? Icons.check_rounded : Icons.edit_rounded,
-                        size: 16,
-                        color: const Color(0xFF6366F1),
-                      ),
-                    const SizedBox(width: 6),
                     Text(
-                      _isEditing ? 'Save' : 'Edit',
-                      style: const TextStyle(
-                        fontSize: 13,
+                      label,
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w500,
+                        color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      value,
+                      style: TextStyle(
+                        fontSize: 14,
                         fontWeight: FontWeight.w600,
-                        color: Color(0xFF6366F1),
+                        color: isDark ? Colors.white : const Color(0xFF0F172A),
                       ),
                     ),
                   ],
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
+        if (showDivider)
+          Divider(
+            height: 1,
+            thickness: 1,
+            indent: 48,
+            color: isDark ? const Color(0xFF334155).withValues(alpha: 0.5) : const Color(0xFFF1F5F9),
+          ),
       ],
     );
   }
 
-  Widget _buildProfileImage(bool isDark, Student student) {
-    final hasRemoteImage = student.profileImageUrl != null &&
-        student.profileImageUrl!.isNotEmpty;
+  Future<void> _loadCustomizations(String usn) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final savedFrame = prefs.getString('profile_frame_$usn');
+      final savedTag = prefs.getString('profile_tag_$usn');
+      final savedHouse = prefs.getString('profile_house_$usn');
+      if (mounted) {
+        setState(() {
+          if (savedFrame != null && savedFrame.isNotEmpty) {
+            _selectedFrame = savedFrame;
+          }
+          if (savedTag != null && savedTag.isNotEmpty) {
+            _serverTag = savedTag;
+            _customTagController.text = savedTag;
+          }
+          if (savedHouse != null && savedHouse.isNotEmpty) {
+            _selectedHouse = savedHouse;
+          }
+        });
+      }
+    } catch (e) {
+      debugPrint('Error loading profile customizations: $e');
+    }
+  }
 
-    return Center(
-      child: Column(
-        children: [
-          GestureDetector(
-            onTap: _pickImage,
-            child: Stack(
-              children: [
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(20),
-                  child: BackdropFilter(
-                    filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-                    child: Container(
-                      padding: const EdgeInsets.all(24),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF6366F1).withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(
-                          color: const Color(0xFF6366F1).withValues(alpha: 0.2),
-                        ),
-                      ),
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(16),
-                        child: _imageFile != null
-                            // Newly picked (not yet saved)
-                            ? Image.file(
-                                _imageFile!,
-                                width: 100,
-                                height: 100,
-                                fit: BoxFit.cover,
-                              )
-                            : hasRemoteImage
-                                // Saved remote image from Supabase
-                                ? Image.network(
-                                    student.profileImageUrl!,
-                                    width: 100,
-                                    height: 100,
-                                    fit: BoxFit.cover,
-                                    loadingBuilder: (_, child, progress) =>
-                                        progress == null
-                                            ? child
-                                            : const SizedBox(
-                                                width: 100,
-                                                height: 100,
-                                                child: Center(
-                                                  child: CircularProgressIndicator(
-                                                    strokeWidth: 2,
-                                                    color: Color(0xFF6366F1),
-                                                  ),
-                                                ),
-                                              ),
-                                    errorBuilder: (_, __, ___) => _avatarFallback(),
-                                  )
-                                // No image at all
-                                : _avatarFallback(),
-                      ),
-                    ),
-                  ),
-                ),
-                if (_isEditing)
-                  Positioned(
-                    right: 0,
-                    bottom: 0,
-                    child: Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF6366F1),
-                        shape: BoxShape.circle,
-                        border: Border.all(
-                          color: isDark
-                              ? const Color(0xFF0F172A)
-                              : Colors.white,
-                          width: 3,
-                        ),
-                      ),
-                      child: const Icon(
-                        Icons.camera_alt_rounded,
-                        size: 16,
-                        color: Colors.white,
-                      ),
-                    ),
-                  ),
-                if (_isEditing && (hasRemoteImage || _imageFile != null))
-                  Positioned(
-                    top: 0,
-                    right: 0,
-                    child: GestureDetector(
-                      onTap: () => _deleteProfileImage(student),
+  Future<void> _saveCustomizations(String usn) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('profile_frame_$usn', _selectedFrame);
+      await prefs.setString('profile_tag_$usn', _serverTag);
+      await prefs.setString('profile_house_$usn', _selectedHouse);
+    } catch (e) {
+      debugPrint('Error saving profile customizations: $e');
+    }
+  }
+
+  Widget _buildAnimatedAvatarFrame(Widget child, String frameType) {
+    switch (frameType) {
+      case 'flame':
+        return Container(
+          padding: const EdgeInsets.all(4),
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            gradient: const LinearGradient(
+              colors: [Color(0xFFEF4444), Color(0xFFF59E0B), Color(0xFFDC2626)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFFEF4444).withValues(alpha: 0.5),
+                blurRadius: 12,
+                spreadRadius: 2,
+              ),
+            ],
+          ),
+          child: child,
+        )
+            .animate(onPlay: (c) => c.repeat(reverse: true))
+            .scaleXY(begin: 1.0, end: 1.05, duration: 1200.ms, curve: Curves.easeInOut)
+            .shimmer(duration: 1800.ms, color: Colors.amber.withValues(alpha: 0.5));
+      case 'rgb':
+        return Container(
+          padding: const EdgeInsets.all(4),
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            gradient: const LinearGradient(
+              colors: [
+                Color(0xFFEC4899),
+                Color(0xFF8B5CF6),
+                Color(0xFF3B82F6),
+                Color(0xFF10B981),
+                Color(0xFFF59E0B),
+              ],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFF8B5CF6).withValues(alpha: 0.5),
+                blurRadius: 14,
+                spreadRadius: 2,
+              ),
+            ],
+          ),
+          child: child,
+        )
+            .animate(onPlay: (c) => c.repeat())
+            .shimmer(duration: 2000.ms, color: Colors.white.withValues(alpha: 0.6))
+            .animate(onPlay: (c) => c.repeat(reverse: true))
+            .scaleXY(begin: 1.0, end: 1.03, duration: 1500.ms);
+      case 'diamond':
+        return Container(
+          padding: const EdgeInsets.all(4),
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            gradient: const LinearGradient(
+              colors: [Color(0xFF38BDF8), Color(0xFF818CF8), Color(0xFFE0F2FE)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFF38BDF8).withValues(alpha: 0.5),
+                blurRadius: 10,
+                spreadRadius: 2,
+              ),
+            ],
+          ),
+          child: child,
+        )
+            .animate(onPlay: (c) => c.repeat())
+            .shimmer(duration: 1500.ms, color: Colors.white.withValues(alpha: 0.7));
+      case 'none':
+        return Container(
+          padding: const EdgeInsets.all(4),
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            border: Border.all(color: Colors.grey.withValues(alpha: 0.3), width: 2),
+          ),
+          child: child,
+        );
+      case 'cyber':
+      default:
+        return Container(
+          padding: const EdgeInsets.all(4),
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            gradient: const LinearGradient(
+              colors: [Color(0xFF6366F1), Color(0xFFA855F7), Color(0xFF06B6D4)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFF6366F1).withValues(alpha: 0.45),
+                blurRadius: 12,
+                spreadRadius: 2,
+              ),
+            ],
+          ),
+          child: child,
+        )
+            .animate(onPlay: (c) => c.repeat(reverse: true))
+            .scaleXY(begin: 1.0, end: 1.04, duration: 1400.ms, curve: Curves.easeInOut)
+            .shimmer(duration: 2200.ms, color: Colors.white.withValues(alpha: 0.4));
+    }
+  }
+
+  void _showFrameAndTagCustomizer() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        final isDark = Theme.of(context).brightness == Brightness.dark;
+        final bg = isDark ? const Color(0xFF1E293B) : Colors.white;
+        final surface = isDark ? const Color(0xFF0F172A) : const Color(0xFFF8FAFC);
+
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            return Container(
+              padding: EdgeInsets.only(
+                left: 20,
+                right: 20,
+                top: 20,
+                bottom: MediaQuery.of(context).viewInsets.bottom + 20,
+              ),
+              decoration: BoxDecoration(
+                color: bg,
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+              ),
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Center(
                       child: Container(
-                        padding: const EdgeInsets.all(6),
+                        width: 40,
+                        height: 4,
                         decoration: BoxDecoration(
-                          color: const Color(0xFFEF4444),
-                          shape: BoxShape.circle,
-                          border: Border.all(
-                            color: isDark
-                                ? const Color(0xFF0F172A)
-                                : Colors.white,
-                            width: 3,
+                          color: Colors.grey.withValues(alpha: 0.3),
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      'Customize Profile Effects & Student Tag',
+                      style: TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w700,
+                        color: isDark ? Colors.white : const Color(0xFF0F172A),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+
+                    // ── Frame Effect Selector ──
+                    Text(
+                      'Avatar Frame Animation',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        _frameChip('cyber', '⚡ Cyberpunk', isDark, setModalState),
+                        _frameChip('flame', '🔥 Flame Pulse', isDark, setModalState),
+                        _frameChip('rgb', '🌈 RGB Gamer', isDark, setModalState),
+                        _frameChip('diamond', '💎 Diamond', isDark, setModalState),
+                        _frameChip('none', '🛑 Classic', isDark, setModalState),
+                      ],
+                    ),
+                    const SizedBox(height: 20),
+
+                    // ── House Selection Section ──
+                    Text(
+                      'STIMSYS House Badge',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Column(
+                      children: [
+                        _houseSelectCard('vierrdy', 'HOUSE OF VIERRDY', '🐍', const [Color(0xFF052E16), Color(0xFF15803D)], setModalState),
+                        const SizedBox(height: 6),
+                        _houseSelectCard('giallio', 'HOUSE OF GIALLIO', '🦁', const [Color(0xFF422006), Color(0xFFA16207)], setModalState),
+                        const SizedBox(height: 6),
+                        _houseSelectCard('roxxo', 'HOUSE OF ROXXO', '🐉', const [Color(0xFF450A0A), Color(0xFFB91C1C)], setModalState),
+                        const SizedBox(height: 6),
+                        _houseSelectCard('azul', 'HOUSE OF AZUL', '🐺', const [Color(0xFF172554), Color(0xFF1D4ED8)], setModalState),
+                        const SizedBox(height: 6),
+                        _houseSelectCard('cahel', 'HOUSE OF CAHEL', '🦅', const [Color(0xFF451A03), Color(0xFFB45309)], setModalState),
+                      ],
+                    ),
+                    const SizedBox(height: 20),
+
+                    // ── Student Tag Selector ──
+                    Text(
+                      'Student Tag',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        _tagPresetChip('🎓 IT', isDark, setModalState),
+                        _tagPresetChip('💻 CS', isDark, setModalState),
+                        _tagPresetChip('🔥 TOP', isDark, setModalState),
+                        _tagPresetChip('✨ PRO', isDark, setModalState),
+                        _tagPresetChip('⚡ DEV', isDark, setModalState),
+                        _tagPresetChip('🚀 ELITE', isDark, setModalState),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: _customTagController,
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: isDark ? Colors.white : const Color(0xFF0F172A),
+                      ),
+                      decoration: InputDecoration(
+                        labelText: 'Or enter custom student tag',
+                        hintText: 'e.g. 🚀 HERO',
+                        prefixIcon: const Icon(Icons.tag_rounded, size: 18),
+                        filled: true,
+                        fillColor: surface,
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide.none,
+                        ),
+                      ),
+                      onChanged: (val) {
+                        setModalState(() {
+                          _serverTag = val;
+                        });
+                        setState(() {
+                          _serverTag = val;
+                        });
+                      },
+                    ),
+                    const SizedBox(height: 20),
+                    SizedBox(
+                      width: double.infinity,
+                      height: 46,
+                      child: ElevatedButton(
+                        onPressed: () {
+                          final student = context.read<StudentProvider>().currentStudent;
+                          if (student != null) {
+                            _saveCustomizations(student.usn);
+                          }
+                          Navigator.pop(context);
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF6366F1),
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
                           ),
                         ),
-                        child: const Icon(
-                          Icons.delete_outline_rounded,
-                          size: 14,
-                          color: Colors.white,
-                        ),
+                        child: const Text('Apply Changes', style: TextStyle(fontWeight: FontWeight.w700)),
                       ),
                     ),
-                  ),
-              ],
-            ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _frameChip(String key, String label, bool isDark, StateSetter setModalState) {
+    final isSelected = _selectedFrame == key;
+    return ChoiceChip(
+      label: Text(label),
+      selected: isSelected,
+      onSelected: (selected) {
+        if (selected) {
+          setModalState(() => _selectedFrame = key);
+          setState(() => _selectedFrame = key);
+        }
+      },
+      selectedColor: const Color(0xFF6366F1),
+      labelStyle: TextStyle(
+        color: isSelected ? Colors.white : (isDark ? Colors.white70 : Colors.black87),
+        fontWeight: FontWeight.w600,
+        fontSize: 12,
+      ),
+      backgroundColor: isDark ? const Color(0xFF0F172A) : const Color(0xFFF1F5F9),
+    );
+  }
+
+  Widget _tagPresetChip(String tag, bool isDark, StateSetter setModalState) {
+    final isSelected = _serverTag == tag;
+    return ChoiceChip(
+      label: Text(tag),
+      selected: isSelected,
+      onSelected: (selected) {
+        if (selected) {
+          _customTagController.text = tag;
+          setModalState(() => _serverTag = tag);
+          setState(() => _serverTag = tag);
+        }
+      },
+      selectedColor: const Color(0xFF10B981),
+      labelStyle: TextStyle(
+        color: isSelected ? Colors.white : (isDark ? Colors.white70 : Colors.black87),
+        fontWeight: FontWeight.w700,
+        fontSize: 12,
+      ),
+      backgroundColor: isDark ? const Color(0xFF0F172A) : const Color(0xFFF1F5F9),
+    );
+  }
+
+  Widget _buildHouseBannerWidget(String houseKey) {
+    late String title;
+    late String iconStr;
+    late List<Color> colors;
+    late Color borderColor;
+
+    switch (houseKey) {
+      case 'vierrdy':
+        title = 'HOUSE OF VIERRDY';
+        iconStr = '🐍';
+        colors = const [Color(0xFF052E16), Color(0xFF15803D), Color(0xFF22C55E)];
+        borderColor = const Color(0xFF4ADE80);
+        break;
+      case 'giallio':
+        title = 'HOUSE OF GIALLIO';
+        iconStr = '🦁';
+        colors = const [Color(0xFF422006), Color(0xFFA16207), Color(0xFFEAB308)];
+        borderColor = const Color(0xFFFDE047);
+        break;
+      case 'roxxo':
+        title = 'HOUSE OF ROXXO';
+        iconStr = '🐉';
+        colors = const [Color(0xFF450A0A), Color(0xFFB91C1C), Color(0xFFEF4444)];
+        borderColor = const Color(0xFFFCA5A5);
+        break;
+      case 'cahel':
+        title = 'HOUSE OF CAHEL';
+        iconStr = '🦅';
+        colors = const [Color(0xFF451A03), Color(0xFFB45309), Color(0xFFF59E0B)];
+        borderColor = const Color(0xFFFCD34D);
+        break;
+      case 'azul':
+      default:
+        title = 'HOUSE OF AZUL';
+        iconStr = '🐺';
+        colors = const [Color(0xFF172554), Color(0xFF1D4ED8), Color(0xFF3B82F6)];
+        borderColor = const Color(0xFF93C5FD);
+        break;
+    }
+
+    return Container(
+      width: 260,
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: colors,
+          begin: Alignment.centerLeft,
+          end: Alignment.centerRight,
+        ),
+        borderRadius: BorderRadius.circular(30),
+        border: Border.all(color: borderColor.withValues(alpha: 0.6), width: 1.5),
+        boxShadow: [
+          BoxShadow(
+            color: colors.last.withValues(alpha: 0.35),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
           ),
-          const SizedBox(height: 20),
-          Text(
-            student.fullName,
-            style: const TextStyle(
-              fontSize: 22,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          const SizedBox(height: 4),
+        ],
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            padding: const EdgeInsets.all(5),
             decoration: BoxDecoration(
-              color: const Color(0xFF6366F1).withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(20),
+              shape: BoxShape.circle,
+              color: Colors.black.withValues(alpha: 0.4),
+              border: Border.all(color: borderColor, width: 1.5),
             ),
+            child: Text(iconStr, style: const TextStyle(fontSize: 14)),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
             child: Text(
-              '${student.course} | Year ${student.yearLevel}-${student.section}',
+              title,
               style: const TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                color: Color(0xFF6366F1),
+                color: Colors.white,
+                fontSize: 13,
+                fontWeight: FontWeight.w900,
+                fontStyle: FontStyle.italic,
+                letterSpacing: 0.8,
+              ),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _houseSelectCard(String key, String title, String iconStr, List<Color> colors, StateSetter setModalState) {
+    final isSelected = _selectedHouse == key;
+    return GestureDetector(
+      onTap: () {
+        setModalState(() => _selectedHouse = key);
+        setState(() => _selectedHouse = key);
+      },
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(colors: colors),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: isSelected ? Colors.white : Colors.white.withValues(alpha: 0.2),
+            width: isSelected ? 2.5 : 1,
+          ),
+          boxShadow: isSelected
+              ? [BoxShadow(color: colors.last.withValues(alpha: 0.5), blurRadius: 10, spreadRadius: 1)]
+              : [],
+        ),
+        child: Row(
+          children: [
+            Text(iconStr, style: const TextStyle(fontSize: 18)),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                title,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w900,
+                  fontStyle: FontStyle.italic,
+                  letterSpacing: 0.8,
+                ),
               ),
             ),
-          ),
-
-          //The Raven Privilage
-          if (student.usn == '23002137800') ...[
-            const SizedBox(height: 12),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              alignment: WrapAlignment.center,
-              children: [
-                _buildCustomBadge(isDark, 'Core Developer', const Color(0xFFEF4444)),
-                _buildCustomBadge(isDark, 'krepsusenpai', const Color(0xFFA855F7)),
-                _buildCustomBadge(isDark, 'Full-Stack Developer', const Color(0xFF10B981)),
-              ],
-            ),
+            if (isSelected) const Icon(Icons.check_circle_rounded, color: Colors.white, size: 20),
           ],
-        ],
+        ),
       ),
     );
   }
 
   Widget _avatarFallback() {
     return Container(
-      width: 100,
-      height: 100,
+      width: 96,
+      height: 96,
       color: const Color(0xFF6366F1).withValues(alpha: 0.1),
       child: const Icon(
         Icons.person_rounded,
-        size: 60,
+        size: 54,
         color: Color(0xFF6366F1),
-      ),
-    );
-  }
-
-  Widget _buildCustomBadge(bool isDark, String label, Color color) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.15),
-        border: Border.all(color: color.withValues(alpha: 0.3)),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Text(
-        label,
-        style: TextStyle(
-          fontSize: 10,
-          fontWeight: FontWeight.w700,
-          color: color,
-        ),
-      ),
-    );
-  }
-
-  Widget _buildPersonalInfoSection(bool isDark, Student student) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'Personal Information',
-          style: TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.w600,
-            color: isDark ? Colors.grey[300] : Colors.grey[700],
-            letterSpacing: 0.2,
-          ),
-        ),
-        const SizedBox(height: 16),
-        if (_isEditing) ...[
-          CustomTextField(
-            label: 'Last Name',
-            hint: 'Enter last name',
-            icon: Icons.person_outline_rounded,
-            controller: _lastNameController,
-            enabled: true,
-          ),
-          const SizedBox(height: 16),
-          CustomTextField(
-            label: 'First Name',
-            hint: 'Enter first name',
-            icon: Icons.person_outline_rounded,
-            controller: _firstNameController,
-            enabled: true,
-          ),
-          const SizedBox(height: 16),
-          CustomTextField(
-            label: 'Middle Name',
-            hint: 'Enter middle name',
-            icon: Icons.person_outline_rounded,
-            controller: _middleNameController,
-            enabled: true,
-          ),
-          const SizedBox(height: 16),
-          CustomTextField(
-            label: 'USN',
-            hint: 'Enter USN',
-            icon: Icons.badge_rounded,
-            controller: _usnController,
-            keyboardType: TextInputType.number,
-            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-            enabled: true,
-          ),
-          const SizedBox(height: 16),
-          CustomDropdown<String>(
-            label: 'Course',
-            hint: 'Select course',
-            icon: Icons.school_rounded,
-            value: _selectedCourse,
-            items: StudentConstants.courses,
-            onChanged: (v) => setState(() => _selectedCourse = v),
-            enabled: true,
-          ),
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              Expanded(
-                child: CustomDropdown<String>(
-                  label: 'Year',
-                  hint: 'Year',
-                  icon: Icons.calendar_today_rounded,
-                  value: _selectedYear,
-                  items: StudentConstants.years,
-                  onChanged: (v) => setState(() => _selectedYear = v),
-                  enabled: true,
-                ),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: CustomDropdown<String>(
-                  label: 'Section',
-                  hint: 'Section',
-                  icon: Icons.class_rounded,
-                  value: _selectedSection,
-                  items: StudentConstants.sections,
-                  onChanged: (v) => setState(() => _selectedSection = v),
-                  enabled: true,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          CustomTextField(
-            label: 'Phone',
-            hint: 'Enter phone number',
-            icon: Icons.phone_rounded,
-            controller: _phoneController,
-            keyboardType: TextInputType.phone,
-            enabled: true,
-          ),
-        ] else ...[
-          _buildReadOnlyField(isDark, 'USN', student.usn),
-          const SizedBox(height: 12),
-          _buildReadOnlyField(isDark, 'Full Name', student.fullName),
-          const SizedBox(height: 12),
-          _buildReadOnlyField(isDark, 'Program', student.course),
-          const SizedBox(height: 12),
-          _buildReadOnlyField(isDark, 'Year & Section', student.yearSection),
-          const SizedBox(height: 12),
-          _buildReadOnlyField(isDark, 'Phone', student.phone ?? 'Not set'),
-          const SizedBox(height: 12),
-          _buildReadOnlyField(
-            isDark,
-            'Registered',
-            student.createdAt != null
-                ? DateFormat('MMMM d, yyyy').format(student.createdAt!)
-                : 'N/A',
-          ),
-        ],
-      ],
-    );
-  }
-
-  Widget _buildReadOnlyField(bool isDark, String label, String value) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label,
-          style: TextStyle(
-            fontSize: 12,
-            color: isDark ? Colors.grey[500] : Colors.grey[600],
-            fontWeight: FontWeight.w600,
-            letterSpacing: 0.2,
-          ),
-        ),
-        const SizedBox(height: 6),
-        ClipRRect(
-          borderRadius: BorderRadius.circular(10),
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
-            child: Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
-              decoration: BoxDecoration(
-                color: isDark
-                    ? Colors.white.withValues(alpha: 0.05)
-                    : Colors.black.withValues(alpha: 0.02),
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(
-                  color: isDark
-                      ? Colors.white.withValues(alpha: 0.1)
-                      : Colors.black.withValues(alpha: 0.08),
-                ),
-              ),
-              child: Text(
-                value,
-                style: const TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w500,
-                  letterSpacing: 0.2,
-                ),
-              ),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildLogoutButton() {
-    return SizedBox(
-      width: double.infinity,
-      height: 48,
-      child: ElevatedButton.icon(
-        onPressed: () {
-          context.read<StudentProvider>().logout();
-          Navigator.of(context).pushReplacement(
-            MaterialPageRoute(
-              builder: (context) =>
-                  WelcomeScreen(themeProvider: widget.themeProvider),
-            ),
-          );
-        },
-        icon: const Icon(Icons.logout_rounded, size: 18),
-        label: const Text('Logout'),
-        style: ElevatedButton.styleFrom(
-          backgroundColor: const Color(0xFFEF4444),
-          foregroundColor: Colors.white,
-          elevation: 0,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildFooter(bool isDark) {
-    return Center(
-      child: Text(
-        'Powered by krepsusenpai and Rensusama',
-        style: TextStyle(
-          fontSize: 11,
-          color: isDark ? Colors.grey[600] : Colors.grey[500],
-          fontWeight: FontWeight.w400,
-          letterSpacing: 0.2,
-        ),
       ),
     );
   }

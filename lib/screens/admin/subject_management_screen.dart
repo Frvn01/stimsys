@@ -533,7 +533,7 @@ class _CreateSubjectSheetState extends State<_CreateSubjectSheet> {
                 children: [
                   Row(
                     children: [
-                      Expanded(child: _sheetField(row.dayCtrl, 'Schedule Day(s) *', 'e.g. TTH')),
+                      Expanded(child: _dayDropdownMobile(row)),
                       if (_scheduleRows.length > 1) ...[
                         IconButton(
                           icon: const Icon(Icons.remove_circle_outline_rounded, color: Color(0xFFEF4444), size: 20),
@@ -593,6 +593,44 @@ class _CreateSubjectSheetState extends State<_CreateSubjectSheet> {
             ),
           ),
         ]),
+      ),
+    );
+  }
+
+  static const _dayOptions = [
+    'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT',
+    'MWF', 'TTH',
+  ];
+
+  Widget _dayDropdownMobile(_MobileScheduleRow row) {
+    final current = row.dayCtrl.text.trim().toUpperCase();
+    final value = _dayOptions.contains(current) ? current : null;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.05),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Schedule Day(s) *', style: GoogleFonts.inter(color: Colors.grey[500], fontSize: 12)),
+          DropdownButtonHideUnderline(
+            child: DropdownButton<String>(
+              value: value,
+              hint: Text('Select day', style: GoogleFonts.inter(color: Colors.grey[700], fontSize: 13)),
+              onChanged: (v) {
+                if (v != null) setState(() => row.dayCtrl.text = v);
+              },
+              dropdownColor: const Color(0xFF1E293B),
+              iconEnabledColor: Colors.grey[500],
+              isExpanded: true,
+              style: GoogleFonts.inter(color: Colors.white, fontSize: 14),
+              items: _dayOptions.map((d) => DropdownMenuItem(value: d, child: Text(d))).toList(),
+            ),
+          ),
+        ],
       ),
     );
   }

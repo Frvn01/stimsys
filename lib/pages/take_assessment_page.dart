@@ -367,7 +367,14 @@ class _TakeAssessmentPageState extends State<TakeAssessmentPage> with WidgetsBin
     final surface = widget.isDark ? const Color(0xFF1E293B) : Colors.white;
     final textCol = widget.isDark ? Colors.white : Colors.black87;
     final subCol = widget.isDark ? Colors.grey[400]! : Colors.grey[600]!;
-    final accent = widget.assessment.isExam ? const Color(0xFFF59E0B) : const Color(0xFF6366F1);
+    
+    Color accent = widget.assessment.isExam ? const Color(0xFFF59E0B) : const Color(0xFF6366F1);
+    if (widget.assessment.themeColor != null) {
+      try {
+        final hexString = widget.assessment.themeColor!.replaceFirst('#', '');
+        accent = Color(int.parse(hexString, radix: 16) + 0xFF000000);
+      } catch (_) {}
+    }
 
     if (!_sessionVerified) {
       return _buildSessionVerification(bg, surface, textCol, subCol, accent);
