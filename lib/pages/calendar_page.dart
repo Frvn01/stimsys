@@ -27,7 +27,10 @@ class _CalendarPageState extends State<CalendarPage> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<StudentProvider>().loadAnnouncements();
+      final provider = context.read<StudentProvider>();
+      if (provider.announcements.isEmpty) {
+        provider.loadAnnouncements();
+      }
     });
   }
 

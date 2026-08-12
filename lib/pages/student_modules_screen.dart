@@ -55,7 +55,9 @@ class _StudentModulesScreenState extends State<StudentModulesScreen> {
 
   Future<void> _load() async {
     final provider = context.read<StudentProvider>();
-    await provider.loadModules();
+    if (provider.modules.isEmpty) {
+      await provider.loadModules();
+    }
     if (mounted) setState(() => _loading = false);
   }
 

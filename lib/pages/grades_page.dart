@@ -24,7 +24,10 @@ class _GradesPageState extends State<GradesPage> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<StudentProvider>().loadAttendance();
+      final provider = context.read<StudentProvider>();
+      if (provider.attendanceRecords.isEmpty) {
+        provider.loadAttendance();
+      }
     });
   }
 
@@ -190,7 +193,7 @@ class _GradesPageState extends State<GradesPage> {
         itemBuilder: (ctx, i) {
           final e = enrollments[i];
           final isSelected = _selectedSubjectIndex == i;
-          final color = _subjectColor(e.subjectCode);
+          final color = _subjectColor(e.subjectCode, i);
 
           return GestureDetector(
             onTap: () {
@@ -261,16 +264,20 @@ class _GradesPageState extends State<GradesPage> {
   }
 
   static const _colors = [
-    Color(0xFF6366F1),
-    Color(0xFF10B981),
-    Color(0xFFF59E0B),
-    Color(0xFF8B5CF6),
-    Color(0xFF3B82F6),
-    Color(0xFFEF4444),
+    Color(0xFF6366F1), // Indigo
+    Color(0xFF8B5CF6), // Purple
+    Color(0xFF10B981), // Emerald
+    Color(0xFFF59E0B), // Amber
+    Color(0xFFEC4899), // Pink
+    Color(0xFF06B6D4), // Cyan
   ];
-  Color _subjectColor(String? code) {
-    final idx = (code?.hashCode ?? 0).abs() % _colors.length;
-    return _colors[idx];
+
+  Color _subjectColor(String? code, int index) {
+    if (index >= 0) {
+      return _colors[index % _colors.length];
+    }
+    final hash = (code?.hashCode ?? 0).abs();
+    return _colors[hash % _colors.length];
   }
 }
 

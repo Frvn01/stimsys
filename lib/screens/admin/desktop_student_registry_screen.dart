@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'dart:convert';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import '../../providers/admin_provider.dart';
@@ -382,17 +383,29 @@ class _DesktopStudentRowState extends State<_DesktopStudentRow> {
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(8),
                 child: s.profileImageUrl != null && s.profileImageUrl!.isNotEmpty
-                    ? Image.network(
-                        s.profileImageUrl!,
-                        width: 34,
-                        height: 34,
-                        fit: BoxFit.cover,
-                        errorBuilder: (_, __, ___) => Center(
-                          child: Text(s.firstName[0].toUpperCase(),
-                              style: GoogleFonts.inter(
-                                  color: _accent, fontSize: 14, fontWeight: FontWeight.w800)),
-                        ),
-                      )
+                    ? (s.profileImageUrl!.startsWith('data:image/')
+                        ? Image.memory(
+                            base64Decode(s.profileImageUrl!.split(',').last),
+                            width: 34,
+                            height: 34,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) => Center(
+                              child: Text(s.firstName[0].toUpperCase(),
+                                  style: GoogleFonts.inter(
+                                      color: _accent, fontSize: 14, fontWeight: FontWeight.w800)),
+                            ),
+                          )
+                        : Image.network(
+                            s.profileImageUrl!,
+                            width: 34,
+                            height: 34,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) => Center(
+                              child: Text(s.firstName[0].toUpperCase(),
+                                  style: GoogleFonts.inter(
+                                      color: _accent, fontSize: 14, fontWeight: FontWeight.w800)),
+                            ),
+                          ))
                     : Center(
                         child: Text(s.firstName[0].toUpperCase(),
                             style: GoogleFonts.inter(

@@ -43,35 +43,40 @@ class _SplashScreenState extends State<SplashScreen>
     );
 
     _animationController.forward();
+    _initializeApp();
+  }
 
-    Timer(const Duration(seconds: 3), () async {
-      final provider = context.read<StudentProvider>();
-      final isRestored = await provider.restoreSession();
+  Future<void> _initializeApp() async {
+    final minSplashDuration = Future.delayed(const Duration(milliseconds: 900));
+    final provider = context.read<StudentProvider>();
+    final sessionTask = provider.restoreSession();
 
-      if (mounted) {
-        if (isRestored && provider.currentStudent != null) {
-          Navigator.of(context).pushReplacement(
-            MaterialPageRoute(
-              builder: (context) => DashboardScreen(
-                email: provider.currentStudent!.usn,
-                themeProvider: widget.themeProvider,
-              ),
+    final results = await Future.wait([minSplashDuration, sessionTask]);
+    final isRestored = results[1] as bool;
+
+    if (mounted) {
+      if (isRestored && provider.currentStudent != null) {
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(
+            builder: (context) => DashboardScreen(
+              email: provider.currentStudent!.usn,
+              themeProvider: widget.themeProvider,
             ),
-          );
-        } else {
-          final prefs = await SharedPreferences.getInstance();
-          final hasRegistered = prefs.getBool('hasRegistered') ?? false;
+          ),
+        );
+      } else {
+        final prefs = await SharedPreferences.getInstance();
+        final hasRegistered = prefs.getBool('hasRegistered') ?? false;
 
-          Navigator.of(context).pushReplacement(
-            MaterialPageRoute(
-              builder: (context) => hasRegistered
-                  ? LoginScreen(themeProvider: widget.themeProvider)
-                  : WelcomeScreen(themeProvider: widget.themeProvider),
-            ),
-          );
-        }
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(
+            builder: (context) => hasRegistered
+                ? LoginScreen(themeProvider: widget.themeProvider)
+                : WelcomeScreen(themeProvider: widget.themeProvider),
+          ),
+        );
       }
-    });
+    }
   }
 
   @override

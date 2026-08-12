@@ -57,9 +57,7 @@ class StudentProvider extends ChangeNotifier {
       final student = await _service.loginStudent(usn, password);
       if (student != null) {
         _currentStudent = student;
-        await loadEnrollments();
-        await loadAttendance();
-        await loadAnnouncements();
+        await loadAllData(notifyAtEnd: false);
         _setupNotifications();
         notifyListeners();
       }
@@ -69,6 +67,35 @@ class StudentProvider extends ChangeNotifier {
       rethrow;
     } finally {
       _setLoading(false);
+    }
+  }
+
+  /// Efficient parallel data loader for startup and pull-to-refresh
+  Future<void> loadAllData({bool notifyAtEnd = true}) async {
+    if (_currentStudent?.id == null) return;
+    try {
+      await Future.wait([
+        _service.getStudentEnrollments(_currentStudent!.id!).then((data) => _enrollments = data).catchError((e) {
+          debugPrint('Load enrollments error: $e');
+          return <Enrollment>[];
+        }),
+        _service.getStudentAttendance(_currentStudent!.id!).then((data) => _attendanceRecords = data).catchError((e) {
+          debugPrint('Load attendance error: $e');
+          return <AttendanceRecord>[];
+        }),
+        _service.getActiveAnnouncements().then((data) => _announcements = data).catchError((e) {
+          debugPrint('Load announcements error: $e');
+          return <Announcement>[];
+        }),
+        _service.getModules().then((data) => _modules = data).catchError((e) {
+          debugPrint('Load modules error: $e');
+          return <LearningModule>[];
+        }),
+      ]);
+    } catch (e) {
+      debugPrint('Load all data error: $e');
+    } finally {
+      if (notifyAtEnd) notifyListeners();
     }
   }
 

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'dart:ui';
 import 'dart:io';
+import 'dart:convert';
 import 'package:image_picker/image_picker.dart';
 import 'package:image_cropper/image_cropper.dart';
 import '../theme/theme_provider.dart';
@@ -142,6 +143,21 @@ class _ProfilePageState extends State<ProfilePage> {
                   ),
                 ],
               ),
+              if (context.read<StudentProvider>().currentStudent?.profileImageUrl != null) ...[
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: double.infinity,
+                  child: TextButton.icon(
+                    onPressed: () {
+                      Navigator.pop(context);
+                      final student = context.read<StudentProvider>().currentStudent;
+                      if (student != null) _deleteProfileImage(student);
+                    },
+                    icon: const Icon(Icons.delete_outline_rounded, color: Color(0xFFEF4444), size: 18),
+                    label: const Text('Remove Photo', style: TextStyle(color: Color(0xFFEF4444), fontWeight: FontWeight.w600)),
+                  ),
+                ),
+              ],
               const SizedBox(height: 16),
             ],
           ),
@@ -515,24 +531,10 @@ class _ProfilePageState extends State<ProfilePage> {
                       _buildAnimatedAvatarFrame(
                         ClipRRect(
                           borderRadius: BorderRadius.circular(50),
-                          child: _imageFile != null
-                              ? Image.file(
-                                  _imageFile!,
-                                  width: 96,
-                                  height: 96,
-                                  fit: BoxFit.cover,
-                                )
-                              : (student.profileImageUrl != null &&
-                                      student.profileImageUrl!.isNotEmpty)
-                                  ? Image.network(
-                                      student.profileImageUrl!,
-                                      width: 96,
-                                      height: 96,
-                                      fit: BoxFit.cover,
-                                      errorBuilder: (_, __, ___) =>
-                                          _avatarFallback(),
-                                    )
-                                  : _avatarFallback(),
+                          child: _buildAvatarImageWidget(
+                            _imageFile,
+                            student.profileImageUrl,
+                          ),
                         ),
                         _selectedFrame,
                       ),
@@ -1090,6 +1092,54 @@ class _ProfilePageState extends State<ProfilePage> {
     }
   }
 
+  Widget _buildAvatarImageWidget(File? localFile, String? remoteUrl) {
+    if (localFile != null) {
+      return Image.file(
+        localFile,
+        width: 96,
+        height: 96,
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) => _avatarFallback(),
+      );
+    }
+    if (remoteUrl != null && remoteUrl.isNotEmpty) {
+      if (remoteUrl.startsWith('data:image/')) {
+        try {
+          final base64String = remoteUrl.split(',').last;
+          final bytes = base64Decode(base64String);
+          return Image.memory(
+            bytes,
+            width: 96,
+            height: 96,
+            fit: BoxFit.cover,
+            errorBuilder: (_, __, ___) => _avatarFallback(),
+          );
+        } catch (_) {
+          return _avatarFallback();
+        }
+      }
+      return Image.network(
+        remoteUrl,
+        width: 96,
+        height: 96,
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) => _avatarFallback(),
+      );
+    }
+    return _avatarFallback();
+  }
+
+  Widget _avatarFallback() {
+    return Container(
+      width: 96,
+      height: 96,
+      color: const Color(0xFF6366F1).withValues(alpha: 0.15),
+      child: const Center(
+        child: Icon(Icons.person_rounded, size: 48, color: Color(0xFF6366F1)),
+      ),
+    );
+  }
+
   Widget _buildAnimatedAvatarFrame(Widget child, String frameType) {
     switch (frameType) {
       case 'flame':
@@ -1555,19 +1605,6 @@ class _ProfilePageState extends State<ProfilePage> {
             if (isSelected) const Icon(Icons.check_circle_rounded, color: Colors.white, size: 20),
           ],
         ),
-      ),
-    );
-  }
-
-  Widget _avatarFallback() {
-    return Container(
-      width: 96,
-      height: 96,
-      color: const Color(0xFF6366F1).withValues(alpha: 0.1),
-      child: const Icon(
-        Icons.person_rounded,
-        size: 54,
-        color: Color(0xFF6366F1),
       ),
     );
   }

@@ -24,7 +24,10 @@ class _CoursesPageState extends State<CoursesPage> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<StudentProvider>().loadEnrollments();
+      final provider = context.read<StudentProvider>();
+      if (provider.enrollments.isEmpty) {
+        provider.loadEnrollments();
+      }
     });
   }
 

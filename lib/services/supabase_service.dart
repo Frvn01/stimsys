@@ -1326,7 +1326,8 @@ class SupabaseService {
         imageBytes,
         fileOptions: const FileOptions(upsert: true, contentType: 'image/jpeg'),
       );
-      url = bucket.getPublicUrl(fileName);
+      final rawUrl = bucket.getPublicUrl(fileName);
+      url = '$rawUrl?v=${DateTime.now().millisecondsSinceEpoch}';
     } catch (e) {
       debugPrint('Storage upload fallback to base64 data URI: $e');
       final base64Str = base64Encode(imageBytes);
