@@ -1280,4 +1280,45 @@ class AdminProvider extends ChangeNotifier {
       rethrow;
     }
   }
+
+  // ═══════════════════════════════════════════════════
+  // APPEAL SYSTEM
+  // ═══════════════════════════════════════════════════
+
+  List<AssessmentSubmission> _pendingAppeals = [];
+  List<AssessmentSubmission> get pendingAppeals => _pendingAppeals;
+
+  /// Load all pending appeals.
+  Future<void> loadPendingAppeals() async {
+    try {
+      _pendingAppeals = await _service.getPendingAppeals();
+      notifyListeners();
+    } catch (e) {
+      debugPrint('Load pending appeals error: $e');
+    }
+  }
+
+  /// Approve an appeal (deletes submission so student can retake).
+  Future<void> approveAppeal(String submissionId) async {
+    try {
+      await _service.approveAppeal(submissionId);
+      _pendingAppeals.removeWhere((a) => a.id == submissionId);
+      notifyListeners();
+    } catch (e) {
+      debugPrint('Approve appeal error: $e');
+      rethrow;
+    }
+  }
+
+  /// Reject an appeal.
+  Future<void> rejectAppeal(String submissionId) async {
+    try {
+      await _service.rejectAppeal(submissionId);
+      _pendingAppeals.removeWhere((a) => a.id == submissionId);
+      notifyListeners();
+    } catch (e) {
+      debugPrint('Reject appeal error: $e');
+      rethrow;
+    }
+  }
 }

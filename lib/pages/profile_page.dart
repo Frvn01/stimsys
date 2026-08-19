@@ -457,6 +457,81 @@ class _ProfilePageState extends State<ProfilePage> {
     );
   }
 
+  void _showChangePasswordDialog() {
+    final newPassCtrl = TextEditingController();
+    bool isSaving = false;
+    bool showPass = false;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setState) {
+          final isDark = Theme.of(context).brightness == Brightness.dark;
+          return AlertDialog(
+            backgroundColor: isDark ? const Color(0xFF1E293B) : Colors.white,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+            title: Row(
+              children: [
+                const Icon(Icons.lock_reset_rounded, color: Color(0xFF6366F1), size: 28),
+                const SizedBox(width: 8),
+                Text('Change Password', style: TextStyle(color: isDark ? Colors.white : Colors.black, fontWeight: FontWeight.w800)),
+              ],
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                CustomTextField(
+                  label: 'New Password',
+                  hint: 'Enter new password',
+                  icon: Icons.lock_rounded,
+                  controller: newPassCtrl,
+                  isPassword: true,
+                  isPasswordVisible: showPass,
+                  onPasswordToggle: () => setState(() => showPass = !showPass),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: isSaving ? null : () => Navigator.pop(ctx),
+                child: const Text('Cancel', style: TextStyle(color: Colors.grey)),
+              ),
+              ElevatedButton(
+                onPressed: isSaving
+                    ? null
+                    : () async {
+                        if (newPassCtrl.text.isEmpty) {
+                          _showSnackBar('Please enter a new password', isError: true);
+                          return;
+                        }
+                        setState(() => isSaving = true);
+                        try {
+                          await this.context.read<StudentProvider>().changePassword(newPassCtrl.text);
+                          if (mounted) {
+                            Navigator.pop(ctx);
+                            _showSnackBar('Password updated successfully!');
+                          }
+                        } catch (e) {
+                          if (mounted) {
+                            _showSnackBar('Failed to update password', isError: true);
+                          }
+                        } finally {
+                          if (mounted) setState(() => isSaving = false);
+                        }
+                      },
+                style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF6366F1)),
+                child: isSaving
+                    ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                    : const Text('Update', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -871,6 +946,28 @@ class _ProfilePageState extends State<ProfilePage> {
                     controller: _phoneController,
                     keyboardType: TextInputType.phone,
                     enabled: true,
+                  ),
+                  const SizedBox(height: 20),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 48,
+                    child: OutlinedButton.icon(
+                      onPressed: _showChangePasswordDialog,
+                      icon: const Icon(Icons.lock_reset_rounded, size: 18),
+                      label: const Text(
+                        'Change Password',
+                        style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+                      ),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: const Color(0xFF6366F1),
+                        side: BorderSide(
+                          color: const Color(0xFF6366F1).withValues(alpha: 0.3),
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                    ),
                   ),
                 ],
               ),

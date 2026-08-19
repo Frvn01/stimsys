@@ -70,6 +70,25 @@ class StudentProvider extends ChangeNotifier {
     }
   }
 
+  Future<bool> resetPassword(String usn, String lastName, String newPassword) async {
+    _setLoading(true);
+    try {
+      return await _service.resetStudentPassword(usn, lastName, newPassword);
+    } finally {
+      _setLoading(false);
+    }
+  }
+
+  Future<void> changePassword(String newPassword) async {
+    if (_currentStudent == null) return;
+    _setLoading(true);
+    try {
+      await _service.updateStudentPassword(_currentStudent!.usn, newPassword);
+    } finally {
+      _setLoading(false);
+    }
+  }
+
   /// Efficient parallel data loader for startup and pull-to-refresh
   Future<void> loadAllData({bool notifyAtEnd = true}) async {
     if (_currentStudent?.id == null) return;
@@ -614,6 +633,25 @@ class StudentProvider extends ChangeNotifier {
       return result;
     } catch (e) {
       debugPrint('Submit assessment error: $e');
+      rethrow;
+    }
+  }
+
+  /// Submit an appeal for an invalidated assessment.
+  Future<void> submitAppeal(String submissionId, String reason) async {
+    try {
+      await _service.submitAppeal(submissionId, reason);
+      // Update local cache
+      final idx = _mySubmissions.indexWhere((s) => s.id == submissionId);
+      if (idx >= 0) {
+        _mySubmissions[idx] = _mySubmissions[idx].copyWith(
+          appealStatus: 'pending',
+          appealReason: reason,
+        );
+        notifyListeners();
+      }
+    } catch (e) {
+      debugPrint('Submit appeal error: $e');
       rethrow;
     }
   }

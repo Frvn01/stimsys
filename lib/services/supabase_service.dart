@@ -132,6 +132,43 @@ class SupabaseService {
     }
   }
 
+  Future<bool> resetStudentPassword(String usn, String lastName, String newPassword) async {
+    try {
+      final response = await _client
+          .from('students')
+          .select()
+          .eq('usn', usn.trim())
+          .maybeSingle();
+
+      if (response == null) return false;
+
+      final storedLastName = (response['last_name'] as String).toLowerCase();
+      if (storedLastName != lastName.trim().toLowerCase()) return false;
+
+      await _client
+          .from('students')
+          .update({'password_hash': hashPassword(newPassword)})
+          .eq('usn', usn.trim());
+
+      return true;
+    } catch (e) {
+      debugPrint('Reset password error: $e');
+      return false;
+    }
+  }
+
+  Future<void> updateStudentPassword(String usn, String newPassword) async {
+    try {
+      await _client
+          .from('students')
+          .update({'password_hash': hashPassword(newPassword)})
+          .eq('usn', usn.trim());
+    } catch (e) {
+      debugPrint('Update password error: $e');
+      rethrow;
+    }
+  }
+
   // ═══════════════════════════════════════════════════
   // STUDENTS CRUD
   // ═══════════════════════════════════════════════════
@@ -822,10 +859,10 @@ class SupabaseService {
         return AttendanceRecord.fromSupabase(existing);
       }
 
-      // ── Late vs Present (10-minute grace period) ─────────────────
-      // Present: scanned within 10 minutes of class start
-      // Late: more than 10 minutes after class start
-      const lateGraceMinutes = 10;
+      // ── Late vs Present (30-minute grace period) ─────────────────
+      // Present: scanned within 30 minutes of class start
+      // Late: more than 30 minutes after class start
+      const lateGraceMinutes = 30;
       final lateThreshold = startTime.add(
         const Duration(minutes: lateGraceMinutes),
       );
@@ -1717,12 +1754,27 @@ class SupabaseService {
 
   Future<AssessmentConfig?> createAssessment(AssessmentConfig config) async {
     try {
-      final response = await _client
-          .from('assessments')
-          .insert(config.toSupabase())
-          .select()
-          .single();
-      return AssessmentConfig.fromSupabase(response);
+      final data = config.toSupabase();
+      try {
+        final response = await _client
+            .from('assessments')
+            .insert(data)
+            .select()
+            .single();
+        return AssessmentConfig.fromSupabase(response);
+      } catch (e) {
+        if (data.containsKey('theme_color') &&
+            (e.toString().contains('theme_color') || e.toString().contains('PGRST204'))) {
+          data.remove('theme_color');
+          final response = await _client
+              .from('assessments')
+              .insert(data)
+              .select()
+              .single();
+          return AssessmentConfig.fromSupabase(response);
+        }
+        rethrow;
+      }
     } catch (e) {
       debugPrint('Create assessment error: $e');
       rethrow;
@@ -1733,13 +1785,28 @@ class SupabaseService {
     try {
       final data = config.toSupabase();
       data['updated_at'] = DateTime.now().toIso8601String();
-      final response = await _client
-          .from('assessments')
-          .update(data)
-          .eq('id', config.id!)
-          .select()
-          .single();
-      return AssessmentConfig.fromSupabase(response);
+      try {
+        final response = await _client
+            .from('assessments')
+            .update(data)
+            .eq('id', config.id!)
+            .select()
+            .single();
+        return AssessmentConfig.fromSupabase(response);
+      } catch (e) {
+        if (data.containsKey('theme_color') &&
+            (e.toString().contains('theme_color') || e.toString().contains('PGRST204'))) {
+          data.remove('theme_color');
+          final response = await _client
+              .from('assessments')
+              .update(data)
+              .eq('id', config.id!)
+              .select()
+              .single();
+          return AssessmentConfig.fromSupabase(response);
+        }
+        rethrow;
+      }
     } catch (e) {
       debugPrint('Update assessment error: $e');
       rethrow;
@@ -1933,6 +2000,76 @@ class SupabaseService {
       return AssessmentSubmission.fromSupabase(subRes);
     } catch (e) {
       debugPrint('Submit assessment error: $e');
+      rethrow;
+    }
+  }
+
+  // ═══════════════════════════════════════════════════
+  // APPEAL SYSTEM
+  // ═══════════════════════════════════════════════════
+
+  /// Student files an appeal for an invalidated submission.
+  Future<void> submitAppeal(String submissionId, String reason) async {
+    try {
+      await _client
+          .from('assessment_submissions')
+          .update({
+            'appeal_status': 'pending',
+            'appeal_reason': reason,
+          })
+          .eq('id', submissionId);
+    } catch (e) {
+      debugPrint('Submit appeal error: $e');
+      rethrow;
+    }
+  }
+
+  /// Admin: Get all pending appeals (with student and assessment info).
+  Future<List<AssessmentSubmission>> getPendingAppeals() async {
+    try {
+      final res = await _client
+          .from('assessment_submissions')
+          .select('*, students(*), assessments(*)')
+          .eq('is_invalidated', true)
+          .eq('appeal_status', 'pending')
+          .order('submitted_at', ascending: false);
+
+      return (res as List).map((m) => AssessmentSubmission.fromSupabase(m)).toList();
+    } catch (e) {
+      debugPrint('Get pending appeals error: $e');
+      return [];
+    }
+  }
+
+  /// Admin: Approve appeal — deletes the submission + answers so the student can retake.
+  Future<void> approveAppeal(String submissionId) async {
+    try {
+      // Delete answers first (FK constraint)
+      await _client
+          .from('assessment_answers')
+          .delete()
+          .eq('submission_id', submissionId);
+
+      // Delete the submission itself
+      await _client
+          .from('assessment_submissions')
+          .delete()
+          .eq('id', submissionId);
+    } catch (e) {
+      debugPrint('Approve appeal error: $e');
+      rethrow;
+    }
+  }
+
+  /// Admin: Reject appeal
+  Future<void> rejectAppeal(String submissionId) async {
+    try {
+      await _client
+          .from('assessment_submissions')
+          .update({'appeal_status': 'rejected'})
+          .eq('id', submissionId);
+    } catch (e) {
+      debugPrint('Reject appeal error: $e');
       rethrow;
     }
   }

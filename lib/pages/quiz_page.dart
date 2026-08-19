@@ -8,7 +8,7 @@ import 'student_modules_screen.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'take_assessment_page.dart';
 import 'assessment_result_page.dart';
-import '../screens/qr_scanner_screen.dart';
+
 
 class QuizPage extends StatefulWidget {
   final ThemeProvider themeProvider;
@@ -521,34 +521,11 @@ class _QuizPageState extends State<QuizPage> {
                     isDark: isDark,
                   )));
                 } else {
-                  if (isExam) {
-                    // For exams, push TakeAssessmentPage directly to show the Set A/B assignment screen
+                    // For both quizzes and exams, push TakeAssessmentPage directly
                     Navigator.push(context, MaterialPageRoute(builder: (_) => TakeAssessmentPage(
                       assessment: assessment,
                       isDark: isDark,
                     )));
-                  } else {
-                    // For quizzes, require QR scan first (as quizzes don't have sets)
-                    final code = await Navigator.push<String>(
-                      context,
-                      MaterialPageRoute(builder: (_) => const QRScannerScreen()),
-                    );
-                    if (code != null && context.mounted) {
-                      final parts = code.split('|');
-                      if (parts.length >= 4 && parts[0] == 'STIMSYS_EXAM' && parts[1] == assessment.id) {
-                        Navigator.push(context, MaterialPageRoute(builder: (_) => TakeAssessmentPage(
-                          assessment: assessment,
-                          isDark: isDark,
-                          prefilledSessionCode: parts[3],
-                        )));
-                      } else {
-                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                          content: Text('Invalid or mismatched Quiz QR Code'),
-                          backgroundColor: Colors.red,
-                        ));
-                      }
-                    }
-                  }
                 }
               },
               child: Container(

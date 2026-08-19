@@ -248,6 +248,11 @@ class AssessmentSubmission {
   final DateTime? submittedAt;
   final bool isGraded;
 
+  // Appeal system fields
+  final bool isInvalidated;
+  final String appealStatus; // 'none', 'pending', 'approved', 'rejected'
+  final String? appealReason;
+
   // Joined fields (from queries)
   final String? studentUsn;
   final String? studentName;
@@ -263,6 +268,9 @@ class AssessmentSubmission {
     this.startedAt,
     this.submittedAt,
     this.isGraded = false,
+    this.isInvalidated = false,
+    this.appealStatus = 'none',
+    this.appealReason,
     this.studentUsn,
     this.studentName,
     this.assessmentTitle,
@@ -286,6 +294,9 @@ class AssessmentSubmission {
         'submitted_at':
             submittedAt?.toIso8601String() ?? DateTime.now().toIso8601String(),
         'is_graded': isGraded,
+        'is_invalidated': isInvalidated,
+        'appeal_status': appealStatus,
+        'appeal_reason': appealReason,
       };
 
   factory AssessmentSubmission.fromSupabase(Map<String, dynamic> map) {
@@ -307,6 +318,9 @@ class AssessmentSubmission {
           ? DateTime.tryParse(map['submitted_at'])
           : null,
       isGraded: map['is_graded'] ?? false,
+      isInvalidated: map['is_invalidated'] ?? false,
+      appealStatus: map['appeal_status'] ?? 'none',
+      appealReason: map['appeal_reason'],
       studentUsn: studentMap?['usn'],
       studentName: studentMap != null
           ? '${studentMap['last_name']}, ${studentMap['first_name']}'
@@ -325,6 +339,9 @@ class AssessmentSubmission {
     DateTime? startedAt,
     DateTime? submittedAt,
     bool? isGraded,
+    bool? isInvalidated,
+    String? appealStatus,
+    String? appealReason,
   }) =>
       AssessmentSubmission(
         id: id ?? this.id,
@@ -336,6 +353,9 @@ class AssessmentSubmission {
         startedAt: startedAt ?? this.startedAt,
         submittedAt: submittedAt ?? this.submittedAt,
         isGraded: isGraded ?? this.isGraded,
+        isInvalidated: isInvalidated ?? this.isInvalidated,
+        appealStatus: appealStatus ?? this.appealStatus,
+        appealReason: appealReason ?? this.appealReason,
         studentUsn: studentUsn,
         studentName: studentName,
         assessmentTitle: assessmentTitle,

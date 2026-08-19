@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:intl/intl.dart';
 import '../theme/theme_provider.dart';
 import '../widgets/common/glass_card.dart';
@@ -109,8 +110,8 @@ class OverviewPage extends StatelessWidget {
           _buildStatRow(isDark, 'Active Courses', '$enrollmentCount', const Color(0xFF6366F1)),
           const SizedBox(height: 12),
           _buildStatRow(isDark, 'Current GPA', '-', const Color(0xFFA855F7)),
-          const SizedBox(height: 12),
-          _buildStatRow(isDark, 'Attendance', '-', const Color(0xFF10B981)),
+          if (!kIsWeb) const SizedBox(height: 12),
+          if (!kIsWeb) _buildStatRow(isDark, 'Attendance', '-', const Color(0xFF10B981)),
         ],
       ),
     );
@@ -182,15 +183,17 @@ class OverviewPage extends StatelessWidget {
       }
     }
 
-    // 3. Attendance
-    for (var record in provider.attendanceRecords) {
-      final date = record.markedAt ?? record.date;
-      activities.add({
-        'title': 'Attendance Marked',
-        'description': '${record.statusLabel} for ${record.subjectTitle ?? record.subjectCode ?? "Subject"}',
-        'date': date,
-        'icon': Icons.how_to_reg_rounded,
-      });
+    // 3. Attendance (hide on web)
+    if (!kIsWeb) {
+      for (var record in provider.attendanceRecords) {
+        final date = record.markedAt ?? record.date;
+        activities.add({
+          'title': 'Attendance Marked',
+          'description': '${record.statusLabel} for ${record.subjectTitle ?? record.subjectCode ?? "Subject"}',
+          'date': date,
+          'icon': Icons.how_to_reg_rounded,
+        });
+      }
     }
 
     // Sort by date descending

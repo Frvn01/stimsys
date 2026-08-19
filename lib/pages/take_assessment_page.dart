@@ -5,13 +5,8 @@ import 'package:provider/provider.dart';
 import '../providers/student_provider.dart';
 import '../models/assessment_model.dart';
 import '../services/answer_cache_service.dart';
-import '../services/notification_service.dart';
 import 'assessment_result_page.dart';
 import 'dart:math';
-import 'package:mobile_scanner/mobile_scanner.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
-import '../core/supabase_config.dart';
 
 class TakeAssessmentPage extends StatefulWidget {
   final AssessmentConfig assessment;
@@ -37,12 +32,8 @@ class _TakeAssessmentPageState extends State<TakeAssessmentPage> with WidgetsBin
   // questionId -> studentAnswer
   final Map<String, String> _answers = {};
 
-  // Exam session validation (if it's an exam)
+  // Session verified (always true now — QR removed)
   bool _sessionVerified = false;
-  final _sessionCodeCtrl = TextEditingController();
-  
-  bool _isScanning = false;
-  final MobileScannerController _scannerController = MobileScannerController();
 
   // Timer
   Timer? _timer;
@@ -52,18 +43,16 @@ class _TakeAssessmentPageState extends State<TakeAssessmentPage> with WidgetsBin
   int _leaveCount = 0;
   double _penaltyPoints = 0.0;
   bool _isInvalidated = false;
+  bool _isWarningVisible = false;
 
   // Set A/B Logic
   String? _assignedSet;
-  String? _currentSessionCode;
-  RealtimeChannel? _realtimeChannel;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _secondsLeft = widget.assessment.timeLimitSecs;
-    _currentSessionCode = widget.assessment.sessionCode;
     
     _initializeSetAndSession();
   }
@@ -77,73 +66,15 @@ class _TakeAssessmentPageState extends State<TakeAssessmentPage> with WidgetsBin
       setState(() => _assignedSet = assignedSet);
     }
 
-    if (widget.prefilledSessionCode != null && widget.assessment.sessionCode != null) {
-      final prefilled = widget.prefilledSessionCode!.toUpperCase();
-      final expected = widget.assessment.sessionCode!.toUpperCase();
-      if (prefilled == expected) {
-        bool canProceed = true;
-        if (widget.assessment.setCount > 1 && _assignedSet != null) {
-          if (!prefilled.endsWith('-$_assignedSet')) {
-            canProceed = false;
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text('Invalid QR code for Set $_assignedSet', style: GoogleFonts.inter(fontWeight: FontWeight.w600)), backgroundColor: Colors.red)
-              );
-            });
-          }
-        }
-        if (canProceed) {
-          setState(() => _sessionVerified = true);
-          _loadDataAndCache();
-          return;
-        }
-      }
-    }
-
-    if (widget.assessment.isQuiz) {
-      setState(() => _sessionVerified = true);
-      _loadDataAndCache();
-    } else {
-      // Listen for session code updates (Set A/B start)
-      _realtimeChannel = SupabaseConfig.client
-          .channel('public:assessments')
-          .onPostgresChanges(
-            event: PostgresChangeEvent.update,
-            schema: 'public',
-            table: 'assessments',
-            filter: PostgresChangeFilter(
-              type: PostgresChangeFilterType.eq,
-              column: 'id',
-              value: widget.assessment.id,
-            ),
-            callback: (payload) {
-              final newCode = payload.newRecord['session_code'] as String?;
-              if (mounted && newCode != null) {
-                setState(() {
-                  _currentSessionCode = newCode;
-                });
-              }
-              if (newCode != null && _assignedSet != null) {
-                if (newCode.endsWith('-$_assignedSet')) {
-                  NotificationService().showNotification(
-                    id: widget.assessment.id.hashCode,
-                    title: 'Exam Set $_assignedSet Started!',
-                    body: 'Your exam set is now active. You may enter the session code to begin.',
-                  );
-                }
-              }
-            },
-          )
-          .subscribe();
-    }
+    // Bypass session verification completely
+    setState(() => _sessionVerified = true);
+    _loadDataAndCache();
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    _realtimeChannel?.unsubscribe();
     _timer?.cancel();
-    _scannerController.dispose();
     super.dispose();
   }
 
@@ -151,26 +82,63 @@ class _TakeAssessmentPageState extends State<TakeAssessmentPage> with WidgetsBin
   void didChangeAppLifecycleState(AppLifecycleState state) {
     // paused or hidden triggers when switching tabs on mobile or web
     if (state == AppLifecycleState.paused || state == AppLifecycleState.hidden) {
-      if (_sessionVerified && !_submitting && _secondsLeft > 0 && !_isInvalidated) {
+      if (_sessionVerified && !_submitting && _secondsLeft > 0 && !_isInvalidated && !_isWarningVisible) {
         _leaveCount++;
         if (_leaveCount >= 3) {
           _isInvalidated = true;
           _autoSubmit();
         } else {
-          _penaltyPoints += 5.0;
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text('Warning: Do not leave the exam tab. -5 pts deduction! ($_leaveCount/3)', 
-                  style: GoogleFonts.inter(fontWeight: FontWeight.w700)),
-                backgroundColor: Colors.red,
-                duration: const Duration(seconds: 4),
-              )
-            );
-          }
+          _showAntiCheatWarning();
         }
       }
     }
+  }
+
+  void _showAntiCheatWarning() {
+    _isWarningVisible = true;
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => WillPopScope(
+        onWillPop: () async => false,
+        child: AlertDialog(
+          backgroundColor: widget.isDark ? const Color(0xFF1E293B) : Colors.white,
+          title: Row(
+            children: [
+              const Icon(Icons.warning_amber_rounded, color: Colors.red, size: 28),
+              const SizedBox(width: 8),
+              Text('Warning', style: GoogleFonts.inter(fontWeight: FontWeight.w800, color: Colors.red)),
+            ],
+          ),
+          content: Text(
+            'You have left the exam tab. This is warning $_leaveCount of 3.\n\n'
+            'If you click Okay, 5 penalty points will be deducted.\n'
+            'If you click Exit, your exam will be invalidated immediately.',
+            style: GoogleFonts.inter(color: widget.isDark ? Colors.white : Colors.black87),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(ctx);
+                _isWarningVisible = false;
+                _isInvalidated = true;
+                _autoSubmit();
+              },
+              child: Text('Exit', style: GoogleFonts.inter(color: Colors.grey)),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                _penaltyPoints += 5.0;
+                Navigator.pop(ctx);
+                _isWarningVisible = false;
+              },
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+              child: Text('Okay', style: GoogleFonts.inter(color: Colors.white, fontWeight: FontWeight.bold)),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Future<void> _loadDataAndCache() async {
@@ -224,40 +192,7 @@ class _TakeAssessmentPageState extends State<TakeAssessmentPage> with WidgetsBin
     });
   }
 
-  void _verifyScannedCode(String scannedData) {
-    // Expected format: STIMSYS_EXAM|assessmentId|subjectId|sessionCode
-    final parts = scannedData.split('|');
-    if (parts.length >= 4 && parts[0] == 'STIMSYS_EXAM' && parts[1] == widget.assessment.id) {
-      final enteredCode = parts[3].trim().toUpperCase();
-      
-      final rawSessionCode = _currentSessionCode?.trim();
-      final expectedCode = (rawSessionCode == null || rawSessionCode.isEmpty) ? 'N/A' : rawSessionCode.toUpperCase();
-      
-      String targetCode = expectedCode;
-      if (widget.assessment.setCount > 1 && _assignedSet != null) {
-        if (!targetCode.endsWith('-$_assignedSet')) {
-          targetCode = '$expectedCode-$_assignedSet';
-        }
-      }
 
-      if (enteredCode == targetCode || enteredCode == expectedCode) {
-        setState(() {
-          _isScanning = false;
-          _sessionVerified = true;
-        });
-        _loadDataAndCache();
-        return;
-      }
-    }
-    
-    // If it reaches here, it's invalid
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Invalid QR Code for your assigned set.', style: GoogleFonts.inter(fontWeight: FontWeight.w600)),
-        backgroundColor: Colors.red,
-      )
-    );
-  }
 
   void _updateAnswer(String qId, String answer) {
     setState(() => _answers[qId] = answer);
@@ -326,7 +261,7 @@ class _TakeAssessmentPageState extends State<TakeAssessmentPage> with WidgetsBin
       if (totalScore < 0) totalScore = 0;
     }
 
-    final usn = provider.usn;
+
     final setLabel = widget.assessment.setCount > 1 ? _assignedSet : null;
 
     final submission = AssessmentSubmission(
@@ -336,6 +271,7 @@ class _TakeAssessmentPageState extends State<TakeAssessmentPage> with WidgetsBin
       maxScore: _questions.fold(0.0, (sum, q) => sum + q.points),
       setLabel: setLabel,
       submittedAt: DateTime.now(),
+      isInvalidated: _isInvalidated,
     );
 
     try {
@@ -377,9 +313,7 @@ class _TakeAssessmentPageState extends State<TakeAssessmentPage> with WidgetsBin
       } catch (_) {}
     }
 
-    if (!_sessionVerified) {
-      return _buildSessionVerification(bg, surface, textCol, subCol, accent);
-    }
+
 
     return WillPopScope(
       onWillPop: () async {
@@ -478,108 +412,6 @@ class _TakeAssessmentPageState extends State<TakeAssessmentPage> with WidgetsBin
     );
   }
 
-  Widget _buildSessionVerification(Color bg, Color surface, Color textCol, Color subCol, Color accent) {
-    if (_isScanning) {
-      return Scaffold(
-        backgroundColor: Colors.black,
-        appBar: AppBar(
-          backgroundColor: Colors.transparent,
-          elevation: 0,
-          leading: BackButton(color: Colors.white, onPressed: () => setState(() => _isScanning = false)),
-          title: Text('Scan QR Code', style: GoogleFonts.inter(color: Colors.white, fontWeight: FontWeight.w700)),
-        ),
-        body: Stack(
-          alignment: Alignment.center,
-          children: [
-            MobileScanner(
-              controller: _scannerController,
-              onDetect: (capture) {
-                final List<Barcode> barcodes = capture.barcodes;
-                if (barcodes.isNotEmpty && barcodes.first.rawValue != null) {
-                  _scannerController.stop();
-                  _verifyScannedCode(barcodes.first.rawValue!);
-                }
-              },
-            ),
-            Container(
-              decoration: BoxDecoration(
-                border: Border.all(color: accent, width: 4),
-                borderRadius: BorderRadius.circular(16),
-              ),
-              width: 250,
-              height: 250,
-            ),
-            Positioned(
-              bottom: 40,
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                decoration: BoxDecoration(color: Colors.black54, borderRadius: BorderRadius.circular(20)),
-                child: Text('Point camera at the projector QR code',
-                    style: GoogleFonts.inter(color: Colors.white, fontSize: 14)),
-              ),
-            )
-          ],
-        ),
-      );
-    }
-
-    return Scaffold(
-      backgroundColor: bg,
-      appBar: AppBar(backgroundColor: Colors.transparent, elevation: 0, leading: const BackButton()),
-      body: Center(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
-          child: Container(
-            padding: const EdgeInsets.all(24),
-            decoration: BoxDecoration(
-              color: surface,
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.qr_code_scanner_rounded, size: 48, color: accent),
-                const SizedBox(height: 16),
-                Text('Ready to Start?', style: GoogleFonts.inter(color: textCol, fontSize: 18, fontWeight: FontWeight.w800)),
-                const SizedBox(height: 8),
-                if (widget.assessment.setCount > 1 && _assignedSet != null) ...[
-                  Container(
-                    margin: const EdgeInsets.symmetric(vertical: 16),
-                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                    decoration: BoxDecoration(
-                      color: accent.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: accent.withValues(alpha: 0.3)),
-                    ),
-                    child: Text('You are assigned to: SET $_assignedSet',
-                        style: GoogleFonts.inter(color: accent, fontSize: 16, fontWeight: FontWeight.w800)),
-                  ),
-                ],
-                Text('Scan the QR code displayed on the board to begin your exam.',
-                    textAlign: TextAlign.center,
-                    style: GoogleFonts.inter(color: subCol, fontSize: 13)),
-                const SizedBox(height: 32),
-                ElevatedButton.icon(
-                  onPressed: () {
-                    setState(() => _isScanning = true);
-                  },
-                  icon: const Icon(Icons.camera_alt_rounded),
-                  label: Text('Scan QR Code', style: GoogleFonts.inter(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w700)),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: accent,
-                    foregroundColor: Colors.white,
-                    minimumSize: const Size(double.infinity, 54),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  ),
-                )
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
   Widget _buildQuestionCard(int index, AssessmentQuestion q, Color surface, Color textCol, Color subCol, Color accent) {
     final typeLabel = q.isMultipleChoice ? 'Multiple Choice' : q.isIdentification ? 'Identification' : q.isEssay ? 'Essay' : 'Enumeration';
     final ans = _answers[q.id] ?? '';
@@ -612,7 +444,16 @@ class _TakeAssessmentPageState extends State<TakeAssessmentPage> with WidgetsBin
             ],
           ),
           const SizedBox(height: 16),
-          const SizedBox(height: 16),
+          Text(
+            q.questionText,
+            style: GoogleFonts.inter(
+              color: textCol,
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
+              height: 1.5,
+            ),
+          ),
+          const SizedBox(height: 20),
 
           if (q.isMultipleChoice)
             ...q.choices!.map((c) {

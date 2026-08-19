@@ -11,6 +11,7 @@ import 'desktop_modules_screen.dart';
 import 'desktop_assessment_screen.dart';
 import 'desktop_student_grades_screen.dart';
 import 'desktop_announcements_screen.dart';
+import 'desktop_appeals_screen.dart';
 import 'desktop_admin_login_screen.dart';
 
 class DesktopAdminDashboardScreen extends StatefulWidget {
@@ -42,6 +43,7 @@ class _DesktopAdminDashboardScreenState
     DesktopAssessmentScreen(),
     DesktopStudentGradesScreen(),
     DesktopAnnouncementsScreen(),
+    DesktopAppealsScreen(),
   ];
 
   static const _navItems = [
@@ -54,6 +56,7 @@ class _DesktopAdminDashboardScreenState
     (icon: Icons.assignment_rounded,      label: 'Assessments'),
     (icon: Icons.grade_rounded,           label: 'Grades'),
     (icon: Icons.campaign_rounded,        label: 'Announcements'),
+    (icon: Icons.gavel_rounded,           label: 'Appeals'),
   ];
 
   @override

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'dart:ui';
 import '../theme/theme_provider.dart';
 import '../pages/overview_page.dart';
@@ -87,10 +88,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
             QuizPage(
               themeProvider: widget.themeProvider,
             ),
-            CalendarPage(
+            if (!kIsWeb) CalendarPage(
               themeProvider: widget.themeProvider,
             ),
-            GradesPage(
+            if (!kIsWeb) GradesPage(
               themeProvider: widget.themeProvider,
             ),
             ProfilePage(
@@ -109,8 +110,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
       {'icon': Icons.home_rounded, 'label': 'Home'},
       {'icon': Icons.cast_for_education_rounded, 'label': 'Courses'},
       {'icon': Icons.quiz_rounded, 'label': 'Quiz'},
-      {'icon': Icons.calendar_month_rounded, 'label': 'Calendar'},
-      {'icon': Icons.assessment_rounded, 'label': 'Grades'},
+      if (!kIsWeb) {'icon': Icons.calendar_month_rounded, 'label': 'Calendar'},
+      if (!kIsWeb) {'icon': Icons.assessment_rounded, 'label': 'Grades'},
       {'icon': Icons.person_rounded, 'label': 'Profile'},
     ];
 

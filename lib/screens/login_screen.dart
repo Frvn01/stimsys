@@ -163,6 +163,97 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
+  void _showForgotPasswordDialog() {
+    final usnCtrl = TextEditingController();
+    final lastNameCtrl = TextEditingController();
+    final newPassCtrl = TextEditingController();
+    bool isResetting = false;
+    bool showPass = false;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setState) {
+          final isDark = Theme.of(context).brightness == Brightness.dark;
+          return AlertDialog(
+            backgroundColor: isDark ? const Color(0xFF1E293B) : Colors.white,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+            title: Row(
+              children: [
+                const Icon(Icons.lock_reset_rounded, color: Color(0xFF6366F1), size: 28),
+                const SizedBox(width: 8),
+                Text('Reset Password', style: TextStyle(color: isDark ? Colors.white : Colors.black, fontWeight: FontWeight.w800)),
+              ],
+            ),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  CustomTextField(
+                    label: 'USN',
+                    hint: 'e.g. 123456',
+                    icon: Icons.badge_rounded,
+                    controller: usnCtrl,
+                  ),
+                  const SizedBox(height: 16),
+                  CustomTextField(
+                    label: 'Last Name',
+                    hint: 'Enter your last name',
+                    icon: Icons.person_rounded,
+                    controller: lastNameCtrl,
+                  ),
+                  const SizedBox(height: 16),
+                  CustomTextField(
+                    label: 'New Password',
+                    hint: 'Enter new password',
+                    icon: Icons.lock_rounded,
+                    controller: newPassCtrl,
+                    isPassword: true,
+                    isPasswordVisible: showPass,
+                    onPasswordToggle: () => setState(() => showPass = !showPass),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: isResetting ? null : () => Navigator.pop(ctx),
+                child: const Text('Cancel', style: TextStyle(color: Colors.grey)),
+              ),
+              ElevatedButton(
+                onPressed: isResetting
+                    ? null
+                    : () async {
+                        if (usnCtrl.text.isEmpty || lastNameCtrl.text.isEmpty || newPassCtrl.text.isEmpty) {
+                          _showSnackBar('Please fill all fields', isError: true);
+                          return;
+                        }
+                        setState(() => isResetting = true);
+                        final success = await context.read<StudentProvider>().resetPassword(usnCtrl.text, lastNameCtrl.text, newPassCtrl.text);
+                        setState(() => isResetting = false);
+                        
+                        if (success) {
+                          if (mounted) {
+                            Navigator.pop(ctx);
+                            _showSnackBar('Password reset successful! You can now log in.');
+                          }
+                        } else {
+                          _showSnackBar('Reset failed. Check your USN and Last Name.', isError: true);
+                        }
+                      },
+                style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF6366F1)),
+                child: isResetting
+                    ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                    : const Text('Reset', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
   void _showUnconfirmedDialog(String name, String usn) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     showDialog(
@@ -311,9 +402,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 Align(
                   alignment: Alignment.centerRight,
                   child: TextButton(
-                    onPressed: () {
-                      _showSnackBar('Coming Soon');
-                    },
+                    onPressed: _showForgotPasswordDialog,
                     child: const Text(
                       'Forgot password?',
                       style: TextStyle(
