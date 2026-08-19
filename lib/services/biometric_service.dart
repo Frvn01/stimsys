@@ -9,6 +9,7 @@ class BiometricService {
 
   /// Check if device hardware supports biometrics and has enrolled biometrics
   static Future<bool> isBiometricAvailable() async {
+    if (kIsWeb) return false;
     try {
       final bool canAuthenticateWithBiometrics = await _auth.canCheckBiometrics;
       final bool canAuthenticate =

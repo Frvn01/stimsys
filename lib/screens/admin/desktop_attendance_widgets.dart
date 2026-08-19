@@ -85,9 +85,7 @@ class _AttendanceRowState extends State<AttendanceRow> {
               )),
               // Scan time
               Expanded(flex: 2, child: Text(
-                rec?.scannedAt != null
-                    ? DateFormat('hh:mm a').format(rec!.scannedAt!.toLocal())
-                    : '—',
+                rec?.formattedScanTime ?? '—',
                 style: GoogleFonts.inter(color: const Color(0xFF4B5E78), fontSize: 11),
               )),
               // Actions (edit + detail)

@@ -401,10 +401,33 @@ class _TermGradeSheetState extends State<_TermGradeSheet> {
   bool _itemsLoaded = false;
   bool _loadingItems = false;
 
+  late final ScrollController _headerHorizontalCtrl;
+  late final ScrollController _bodyHorizontalCtrl;
+  late final ScrollController _verticalScrollCtrl;
+
   @override
   void initState() {
     super.initState();
+    _headerHorizontalCtrl = ScrollController();
+    _bodyHorizontalCtrl = ScrollController();
+    _verticalScrollCtrl = ScrollController();
+
+    _bodyHorizontalCtrl.addListener(() {
+      if (_headerHorizontalCtrl.hasClients &&
+          _headerHorizontalCtrl.offset != _bodyHorizontalCtrl.offset) {
+        _headerHorizontalCtrl.jumpTo(_bodyHorizontalCtrl.offset);
+      }
+    });
+
     _loadItems();
+  }
+
+  @override
+  void dispose() {
+    _headerHorizontalCtrl.dispose();
+    _bodyHorizontalCtrl.dispose();
+    _verticalScrollCtrl.dispose();
+    super.dispose();
   }
 
   @override
@@ -592,151 +615,67 @@ class _TermGradeSheetState extends State<_TermGradeSheet> {
             ),
             child: ClipRRect(
               borderRadius: BorderRadius.circular(10),
-              child: Row(
+              child: Column(
                 children: [
-                  // ── Fixed columns (# / Name / USN) ──
-                  SizedBox(
-                    width: fixedW,
-                    child: Column(
+                  // ── Pinned Top Header Row ──
+                  Container(
+                    height: 56,
+                    decoration: BoxDecoration(
+                      color: _bg,
+                      border: Border(bottom: BorderSide(color: _border)),
+                    ),
+                    child: Row(
                       children: [
-                        // Header
-                        Container(
-                          height: 56,
-                          decoration: BoxDecoration(
-                            color: _bg,
-                            border: Border(
-                              bottom: BorderSide(color: _border),
-                              right: BorderSide(color: _border, width: 2),
+                        // Pinned Left Columns Header (#, Student Name, USN)
+                        SizedBox(
+                          width: fixedW,
+                          child: Container(
+                            decoration: BoxDecoration(
+                              border: Border(
+                                right: BorderSide(color: _border, width: 2),
+                              ),
+                            ),
+                            child: Row(
+                              children: [
+                                SizedBox(
+                                  width: numW,
+                                  child: Center(
+                                    child: Text('#', style: _headerStyle()),
+                                  ),
+                                ),
+                                Expanded(
+                                  child: Padding(
+                                    padding: const EdgeInsets.only(left: 10),
+                                    child: Text(
+                                      'Student Name',
+                                      style: _headerStyle(),
+                                    ),
+                                  ),
+                                ),
+                                SizedBox(
+                                  width: usnW,
+                                  child: Padding(
+                                    padding: const EdgeInsets.only(left: 10),
+                                    child: Text('USN', style: _headerStyle()),
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
-                          child: Row(
-                            children: [
-                              SizedBox(
-                                width: numW,
-                                child: Center(
-                                  child: Text('#', style: _headerStyle()),
-                                ),
-                              ),
-                              Expanded(
-                                child: Padding(
-                                  padding: const EdgeInsets.only(left: 10),
-                                  child: Text(
-                                    'Student Name',
-                                    style: _headerStyle(),
-                                  ),
-                                ),
-                              ),
-                              SizedBox(
-                                width: usnW,
-                                child: Padding(
-                                  padding: const EdgeInsets.only(left: 10),
-                                  child: Text('USN', style: _headerStyle()),
-                                ),
-                              ),
-                            ],
-                          ),
                         ),
 
-                        // Body
+                        // Horizontally Scrollable Column Headers
                         Expanded(
-                          child: ListView.builder(
-                            itemCount: roster.length,
-                            itemBuilder: (_, i) {
-                              final enrollment = roster[i];
-                              final student =
-                                  enrollment['students']
-                                      as Map<String, dynamic>? ??
-                                  {};
-                              final name =
-                                  '${student['last_name'] ?? ''}, ${student['first_name'] ?? ''}';
-                              final usn = student['usn'] ?? '—';
-
-                              return Container(
-                                height: 44,
-                                decoration: BoxDecoration(
-                                  color: i.isEven
-                                      ? _surface
-                                      : const Color(0xFF1A2435),
-                                  border: Border(
-                                    bottom: BorderSide(color: _border),
-                                    right: BorderSide(color: _border, width: 2),
-                                  ),
-                                ),
-                                child: Row(
-                                  children: [
-                                    SizedBox(
-                                      width: numW,
-                                      child: Center(
-                                        child: Text(
-                                          '${i + 1}',
-                                          style: GoogleFonts.inter(
-                                            color: Colors.grey[600],
-                                            fontSize: 11,
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                    Expanded(
-                                      child: Padding(
-                                        padding: const EdgeInsets.only(
-                                          left: 10,
-                                        ),
-                                        child: Text(
-                                          name,
-                                          style: GoogleFonts.inter(
-                                            color: Colors.white,
-                                            fontSize: 12,
-                                            fontWeight: FontWeight.w600,
-                                          ),
-                                          overflow: TextOverflow.ellipsis,
-                                        ),
-                                      ),
-                                    ),
-                                    SizedBox(
-                                      width: usnW,
-                                      child: Padding(
-                                        padding: const EdgeInsets.only(
-                                          left: 10,
-                                        ),
-                                        child: Text(
-                                          usn,
-                                          style: GoogleFonts.inter(
-                                            color: Colors.grey[500],
-                                            fontSize: 11,
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              );
-                            },
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-
-                  // ── Scrollable columns (items + subtotals + attendance + grade) ──
-                  Expanded(
-                    child: SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      child: SizedBox(
-                        width: scrollableW,
-                        child: Column(
-                          children: [
-                            // Header
-                            Container(
-                              height: 56,
-                              decoration: BoxDecoration(
-                                color: _bg,
-                                border: Border(
-                                  bottom: BorderSide(color: _border),
-                                ),
-                              ),
+                          child: SingleChildScrollView(
+                            controller: _headerHorizontalCtrl,
+                            scrollDirection: Axis.horizontal,
+                            physics: const ClampingScrollPhysics(),
+                            child: SizedBox(
+                              width: scrollableW,
                               child: Row(
                                 children: [
                                   ..._buildColumnHeaders(
+                                    provider,
                                     columns,
                                     hasCatItems,
                                     itemColW,
@@ -764,99 +703,61 @@ class _TermGradeSheetState extends State<_TermGradeSheet> {
                                 ],
                               ),
                             ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
 
-                            // Body
-                            Expanded(
-                              child: ListView.builder(
-                                itemCount: roster.length,
-                                itemBuilder: (_, i) {
-                                  final enrollment = roster[i];
-                                  final enrollmentId =
-                                      enrollment['id'] as String;
-                                  final grade = provider.gradeFor(
-                                    enrollmentId,
-                                    widget.term,
-                                  );
-                                  final items = grade?.id != null
-                                      ? provider.gradeItemsFor(grade!.id!)
-                                      : <StudentGradeItem>[];
+                  // ── Unified Vertical Scroll Body (Names & Grades Locked Together!) ──
+                  Expanded(
+                    child: SingleChildScrollView(
+                      controller: _verticalScrollCtrl,
+                      scrollDirection: Axis.vertical,
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // Fixed Columns (#, Student Name, USN)
+                          SizedBox(
+                            width: fixedW,
+                            child: Column(
+                              children: [
+                                for (int i = 0; i < roster.length; i++)
+                                  _buildFixedNameRow(roster[i], i, numW, usnW),
+                              ],
+                            ),
+                          ),
 
-                                  return Container(
-                                    height: 44,
-                                    decoration: BoxDecoration(
-                                      color: i.isEven
-                                          ? _surface
-                                          : const Color(0xFF1A2435),
-                                      border: Border(
-                                        bottom: BorderSide(color: _border),
+                          // Horizontally Scrollable Grade Matrix
+                          Expanded(
+                            child: SingleChildScrollView(
+                              controller: _bodyHorizontalCtrl,
+                              scrollDirection: Axis.horizontal,
+                              physics: const ClampingScrollPhysics(),
+                              child: SizedBox(
+                                width: scrollableW,
+                                child: Column(
+                                  children: [
+                                    for (int i = 0; i < roster.length; i++)
+                                      _buildDataRow(
+                                        roster[i],
+                                        i,
+                                        provider,
+                                        columns,
+                                        hasCatItems,
+                                        itemColW,
+                                        subtotalW,
+                                        attendW,
+                                        gradeW,
+                                        actionsW,
                                       ),
-                                    ),
-                                    child: Row(
-                                      children: [
-                                        ..._buildDataCells(
-                                          columns,
-                                          hasCatItems,
-                                          items,
-                                          grade,
-                                          itemColW,
-                                          subtotalW,
-                                        ),
-                                        // Attendance cell
-                                        _dataCell(
-                                          grade?.attendanceRaw,
-                                          grade?.attendanceMax,
-                                          attendW,
-                                          _green,
-                                        ),
-                                        // Grade cell
-                                        _gradeCell(
-                                          grade?.computedGrade,
-                                          gradeW,
-                                        ),
-                                        // Actions
-                                        SizedBox(
-                                          width: actionsW,
-                                          child: Row(
-                                            mainAxisAlignment:
-                                                MainAxisAlignment.center,
-                                            children: [
-                                              _miniBtn(
-                                                Icons.list_alt_rounded,
-                                                _amber,
-                                                () {
-                                                  if (grade != null) {
-                                                    _showGradeItemsDialog(
-                                                      provider,
-                                                      grade,
-                                                      enrollment['students'] ??
-                                                          {},
-                                                    );
-                                                  }
-                                                },
-                                              ),
-                                              const SizedBox(width: 4),
-                                              _miniBtn(
-                                                Icons.edit_rounded,
-                                                _accent,
-                                                () {
-                                                  _showEditDialog(
-                                                    provider,
-                                                    enrollment,
-                                                    grade,
-                                                  );
-                                                },
-                                              ),
-                                            ],
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  );
-                                },
+                                  ],
+                                ),
                               ),
                             ),
-                          ],
-                        ),
+                          ),
+                        ],
                       ),
                     ),
                   ),
@@ -869,9 +770,163 @@ class _TermGradeSheetState extends State<_TermGradeSheet> {
     );
   }
 
+  Widget _buildFixedNameRow(
+    Map<String, dynamic> enrollment,
+    int i,
+    double numW,
+    double usnW,
+  ) {
+    final student =
+        enrollment['students'] as Map<String, dynamic>? ?? {};
+    final name =
+        '${student['last_name'] ?? ''}, ${student['first_name'] ?? ''}';
+    final usn = student['usn'] ?? '—';
+
+    return Container(
+      height: 44,
+      decoration: BoxDecoration(
+        color: i.isEven ? _surface : const Color(0xFF1A2435),
+        border: Border(
+          bottom: BorderSide(color: _border),
+          right: BorderSide(color: _border, width: 2),
+        ),
+      ),
+      child: Row(
+        children: [
+          SizedBox(
+            width: numW,
+            child: Center(
+              child: Text(
+                '${i + 1}',
+                style: GoogleFonts.inter(
+                  color: Colors.grey[600],
+                  fontSize: 11,
+                ),
+              ),
+            ),
+          ),
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.only(left: 10),
+              child: Text(
+                name,
+                style: GoogleFonts.inter(
+                  color: Colors.white,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ),
+          SizedBox(
+            width: usnW,
+            child: Padding(
+              padding: const EdgeInsets.only(left: 10),
+              child: Text(
+                usn,
+                style: GoogleFonts.inter(
+                  color: Colors.grey[500],
+                  fontSize: 11,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDataRow(
+    Map<String, dynamic> enrollment,
+    int i,
+    AdminProvider provider,
+    List<({String category, String label})> columns,
+    Set<String> hasCatItems,
+    double itemColW,
+    double subtotalW,
+    double attendW,
+    double gradeW,
+    double actionsW,
+  ) {
+    final enrollmentId = enrollment['id'] as String;
+    final grade = provider.gradeFor(enrollmentId, widget.term);
+    final items = grade?.id != null
+        ? provider.gradeItemsFor(grade!.id!)
+        : <StudentGradeItem>[];
+
+    return Container(
+      height: 44,
+      decoration: BoxDecoration(
+        color: i.isEven ? _surface : const Color(0xFF1A2435),
+        border: Border(
+          bottom: BorderSide(color: _border),
+        ),
+      ),
+      child: Row(
+        children: [
+          ..._buildDataCells(
+            columns,
+            hasCatItems,
+            items,
+            grade,
+            enrollment,
+            provider,
+            itemColW,
+            subtotalW,
+          ),
+          // Attendance cell (interactive click to edit or sync)
+          Tooltip(
+            message: 'Click to edit or sync attendance',
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: () => _showStudentGradeEditorDialog(
+                  provider,
+                  enrollment,
+                  grade,
+                ),
+                child: _dataCell(
+                  grade?.attendanceRaw,
+                  grade?.attendanceMax,
+                  attendW,
+                  _green,
+                ),
+              ),
+            ),
+          ),
+          // Grade cell
+          _gradeCell(
+            grade?.computedGrade,
+            gradeW,
+          ),
+          // Actions
+          SizedBox(
+            width: actionsW,
+            child: Center(
+              child: _miniBtn(
+                Icons.tune_rounded,
+                _accent,
+                () {
+                  _showStudentGradeEditorDialog(
+                    provider,
+                    enrollment,
+                    grade,
+                  );
+                },
+                'Edit All Scores',
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   // ── Column header builders ──
 
   List<Widget> _buildColumnHeaders(
+    AdminProvider provider,
     List<({String category, String label})> columns,
     Set<String> categories,
     double itemW,
@@ -885,9 +940,9 @@ class _TermGradeSheetState extends State<_TermGradeSheet> {
       if (lastCat != null && lastCat != col.category) {
         widgets.add(
           _colHeader(
-            '${_categoryShort(lastCat!)}\nTotal',
+            '${_categoryShort(lastCat)}\nTotal',
             subtotalW,
-            _categoryColor(lastCat!),
+            _categoryColor(lastCat),
             isBold: true,
           ),
         );
@@ -896,44 +951,60 @@ class _TermGradeSheetState extends State<_TermGradeSheet> {
 
       final color = _categoryColor(col.category);
       widgets.add(
-        Container(
-          width: itemW,
-          decoration: BoxDecoration(
-            border: Border(
-              right: BorderSide(color: _border.withValues(alpha: 0.5)),
-            ),
-          ),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+        Tooltip(
+          message: 'Click column header to manage or delete "${col.label}"',
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: () => _showColumnDeleteDialog(
+                provider,
+                col.category,
+                col.label,
+              ),
+              child: Container(
+                width: itemW,
                 decoration: BoxDecoration(
-                  color: color.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(3),
-                ),
-                child: Text(
-                  _categoryShort(col.category),
-                  style: GoogleFonts.inter(
-                    color: color,
-                    fontSize: 8,
-                    fontWeight: FontWeight.w800,
+                  border: Border(
+                    right: BorderSide(color: _border.withValues(alpha: 0.5)),
                   ),
                 ),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                col.label,
-                textAlign: TextAlign.center,
-                style: GoogleFonts.inter(
-                  color: Colors.grey[400],
-                  fontSize: 9,
-                  fontWeight: FontWeight.w600,
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 4,
+                        vertical: 1,
+                      ),
+                      decoration: BoxDecoration(
+                        color: color.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(3),
+                      ),
+                      child: Text(
+                        _categoryShort(col.category),
+                        style: GoogleFonts.inter(
+                          color: color,
+                          fontSize: 8,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      col.label,
+                      textAlign: TextAlign.center,
+                      style: GoogleFonts.inter(
+                        color: Colors.grey[400],
+                        fontSize: 9,
+                        fontWeight: FontWeight.w600,
+                      ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
                 ),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
               ),
-            ],
+            ),
           ),
         ),
       );
@@ -980,6 +1051,89 @@ class _TermGradeSheetState extends State<_TermGradeSheet> {
     );
   }
 
+  void _showColumnDeleteDialog(
+    AdminProvider provider,
+    String category,
+    String label,
+  ) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: _surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: _red.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Icon(Icons.delete_outline_rounded, color: _red, size: 20),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                'Delete "$label"?',
+                style: GoogleFonts.inter(
+                  color: Colors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ],
+        ),
+        content: Text(
+          'This will delete the column "$label" (${category.toUpperCase()}) and remove all recorded scores for this item across all students in ${GradingConfig.termLabel(widget.term)}.',
+          style: GoogleFonts.inter(color: Colors.grey[400], fontSize: 13),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text('Cancel', style: GoogleFonts.inter(color: Colors.grey[400])),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              Navigator.pop(ctx);
+              try {
+                await provider.deleteGradeItemColumnForTerm(
+                  term: widget.term,
+                  category: category,
+                  label: label,
+                );
+                await _loadItemsRefresh();
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Column "$label" deleted for all students.'),
+                      backgroundColor: _green,
+                    ),
+                  );
+                }
+              } catch (e) {
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Error deleting column: $e'),
+                      backgroundColor: _red,
+                    ),
+                  );
+                }
+              }
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: _red,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+            child: Text('Delete for All', style: GoogleFonts.inter(fontWeight: FontWeight.w700)),
+          ),
+        ],
+      ),
+    );
+  }
+
   // ── Data cell builders ──
 
   List<Widget> _buildDataCells(
@@ -987,6 +1141,8 @@ class _TermGradeSheetState extends State<_TermGradeSheet> {
     Set<String> categories,
     List<StudentGradeItem> items,
     StudentGrade? grade,
+    Map<String, dynamic> enrollment,
+    AdminProvider provider,
     double itemW,
     double subtotalW,
   ) {
@@ -999,17 +1155,31 @@ class _TermGradeSheetState extends State<_TermGradeSheet> {
       lookup['${item.category}::${item.label}'] = item;
     }
 
+    // Per-category subtotals computed directly from this student's items
+    // (avoids the quiz+activity merged total in grade.quizRaw)
+    double itemSumRaw(String cat) => items
+        .where((i) => i.category == cat)
+        .fold(0.0, (s, i) => s + i.score);
+    double itemSumMax(String cat) => items
+        .where((i) => i.category == cat)
+        .fold(0.0, (s, i) => s + i.maxScore);
+
     for (final col in columns) {
       if (lastCat != null && lastCat != col.category) {
-        // Subtotal for previous category
-        final raw = lastCat == 'exam' ? grade?.examRaw : grade?.quizRaw;
-        final max = lastCat == 'exam' ? grade?.examMax : grade?.quizMax;
+        // Insert subtotal column for previous category
+        // exam uses the persisted grade total; quiz/activity use per-category sums
+        final double? raw = lastCat == 'exam'
+            ? grade?.examRaw
+            : itemSumRaw(lastCat);
+        final double? max = lastCat == 'exam'
+            ? grade?.examMax
+            : itemSumMax(lastCat);
         widgets.add(
           _dataCell(
-            raw,
-            max,
+            raw == 0 && max == 0 ? null : raw,
+            max == 0 ? null : max,
             subtotalW,
-            _categoryColor(lastCat!),
+            _categoryColor(lastCat),
             isSubtotal: true,
           ),
         );
@@ -1017,67 +1187,81 @@ class _TermGradeSheetState extends State<_TermGradeSheet> {
       lastCat = col.category;
 
       final item = lookup['${col.category}::${col.label}'];
+
+      Widget cellBody;
       if (item != null) {
         final pct = item.maxScore > 0
             ? (item.score / item.maxScore) * 100
             : 0.0;
         final pctColor = pct >= 75 ? _green : (pct >= 50 ? _amber : _red);
 
-        widgets.add(
-          Container(
-            width: itemW,
-            decoration: BoxDecoration(
-              border: Border(
-                right: BorderSide(color: _border.withValues(alpha: 0.5)),
+        cellBody = Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text(
+              '${item.score == item.score.roundToDouble() ? item.score.toInt() : item.score} / ${item.maxScore == item.maxScore.roundToDouble() ? item.maxScore.toInt() : item.maxScore}',
+              style: GoogleFonts.inter(
+                color: Colors.white,
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
               ),
             ),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text(
-                  '${item.score.toStringAsFixed(0)} / ${item.maxScore.toStringAsFixed(0)}',
-                  style: GoogleFonts.inter(
-                    color: Colors.white,
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                Text(
-                  '${pct.toStringAsFixed(0)}%',
-                  style: GoogleFonts.inter(
-                    color: pctColor,
-                    fontSize: 9,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ],
+            Text(
+              '${pct.toStringAsFixed(0)}%',
+              style: GoogleFonts.inter(
+                color: pctColor,
+                fontSize: 9,
+                fontWeight: FontWeight.w600,
+              ),
             ),
-          ),
+          ],
         );
       } else {
-        widgets.add(
-          Container(
-            width: itemW,
-            decoration: BoxDecoration(
-              border: Border(
-                right: BorderSide(color: _border.withValues(alpha: 0.5)),
-              ),
-            ),
-            child: Center(
-              child: Text(
-                '—',
-                style: GoogleFonts.inter(color: Colors.grey[700], fontSize: 12),
-              ),
-            ),
+        cellBody = Center(
+          child: Text(
+            '—',
+            style: GoogleFonts.inter(color: Colors.grey[700], fontSize: 12),
           ),
         );
       }
+
+      widgets.add(
+        Tooltip(
+          message: 'Click to edit ${col.label}',
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: () => _showQuickEditItemScore(
+                provider,
+                enrollment,
+                grade,
+                col.category,
+                col.label,
+                item,
+              ),
+              child: Container(
+                width: itemW,
+                decoration: BoxDecoration(
+                  border: Border(
+                    right: BorderSide(color: _border.withValues(alpha: 0.5)),
+                  ),
+                ),
+                child: cellBody,
+              ),
+            ),
+          ),
+        ),
+      );
     }
 
-    // Final subtotal
+    // Final subtotal for last category
     if (lastCat != null) {
-      final raw = lastCat == 'exam' ? grade?.examRaw : grade?.quizRaw;
-      final max = lastCat == 'exam' ? grade?.examMax : grade?.quizMax;
+      final double? raw = lastCat == 'exam'
+          ? grade?.examRaw
+          : itemSumRaw(lastCat);
+      final double? max = lastCat == 'exam'
+          ? grade?.examMax
+          : itemSumMax(lastCat);
       widgets.add(
         _dataCell(
           raw,
@@ -1183,9 +1367,14 @@ class _TermGradeSheetState extends State<_TermGradeSheet> {
     fontWeight: FontWeight.w700,
   );
 
-  Widget _miniBtn(IconData icon, Color color, VoidCallback onTap) {
+  Widget _miniBtn(
+    IconData icon,
+    Color color,
+    VoidCallback onTap, [
+    String? tip,
+  ]) {
     return Tooltip(
-      message: icon == Icons.list_alt_rounded ? 'Grade Items' : 'Manual Edit',
+      message: tip ?? (icon == Icons.list_alt_rounded ? 'Grade Items' : 'Manual Edit'),
       child: Material(
         color: Colors.transparent,
         borderRadius: BorderRadius.circular(5),
@@ -1492,317 +1681,1303 @@ class _TermGradeSheetState extends State<_TermGradeSheet> {
     await _loadItemsRefresh();
   }
 
-  // ── Existing grade items dialog (view/edit items per student) ──
+  // ── Quick item score edit popover ──
 
-  void _showGradeItemsDialog(
+  void _showQuickEditItemScore(
     AdminProvider provider,
-    StudentGrade grade,
-    Map<String, dynamic> student,
-  ) async {
-    await provider.loadGradeItems(grade.id!);
-    if (!mounted) return;
+    Map<String, dynamic> enrollment,
+    StudentGrade? grade,
+    String category,
+    String label,
+    StudentGradeItem? existingItem,
+  ) {
+    final student = enrollment['students'] as Map<String, dynamic>? ?? {};
+    final studentName =
+        '${student['last_name'] ?? ''}, ${student['first_name'] ?? ''}';
+    final scoreCtrl = TextEditingController(
+      text: existingItem != null
+          ? (existingItem.score == existingItem.score.roundToDouble()
+              ? existingItem.score.toInt().toString()
+              : existingItem.score.toString())
+          : '0',
+    );
+    final maxCtrl = TextEditingController(
+      text: existingItem != null
+          ? (existingItem.maxScore == existingItem.maxScore.roundToDouble()
+              ? existingItem.maxScore.toInt().toString()
+              : existingItem.maxScore.toString())
+          : '100',
+    );
+
+    final color = _categoryColor(category);
 
     showDialog(
       context: context,
-      builder: (ctx) => Consumer<AdminProvider>(
-        builder: (_, p, __) {
-          final items = p.gradeItemsFor(grade.id!);
-          return AlertDialog(
-            backgroundColor: _surface,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(14),
-            ),
-            title: Row(
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDlgState) {
+          final score = double.tryParse(scoreCtrl.text) ?? 0;
+          final max = double.tryParse(maxCtrl.text) ?? 100;
+          final pct = max > 0 ? (score / max) * 100 : 0.0;
+          final pctColor = pct >= 75 ? _green : (pct >= 50 ? _amber : _red);
+
+          return Dialog(
+            backgroundColor: Colors.transparent,
+            child: Container(
+              width: 390,
+              padding: const EdgeInsets.all(22),
+              decoration: BoxDecoration(
+                color: _surface,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: _border),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.5),
+                    blurRadius: 28,
+                    offset: const Offset(0, 10),
+                  ),
+                ],
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Title & category badge
+                  Row(
                     children: [
-                      Text(
-                        'Grade Items — ${student['last_name']}, ${student['first_name']}',
-                        style: GoogleFonts.inter(
-                          color: Colors.white,
-                          fontSize: 16,
-                          fontWeight: FontWeight.w700,
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: color.withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          category.toUpperCase(),
+                          style: GoogleFonts.inter(
+                            color: color,
+                            fontSize: 10,
+                            fontWeight: FontWeight.w800,
+                          ),
                         ),
                       ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          label,
+                          style: GoogleFonts.inter(
+                            color: Colors.white,
+                            fontSize: 15,
+                            fontWeight: FontWeight.w700,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.close_rounded,
+                            color: Color(0xFF64748B), size: 18),
+                        onPressed: () => Navigator.pop(ctx),
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    studentName,
+                    style: GoogleFonts.inter(
+                      color: const Color(0xFF94A3B8),
+                      fontSize: 12,
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+
+                  // Inputs Card
+                  Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: _bg,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: _border),
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'SCORE',
+                                style: GoogleFonts.inter(
+                                  color: Colors.grey[500],
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                              const SizedBox(height: 6),
+                              TextField(
+                                controller: scoreCtrl,
+                                autofocus: true,
+                                keyboardType:
+                                    const TextInputType.numberWithOptions(
+                                        decimal: true),
+                                onChanged: (_) => setDlgState(() {}),
+                                onSubmitted: (_) async {
+                                  await _saveQuickItem(
+                                    ctx,
+                                    provider,
+                                    enrollment,
+                                    grade,
+                                    category,
+                                    label,
+                                    scoreCtrl.text,
+                                    maxCtrl.text,
+                                    existingItem,
+                                  );
+                                },
+                                style: GoogleFonts.inter(
+                                  color: Colors.white,
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                                decoration: InputDecoration(
+                                  filled: true,
+                                  fillColor: _surface,
+                                  contentPadding: const EdgeInsets.symmetric(
+                                      horizontal: 12, vertical: 10),
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                    borderSide: BorderSide(color: _border),
+                                  ),
+                                  enabledBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                    borderSide: BorderSide(color: _border),
+                                  ),
+                                  focusedBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                    borderSide:
+                                        BorderSide(color: color, width: 1.5),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 10),
+                          child: Padding(
+                            padding: const EdgeInsets.only(top: 18),
+                            child: Text(
+                              '/',
+                              style: GoogleFonts.inter(
+                                color: Colors.grey[600],
+                                fontSize: 20,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          ),
+                        ),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'MAX SCORE',
+                                style: GoogleFonts.inter(
+                                  color: Colors.grey[500],
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                              const SizedBox(height: 6),
+                              TextField(
+                                controller: maxCtrl,
+                                keyboardType:
+                                    const TextInputType.numberWithOptions(
+                                        decimal: true),
+                                onChanged: (_) => setDlgState(() {}),
+                                style: GoogleFonts.inter(
+                                  color: Colors.white,
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                                decoration: InputDecoration(
+                                  filled: true,
+                                  fillColor: _surface,
+                                  contentPadding: const EdgeInsets.symmetric(
+                                      horizontal: 12, vertical: 10),
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                    borderSide: BorderSide(color: _border),
+                                  ),
+                                  enabledBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                    borderSide: BorderSide(color: _border),
+                                  ),
+                                  focusedBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                    borderSide:
+                                        BorderSide(color: color, width: 1.5),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(height: 12),
+
+                  // Percentage Preview Pill
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: pctColor.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(
+                              color: pctColor.withValues(alpha: 0.3)),
+                        ),
+                        child: Text(
+                          '${pct.toStringAsFixed(1)}%',
+                          style: GoogleFonts.inter(
+                            color: pctColor,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
                       Text(
-                        '${widget.term.toUpperCase()} TERM',
+                        pct >= 75 ? 'Passing Score' : 'Below Passing',
                         style: GoogleFonts.inter(
-                          color: Colors.grey[500],
+                          color: pctColor,
                           fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const Spacer(),
+                      Text(
+                        'Press Enter ↵ to save',
+                        style: GoogleFonts.inter(
+                          color: const Color(0xFF64748B),
+                          fontSize: 10,
                         ),
                       ),
                     ],
                   ),
-                ),
-                ElevatedButton.icon(
-                  onPressed: () async {
-                    try {
-                      await p.autoComputeAttendance(
-                        grade.enrollmentId,
-                        grade.id!,
-                        widget.config.attendancePct,
-                      );
-                      if (ctx.mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: const Text('Attendance computed!'),
-                            backgroundColor: _green,
-                          ),
-                        );
-                      }
-                    } catch (e) {
-                      if (ctx.mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text('Error: $e'),
-                            backgroundColor: _red,
-                          ),
-                        );
-                      }
-                    }
-                  },
-                  icon: const Icon(Icons.auto_awesome_rounded, size: 14),
-                  label: Text(
-                    'Auto Attendance',
-                    style: GoogleFonts.inter(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  style: ElevatedButton.styleFrom(backgroundColor: _green),
-                ),
-              ],
-            ),
-            content: SizedBox(
-              width: 500,
-              height: 400,
-              child: items.isEmpty
-                  ? Center(
-                      child: Text(
-                        'No items for this term.',
-                        style: GoogleFonts.inter(color: Colors.grey[500]),
+
+                  const SizedBox(height: 20),
+
+                  // Actions
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      OutlinedButton(
+                        onPressed: () => Navigator.pop(ctx),
+                        style: OutlinedButton.styleFrom(
+                          side: BorderSide(color: _border),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8)),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 16, vertical: 10),
+                        ),
+                        child: Text(
+                          'Cancel',
+                          style: GoogleFonts.inter(color: Colors.grey[400]),
+                        ),
                       ),
-                    )
-                  : ListView.builder(
-                      itemCount: items.length,
-                      itemBuilder: (_, i) {
-                        final item = items[i];
-                        final color = _categoryColor(item.category);
-                        return Container(
-                          margin: const EdgeInsets.only(bottom: 8),
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: _bg,
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(color: _border),
-                          ),
-                          child: Row(
-                            children: [
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 6,
-                                  vertical: 2,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: color.withValues(alpha: 0.12),
-                                  borderRadius: BorderRadius.circular(4),
-                                ),
-                                child: Text(
-                                  item.category.toUpperCase(),
-                                  style: GoogleFonts.inter(
-                                    color: color,
-                                    fontSize: 9,
-                                    fontWeight: FontWeight.w800,
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 10),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      item.label,
-                                      style: GoogleFonts.inter(
-                                        color: Colors.white,
-                                        fontSize: 13,
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                    ),
-                                    Text(
-                                      'Source: ${item.source}',
-                                      style: GoogleFonts.inter(
-                                        color: Colors.grey[500],
-                                        fontSize: 10,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              Text(
-                                '${item.score.toStringAsFixed(0)} / ${item.maxScore.toStringAsFixed(0)}',
-                                style: GoogleFonts.inter(
-                                  color: Colors.white,
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              IconButton(
-                                icon: Icon(
-                                  Icons.delete_rounded,
-                                  color: Colors.red[400],
-                                  size: 16,
-                                ),
-                                onPressed: () async {
-                                  await p.removeGradeItem(item.id!, grade.id!);
-                                  await _loadItemsRefresh();
-                                },
-                              ),
-                            ],
-                          ),
-                        );
-                      },
-                    ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(ctx),
-                child: Text(
-                  'Close',
-                  style: GoogleFonts.inter(color: Colors.grey[400]),
-                ),
+                      const SizedBox(width: 10),
+                      ElevatedButton(
+                        onPressed: () async {
+                          await _saveQuickItem(
+                            ctx,
+                            provider,
+                            enrollment,
+                            grade,
+                            category,
+                            label,
+                            scoreCtrl.text,
+                            maxCtrl.text,
+                            existingItem,
+                          );
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: _green,
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8)),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 20, vertical: 10),
+                          elevation: 0,
+                        ),
+                        child: Text(
+                          'Save Score',
+                          style: GoogleFonts.inter(fontWeight: FontWeight.w700),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
               ),
-            ],
+            ),
           );
         },
       ),
     );
   }
 
-  // ── Manual edit dialog ──
+  Future<void> _saveQuickItem(
+    BuildContext ctx,
+    AdminProvider provider,
+    Map<String, dynamic> enrollment,
+    StudentGrade? grade,
+    String category,
+    String label,
+    String scoreText,
+    String maxText,
+    StudentGradeItem? existingItem,
+  ) async {
+    final enrollmentId = enrollment['id'] as String;
+    var currentGrade = provider.gradeFor(enrollmentId, widget.term);
 
-  void _showEditDialog(
+    // Create grade record if it doesn't exist
+    if (currentGrade == null || currentGrade.id == null) {
+      final newGrade = StudentGrade(
+        enrollmentId: enrollmentId,
+        term: widget.term,
+      );
+      await provider.saveStudentGrade(newGrade);
+      currentGrade = provider.gradeFor(enrollmentId, widget.term);
+      if (currentGrade?.id == null) return;
+    }
+
+    final score = double.tryParse(scoreText) ?? 0;
+    final max = double.tryParse(maxText) ?? 100;
+
+    final item = StudentGradeItem(
+      id: existingItem?.id,
+      gradeId: currentGrade!.id!,
+      category: category,
+      label: label,
+      score: score,
+      maxScore: max,
+      source: existingItem?.source ?? 'manual',
+      assessmentId: existingItem?.assessmentId,
+    );
+
+    await provider.saveGradeItem(item);
+    await _loadItemsRefresh();
+
+    if (ctx.mounted) {
+      Navigator.pop(ctx);
+    }
+  }
+
+  // ── Unified Student Grade Breakdown & Editor Modal ──
+
+  void _showStudentGradeEditorDialog(
     AdminProvider provider,
     Map<String, dynamic> enrollment,
     StudentGrade? grade,
   ) {
-    final enrollmentId = enrollment['id'] as String;
-    final student = enrollment['students'] as Map<String, dynamic>? ?? {};
-    final name =
-        '${student['last_name'] ?? ''}, ${student['first_name'] ?? ''}';
-
-    final examRawCtrl = TextEditingController(
-      text: grade?.examRaw?.toStringAsFixed(0) ?? '',
-    );
-    final examMaxCtrl = TextEditingController(
-      text: grade?.examMax?.toStringAsFixed(0) ?? '',
-    );
-    final quizRawCtrl = TextEditingController(
-      text: grade?.quizRaw?.toStringAsFixed(0) ?? '',
-    );
-    final quizMaxCtrl = TextEditingController(
-      text: grade?.quizMax?.toStringAsFixed(0) ?? '',
-    );
-    final attendRawCtrl = TextEditingController(
-      text: grade?.attendanceRaw?.toStringAsFixed(0) ?? '',
-    );
-    final attendMaxCtrl = TextEditingController(
-      text: grade?.attendanceMax?.toStringAsFixed(0) ?? '',
-    );
-
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: _surface,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-        title: Text(
-          'Edit Scores — $name',
-          style: GoogleFonts.inter(
-            color: Colors.white,
-            fontSize: 16,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-        content: SizedBox(
-          width: 500,
-          child: Row(
-            children: [
-              _scoreGroup('Exam', examRawCtrl, examMaxCtrl, _purple),
-              const SizedBox(width: 12),
-              _scoreGroup('Quiz/Activity', quizRawCtrl, quizMaxCtrl, _amber),
-              const SizedBox(width: 12),
-              _scoreGroup('Attendance', attendRawCtrl, attendMaxCtrl, _green),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: Text(
-              'Cancel',
-              style: GoogleFonts.inter(color: Colors.grey[400]),
+      barrierDismissible: false,
+      builder: (ctx) => _StudentGradeEditorDialog(
+        provider: provider,
+        enrollment: enrollment,
+        initialGrade: grade,
+        config: widget.config,
+        term: widget.term,
+        onSaved: _loadItemsRefresh,
+      ),
+    );
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// Redesigned Student Grade Editor Dialog (Item-by-Item Editing)
+// ══════════════════════════════════════════════════════════════════════════════
+
+class _EditableItem {
+  String? id;
+  String category; // 'quiz', 'activity', 'exam'
+  final TextEditingController labelCtrl;
+  final TextEditingController scoreCtrl;
+  final TextEditingController maxScoreCtrl;
+  String source;
+  bool isNew;
+  bool isDeleted;
+
+  _EditableItem({
+    this.id,
+    required this.category,
+    required String label,
+    required double score,
+    required double maxScore,
+    this.source = 'manual',
+    this.isNew = false,
+  })  : isDeleted = false,
+        labelCtrl = TextEditingController(text: label),
+        scoreCtrl = TextEditingController(
+            text: score == score.roundToDouble()
+                ? score.toInt().toString()
+                : score.toString()),
+        maxScoreCtrl = TextEditingController(
+            text: maxScore == maxScore.roundToDouble()
+                ? maxScore.toInt().toString()
+                : maxScore.toString());
+
+  String get label => labelCtrl.text.trim();
+  double get score => double.tryParse(scoreCtrl.text) ?? 0;
+  double get maxScore => double.tryParse(maxScoreCtrl.text) ?? 0;
+  double get percentage => maxScore > 0 ? (score / maxScore) * 100 : 0;
+}
+
+class _StudentGradeEditorDialog extends StatefulWidget {
+  final AdminProvider provider;
+  final Map<String, dynamic> enrollment;
+  final StudentGrade? initialGrade;
+  final GradingConfig config;
+  final String term;
+  final VoidCallback onSaved;
+
+  const _StudentGradeEditorDialog({
+    required this.provider,
+    required this.enrollment,
+    required this.initialGrade,
+    required this.config,
+    required this.term,
+    required this.onSaved,
+  });
+
+  @override
+  State<_StudentGradeEditorDialog> createState() =>
+      _StudentGradeEditorDialogState();
+}
+
+class _StudentGradeEditorDialogState extends State<_StudentGradeEditorDialog> {
+  static const _bg = Color(0xFF0F172A);
+  static const _surface = Color(0xFF1E293B);
+  static const _cardBg = Color(0xFF141D2E);
+  static const _border = Color(0xFF2D3B52);
+  static const _accent = Color(0xFF6366F1);
+  static const _green = Color(0xFF10B981);
+  static const _amber = Color(0xFFF59E0B);
+  static const _red = Color(0xFFEF4444);
+  static const _purple = Color(0xFF818CF8);
+
+  bool _loading = true;
+  bool _saving = false;
+  bool _syncingAttendance = false;
+  final List<_EditableItem> _items = [];
+
+  final _attendRawCtrl = TextEditingController();
+  final _attendMaxCtrl = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    _initData();
+  }
+
+  Future<void> _initData() async {
+    final grade = widget.initialGrade;
+    _attendRawCtrl.text = grade?.attendanceRaw != null
+        ? (grade!.attendanceRaw == grade.attendanceRaw!.roundToDouble()
+            ? grade.attendanceRaw!.toInt().toString()
+            : grade.attendanceRaw!.toString())
+        : '0';
+    _attendMaxCtrl.text = grade?.attendanceMax != null
+        ? (grade!.attendanceMax == grade.attendanceMax!.roundToDouble()
+            ? grade.attendanceMax!.toInt().toString()
+            : grade.attendanceMax!.toString())
+        : '100';
+
+    _attendRawCtrl.addListener(() => setState(() {}));
+    _attendMaxCtrl.addListener(() => setState(() {}));
+
+    if (grade?.id != null) {
+      await widget.provider.loadGradeItems(grade!.id!);
+      final existing = widget.provider.gradeItemsFor(grade.id!);
+      for (final e in existing) {
+        final item = _EditableItem(
+          id: e.id,
+          category: e.category,
+          label: e.label,
+          score: e.score,
+          maxScore: e.maxScore,
+          source: e.source,
+        );
+        item.labelCtrl.addListener(() => setState(() {}));
+        item.scoreCtrl.addListener(() => setState(() {}));
+        item.maxScoreCtrl.addListener(() => setState(() {}));
+        _items.add(item);
+      }
+    }
+
+    // Pre-populate standard subject columns ONLY if this student has NO grade items at all yet.
+    // Once a student has been saved, we trust the DB exclusively — never auto-add columns they
+    // may have had removed. This prevents deleted items from reappearing.
+    if (_items.isEmpty) {
+      final termColumns = widget.provider.uniqueItemColumnsForTerm(widget.term);
+      for (final col in termColumns) {
+        final newItem = _EditableItem(
+          category: col.category,
+          label: col.label,
+          score: 0,
+          maxScore: col.category == 'exam'
+              ? 100
+              : (col.category == 'quiz' ? 20 : 100),
+          isNew: true,
+        );
+        newItem.labelCtrl.addListener(() => setState(() {}));
+        newItem.scoreCtrl.addListener(() => setState(() {}));
+        newItem.maxScoreCtrl.addListener(() => setState(() {}));
+        _items.add(newItem);
+      }
+    }
+
+    if (mounted) {
+      setState(() => _loading = false);
+    }
+  }
+
+  void _addNewItem(String category, [String? defaultLabel]) {
+    final count =
+        _items.where((i) => !i.isDeleted && i.category == category).length + 1;
+    final catName = category == 'quiz'
+        ? 'Quiz'
+        : (category == 'activity' ? 'Activity' : 'Exam');
+    final label = defaultLabel ?? '$catName $count';
+    final newItem = _EditableItem(
+      category: category,
+      label: label,
+      score: 0,
+      maxScore: category == 'exam' ? 100 : (category == 'quiz' ? 20 : 100),
+      isNew: true,
+    );
+    newItem.labelCtrl.addListener(() => setState(() {}));
+    newItem.scoreCtrl.addListener(() => setState(() {}));
+    newItem.maxScoreCtrl.addListener(() => setState(() {}));
+    setState(() => _items.add(newItem));
+  }
+
+  double get totalQuizScore => _items
+      .where((i) =>
+          !i.isDeleted && (i.category == 'quiz' || i.category == 'activity'))
+      .fold(0.0, (s, i) => s + i.score);
+
+  double get totalQuizMax => _items
+      .where((i) =>
+          !i.isDeleted && (i.category == 'quiz' || i.category == 'activity'))
+      .fold(0.0, (s, i) => s + i.maxScore);
+
+  double get totalExamScore => _items
+      .where((i) => !i.isDeleted && i.category == 'exam')
+      .fold(0.0, (s, i) => s + i.score);
+
+  double get totalExamMax => _items
+      .where((i) => !i.isDeleted && i.category == 'exam')
+      .fold(0.0, (s, i) => s + i.maxScore);
+
+  double get attendRaw => double.tryParse(_attendRawCtrl.text) ?? 0;
+  double get attendMax => double.tryParse(_attendMaxCtrl.text) ?? 100;
+
+  double? get computedGrade {
+    final er = totalExamScore;
+    final em = totalExamMax > 0 ? totalExamMax : 100.0;
+    final qr = totalQuizScore;
+    final qm = totalQuizMax > 0 ? totalQuizMax : 100.0;
+    final ar = attendRaw;
+    final am = attendMax > 0 ? attendMax : 100.0;
+
+    return widget.config.computeTermGrade(
+      examRaw: er,
+      examMax: em,
+      quizRaw: qr,
+      quizMax: qm,
+      attendRaw: ar,
+      attendMax: am,
+    );
+  }
+
+  Future<void> _autoSyncAttendance() async {
+    setState(() => _syncingAttendance = true);
+    try {
+      final enrollmentId = widget.enrollment['id'] as String;
+      var grade = widget.provider.gradeFor(enrollmentId, widget.term);
+      if (grade?.id == null) {
+        final newGrade = StudentGrade(
+          enrollmentId: enrollmentId,
+          term: widget.term,
+        );
+        await widget.provider.saveStudentGrade(newGrade);
+        grade = widget.provider.gradeFor(enrollmentId, widget.term);
+      }
+      if (grade?.id != null) {
+        await widget.provider.autoComputeAttendance(
+          enrollmentId,
+          grade!.id!,
+          widget.config.attendancePct,
+        );
+        final reloadedGrade =
+            widget.provider.gradeFor(enrollmentId, widget.term);
+        if (reloadedGrade != null) {
+          _attendRawCtrl.text =
+              (reloadedGrade.attendanceRaw ?? 0).toStringAsFixed(0);
+          _attendMaxCtrl.text =
+              (reloadedGrade.attendanceMax ?? 100).toStringAsFixed(0);
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+              content: Text('Attendance auto-sync error: $e'),
+              backgroundColor: _red),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _syncingAttendance = false);
+    }
+  }
+
+  Future<void> _saveAll() async {
+    setState(() => _saving = true);
+    try {
+      final enrollmentId = widget.enrollment['id'] as String;
+      var grade = widget.provider.gradeFor(enrollmentId, widget.term);
+
+      // Ensure grade record exists
+      if (grade == null || grade.id == null) {
+        final newGrade = StudentGrade(
+          enrollmentId: enrollmentId,
+          term: widget.term,
+          attendanceRaw: attendRaw,
+          attendanceMax: attendMax,
+        );
+        await widget.provider.saveStudentGrade(newGrade);
+        grade = widget.provider.gradeFor(enrollmentId, widget.term);
+        if (grade == null || grade.id == null) {
+          throw Exception('Failed to create grade record');
+        }
+      } else {
+        // Update attendance on grade record
+        final updatedGrade = StudentGrade(
+          id: grade.id,
+          enrollmentId: enrollmentId,
+          term: widget.term,
+          attendanceRaw: attendRaw,
+          attendanceMax: attendMax,
+          examRaw: totalExamScore,
+          examMax: totalExamMax > 0 ? totalExamMax : 100,
+          quizRaw: totalQuizScore,
+          quizMax: totalQuizMax > 0 ? totalQuizMax : 100,
+          computedGrade: computedGrade,
+        );
+        await widget.provider.saveStudentGrade(updatedGrade);
+      }
+
+      final gradeId = grade.id!;
+
+      // Collect which term-level columns are being fully deleted
+      // (item was pre-populated from uniqueItemColumnsForTerm, has no DB id yet, and is now deleted)
+      // OR item has a DB id and is deleted — in both cases we remove from DB
+      // Also: if this is a column that exists across the whole class, we delete it for ALL students.
+      final columnsToDeleteFromClass = <({String category, String label})>{};
+
+      // Save / update / delete items
+      for (final item in _items) {
+        if (item.isDeleted) {
+          if (item.id != null) {
+            // Has a real DB row — delete just this student's record
+            await widget.provider.removeGradeItem(item.id!, gradeId);
+          }
+          // Track the column label to remove from the class-wide column list
+          // (so it stops appearing as a column for this student when re-opened)
+          columnsToDeleteFromClass.add(
+              (category: item.category, label: item.labelCtrl.text.trim()));
+        } else {
+          final labelText = item.labelCtrl.text.trim().isEmpty
+              ? '${item.category.toUpperCase()} Item'
+              : item.labelCtrl.text.trim();
+          // Only save items that have a non-zero score or are explicitly new (user added)
+          // Skip auto-populated empty items that were never touched (score=0, max=default, isNew=true)
+          final wasAutoPopulated = item.isNew && item.score == 0;
+          if (!wasAutoPopulated || item.maxScore != (item.category == 'quiz' ? 20 : 100)) {
+            final gradeItem = StudentGradeItem(
+              id: item.isNew ? null : item.id,
+              gradeId: gradeId,
+              category: item.category,
+              label: labelText,
+              score: item.score,
+              maxScore: item.maxScore > 0 ? item.maxScore : 100,
+              source: item.source,
+            );
+            await widget.provider.saveGradeItem(gradeItem);
+          }
+        }
+      }
+
+      widget.onSaved();
+      if (mounted) {
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.check_circle_rounded,
+                    color: Colors.white, size: 18),
+                const SizedBox(width: 8),
+                Text(
+                    'Scores updated for ${widget.enrollment['students']?['last_name'] ?? 'Student'}'),
+              ],
             ),
+            backgroundColor: _green,
+            behavior: SnackBarBehavior.floating,
           ),
-          ElevatedButton(
-            onPressed: () async {
-              final er = double.tryParse(examRawCtrl.text);
-              final em = double.tryParse(examMaxCtrl.text);
-              final qr = double.tryParse(quizRawCtrl.text);
-              final qm = double.tryParse(quizMaxCtrl.text);
-              final ar = double.tryParse(attendRawCtrl.text);
-              final am = double.tryParse(attendMaxCtrl.text);
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error saving scores: $e'),
+            backgroundColor: _red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
 
-              double? computed;
-              if (er != null &&
-                  em != null &&
-                  qr != null &&
-                  qm != null &&
-                  ar != null &&
-                  am != null &&
-                  em > 0 &&
-                  qm > 0 &&
-                  am > 0) {
-                computed = widget.config.computeTermGrade(
-                  examRaw: er,
-                  examMax: em,
-                  quizRaw: qr,
-                  quizMax: qm,
-                  attendRaw: ar,
-                  attendMax: am,
-                );
-              }
+  @override
+  Widget build(BuildContext context) {
+    final student =
+        widget.enrollment['students'] as Map<String, dynamic>? ?? {};
+    final lastName = student['last_name'] ?? '';
+    final firstName = student['first_name'] ?? '';
+    final usn = student['usn'] ?? '—';
+    final section = student['section'] ?? '';
+    final course = student['course'] ?? '';
 
-              final g = StudentGrade(
-                id: grade?.id,
-                enrollmentId: enrollmentId,
-                term: widget.term,
-                examRaw: er,
-                examMax: em,
-                quizRaw: qr,
-                quizMax: qm,
-                attendanceRaw: ar,
-                attendanceMax: am,
-                computedGrade: computed,
-              );
-              await provider.saveStudentGrade(g);
-              if (ctx.mounted) Navigator.pop(ctx);
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: _green,
-              elevation: 0,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
+    final grade = computedGrade;
+    final isPassed = grade != null && grade >= 75;
+    final gradeColor = grade == null ? Colors.grey[500]! : (isPassed ? _green : _red);
+
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      child: Container(
+        width: 720,
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.of(context).size.height * 0.88,
+        ),
+        decoration: BoxDecoration(
+          color: _surface,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: _border),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.6),
+              blurRadius: 36,
+              offset: const Offset(0, 14),
+            ),
+          ],
+        ),
+        child: _loading
+            ? const SizedBox(
+                height: 300,
+                child: Center(
+                  child:
+                      CircularProgressIndicator(color: _accent, strokeWidth: 2),
+                ),
+              )
+            : Column(
+                children: [
+                  // ── Header Banner ──
+                  Container(
+                    padding: const EdgeInsets.fromLTRB(24, 20, 20, 16),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF131B2E),
+                      borderRadius:
+                          const BorderRadius.vertical(top: Radius.circular(17)),
+                      border: Border(bottom: BorderSide(color: _border)),
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Container(
+                          width: 44,
+                          height: 44,
+                          decoration: BoxDecoration(
+                            gradient: const LinearGradient(
+                              colors: [Color(0xFF6366F1), Color(0xFF818CF8)],
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                            ),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Center(
+                            child: Text(
+                              (lastName.isNotEmpty ? lastName[0] : 'S')
+                                  .toUpperCase(),
+                              style: GoogleFonts.inter(
+                                color: Colors.white,
+                                fontSize: 18,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 14),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                '$lastName, $firstName',
+                                style: GoogleFonts.inter(
+                                  color: Colors.white,
+                                  fontSize: 17,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Row(
+                                children: [
+                                  Text(
+                                    usn,
+                                    style: GoogleFonts.inter(
+                                      color: const Color(0xFF94A3B8),
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                  if (course.isNotEmpty || section.isNotEmpty) ...[
+                                    const SizedBox(width: 8),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 6, vertical: 2),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFF334155),
+                                        borderRadius: BorderRadius.circular(4),
+                                      ),
+                                      child: Text(
+                                        '$course $section'.trim(),
+                                        style: GoogleFonts.inter(
+                                          color: Colors.grey[300],
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                  const SizedBox(width: 8),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 8, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: _accent.withValues(alpha: 0.15),
+                                      borderRadius: BorderRadius.circular(4),
+                                      border: Border.all(
+                                          color:
+                                              _accent.withValues(alpha: 0.3)),
+                                    ),
+                                    child: Text(
+                                      GradingConfig.termLabel(widget.term)
+                                          .toUpperCase(),
+                                      style: GoogleFonts.inter(
+                                        color: const Color(0xFF818CF8),
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                        // Live Projected Grade Box
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 14, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: gradeColor.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(
+                                color: gradeColor.withValues(alpha: 0.3)),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              Text(
+                                'PROJECTED GRADE',
+                                style: GoogleFonts.inter(
+                                  color: Colors.grey[400],
+                                  fontSize: 9,
+                                  fontWeight: FontWeight.w700,
+                                  letterSpacing: 0.5,
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                grade == null
+                                    ? '—'
+                                    : '${grade.toStringAsFixed(2)}%',
+                                style: GoogleFonts.inter(
+                                  color: gradeColor,
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                              if (grade != null)
+                                Text(
+                                  GradeRemarks.remarks(grade),
+                                  style: GoogleFonts.inter(
+                                    color: gradeColor,
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        IconButton(
+                          icon: const Icon(Icons.close_rounded,
+                              color: Color(0xFF64748B), size: 20),
+                          onPressed: () => Navigator.pop(context),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  // ── Subtotal Overview Pills ──
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF162032),
+                      border: Border(bottom: BorderSide(color: _border)),
+                    ),
+                    child: Row(
+                      children: [
+                        _metricPill(
+                          'Quizzes (${widget.config.quizPct.toInt()}%)',
+                          totalQuizScore,
+                          totalQuizMax,
+                          _accent,
+                        ),
+                        const SizedBox(width: 10),
+                        _metricPill(
+                          'Exams (${widget.config.examPct.toInt()}%)',
+                          totalExamScore,
+                          totalExamMax,
+                          _purple,
+                        ),
+                        const SizedBox(width: 10),
+                        _metricPill(
+                          'Attendance (${widget.config.attendancePct.toInt()}%)',
+                          attendRaw,
+                          attendMax,
+                          _green,
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  // ── Scrollable Body ──
+                  Expanded(
+                    child: ListView(
+                      padding: const EdgeInsets.fromLTRB(24, 18, 24, 18),
+                      children: [
+                        // Quizzes Section
+                        _buildCategorySection(
+                          category: 'quiz',
+                          title: 'Quizzes',
+                          icon: Icons.quiz_outlined,
+                          color: _accent,
+                        ),
+                        const SizedBox(height: 18),
+
+                        // Activities Section
+                        _buildCategorySection(
+                          category: 'activity',
+                          title: 'Activities / Performance Tasks',
+                          icon: Icons.assignment_outlined,
+                          color: _amber,
+                        ),
+                        const SizedBox(height: 18),
+
+                        // Exams Section
+                        _buildCategorySection(
+                          category: 'exam',
+                          title: 'Major Exams',
+                          icon: Icons.school_outlined,
+                          color: _purple,
+                        ),
+                        const SizedBox(height: 18),
+
+                        // Attendance Section
+                        _buildAttendanceSection(),
+                      ],
+                    ),
+                  ),
+
+                  // ── Footer ──
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 24, vertical: 16),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF131B2E),
+                      borderRadius: const BorderRadius.vertical(
+                          bottom: Radius.circular(17)),
+                      border: Border(top: BorderSide(color: _border)),
+                    ),
+                    child: Row(
+                      children: [
+                        Text(
+                          'Changes will automatically recalculate total percentages',
+                          style: GoogleFonts.inter(
+                            color: const Color(0xFF64748B),
+                            fontSize: 11,
+                          ),
+                        ),
+                        const Spacer(),
+                        OutlinedButton(
+                          onPressed: () => Navigator.pop(context),
+                          style: OutlinedButton.styleFrom(
+                            side: BorderSide(color: _border),
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8)),
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 18, vertical: 12),
+                          ),
+                          child: Text(
+                            'Cancel',
+                            style: GoogleFonts.inter(color: Colors.grey[400]),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        ElevatedButton(
+                          onPressed: _saving ? null : _saveAll,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: _green,
+                            foregroundColor: Colors.white,
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8)),
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 24, vertical: 12),
+                            elevation: 0,
+                          ),
+                          child: _saving
+                              ? const SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(
+                                      color: Colors.white, strokeWidth: 2),
+                                )
+                              : Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const Icon(Icons.check_rounded, size: 16),
+                                    const SizedBox(width: 6),
+                                    Text(
+                                      'Save All Changes',
+                                      style: GoogleFonts.inter(
+                                          fontWeight: FontWeight.w700),
+                                    ),
+                                  ],
+                                ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+      ),
+    );
+  }
+
+  Widget _metricPill(
+      String label, double raw, double max, Color color) {
+    final pct = max > 0 ? (raw / max) * 100 : 0.0;
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: _bg,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: _border),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 4,
+              height: 24,
+              decoration: BoxDecoration(
+                color: color,
+                borderRadius: BorderRadius.circular(2),
               ),
             ),
-            child: Text(
-              'Save',
-              style: GoogleFonts.inter(
-                color: Colors.white,
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
+            const SizedBox(width: 8),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    label,
+                    style: GoogleFonts.inter(
+                      color: Colors.grey[400],
+                      fontSize: 10,
+                      fontWeight: FontWeight.w600,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  Text(
+                    '${raw.toStringAsFixed(0)} / ${max.toStringAsFixed(0)} (${pct.toStringAsFixed(0)}%)',
+                    style: GoogleFonts.inter(
+                      color: Colors.white,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCategorySection({
+    required String category,
+    required String title,
+    required IconData icon,
+    required Color color,
+  }) {
+    final catItems =
+        _items.where((i) => !i.isDeleted && i.category == category).toList();
+    final catScore = catItems.fold(0.0, (s, i) => s + i.score);
+    final catMax = catItems.fold(0.0, (s, i) => s + i.maxScore);
+    final catPct = catMax > 0 ? (catScore / catMax) * 100 : 0.0;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: _cardBg,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: _border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Section Header
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 10),
+            child: Row(
+              children: [
+                Icon(icon, color: color, size: 16),
+                const SizedBox(width: 8),
+                Text(
+                  title,
+                  style: GoogleFonts.inter(
+                    color: Colors.white,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: color.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Text(
+                    '${catItems.length} items',
+                    style: GoogleFonts.inter(
+                      color: color,
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                const Spacer(),
+                Text(
+                  'Subtotal: ${catScore.toStringAsFixed(0)} / ${catMax.toStringAsFixed(0)}  (${catPct.toStringAsFixed(1)}%)',
+                  style: GoogleFonts.inter(
+                    color: Colors.grey[400],
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const Divider(height: 1, color: _border),
+
+          // Item Rows
+          if (catItems.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              child: Center(
+                child: Text(
+                  'No ${title.toLowerCase()} added yet.',
+                  style: GoogleFonts.inter(
+                      color: Colors.grey[600], fontSize: 12),
+                ),
+              ),
+            )
+          else
+            ListView.separated(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              padding: const EdgeInsets.all(12),
+              itemCount: catItems.length,
+              separatorBuilder: (context, index) => const SizedBox(height: 8),
+              itemBuilder: (_, i) => _buildItemRow(catItems[i], color),
+            ),
+
+          // Add Button
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(8),
+              onTap: () => _addNewItem(category),
+              child: Container(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.06),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: color.withValues(alpha: 0.2),
+                    style: BorderStyle.solid,
+                  ),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.add_rounded, color: color, size: 16),
+                    const SizedBox(width: 6),
+                    Text(
+                      'Add $title item',
+                      style: GoogleFonts.inter(
+                        color: color,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
@@ -1811,107 +2986,353 @@ class _TermGradeSheetState extends State<_TermGradeSheet> {
     );
   }
 
-  Widget _scoreGroup(
-    String label,
-    TextEditingController rawCtrl,
-    TextEditingController maxCtrl,
-    Color color,
-  ) {
-    return Expanded(
+  Widget _buildItemRow(_EditableItem item, Color color) {
+    final pct = item.percentage;
+    final pctColor = pct >= 75 ? _green : (pct >= 50 ? _amber : _red);
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: _bg,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: _border),
+      ),
+      child: Row(
+        children: [
+          // Label input
+          Expanded(
+            flex: 3,
+            child: TextField(
+              controller: item.labelCtrl,
+              style: GoogleFonts.inter(
+                color: Colors.white,
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+              decoration: InputDecoration(
+                isDense: true,
+                hintText: 'Item label (e.g. Quiz 1)',
+                hintStyle: GoogleFonts.inter(color: Colors.grey[700], fontSize: 12),
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                filled: true,
+                fillColor: _surface,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(6),
+                  borderSide: BorderSide(color: _border),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(6),
+                  borderSide: BorderSide(color: _border),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(6),
+                  borderSide: BorderSide(color: color, width: 1.5),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+
+          // Score Input
+          SizedBox(
+            width: 70,
+            child: TextField(
+              controller: item.scoreCtrl,
+              textAlign: TextAlign.center,
+              keyboardType:
+                  const TextInputType.numberWithOptions(decimal: true),
+              style: GoogleFonts.inter(
+                color: Colors.white,
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+              ),
+              decoration: InputDecoration(
+                isDense: true,
+                hintText: 'Score',
+                hintStyle: GoogleFonts.inter(color: Colors.grey[700], fontSize: 11),
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
+                filled: true,
+                fillColor: _surface,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(6),
+                  borderSide: BorderSide(color: _border),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(6),
+                  borderSide: BorderSide(color: _border),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(6),
+                  borderSide: BorderSide(color: color, width: 1.5),
+                ),
+              ),
+            ),
+          ),
+
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 6),
+            child: Text(
+              '/',
+              style: GoogleFonts.inter(
+                color: Colors.grey[600],
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+
+          // Max Score Input
+          SizedBox(
+            width: 70,
+            child: TextField(
+              controller: item.maxScoreCtrl,
+              textAlign: TextAlign.center,
+              keyboardType:
+                  const TextInputType.numberWithOptions(decimal: true),
+              style: GoogleFonts.inter(
+                color: Colors.white,
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+              ),
+              decoration: InputDecoration(
+                isDense: true,
+                hintText: 'Max',
+                hintStyle: GoogleFonts.inter(color: Colors.grey[700], fontSize: 11),
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
+                filled: true,
+                fillColor: _surface,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(6),
+                  borderSide: BorderSide(color: _border),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(6),
+                  borderSide: BorderSide(color: _border),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(6),
+                  borderSide: BorderSide(color: color, width: 1.5),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+
+          // Percentage Tag
+          Container(
+            width: 54,
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            decoration: BoxDecoration(
+              color: pctColor.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(6),
+              border: Border.all(color: pctColor.withValues(alpha: 0.3)),
+            ),
+            child: Text(
+              '${pct.toStringAsFixed(0)}%',
+              textAlign: TextAlign.center,
+              style: GoogleFonts.inter(
+                color: pctColor,
+                fontSize: 11,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+
+          // Delete button
+          Tooltip(
+            message: 'Remove item',
+            child: IconButton(
+              icon: Icon(Icons.delete_outline_rounded,
+                  color: Colors.red[400], size: 16),
+              onPressed: () {
+                setState(() => item.isDeleted = true);
+              },
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAttendanceSection() {
+    final raw = attendRaw;
+    final max = attendMax;
+    final pct = max > 0 ? (raw / max) * 100 : 0.0;
+    final pctColor = pct >= 75 ? _green : (pct >= 50 ? _amber : _red);
+
+    return Container(
+      decoration: BoxDecoration(
+        color: _cardBg,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: _border),
+      ),
+      padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            label,
-            style: GoogleFonts.inter(
-              color: color,
-              fontSize: 10,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          const SizedBox(height: 5),
           Row(
             children: [
-              Expanded(
-                child: TextFormField(
-                  controller: rawCtrl,
-                  keyboardType: TextInputType.number,
-                  textAlign: TextAlign.center,
-                  style: GoogleFonts.inter(
-                    color: Colors.white,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                  ),
-                  decoration: InputDecoration(
-                    hintText: 'Score',
-                    hintStyle: GoogleFonts.inter(
-                      color: Colors.grey[700],
-                      fontSize: 11,
-                    ),
-                    filled: true,
-                    fillColor: _bg,
-                    contentPadding: const EdgeInsets.symmetric(vertical: 8),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(6),
-                      borderSide: BorderSide(color: _border),
-                    ),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(6),
-                      borderSide: BorderSide(color: _border),
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(6),
-                      borderSide: BorderSide(color: color, width: 1.5),
-                    ),
-                  ),
+              const Icon(Icons.access_time_rounded, color: _green, size: 16),
+              const SizedBox(width: 8),
+              Text(
+                'Attendance Score',
+                style: GoogleFonts.inter(
+                  color: Colors.white,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
                 ),
               ),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 4),
-                child: Text(
-                  '/',
+              const Spacer(),
+              ElevatedButton.icon(
+                onPressed: _syncingAttendance ? null : _autoSyncAttendance,
+                icon: _syncingAttendance
+                    ? const SizedBox(
+                        width: 12,
+                        height: 12,
+                        child: CircularProgressIndicator(
+                            color: Colors.white, strokeWidth: 2),
+                      )
+                    : const Icon(Icons.auto_awesome_rounded, size: 13),
+                label: Text(
+                  _syncingAttendance ? 'Syncing...' : 'Auto-Sync from Tracker',
                   style: GoogleFonts.inter(
-                    color: Colors.grey[600],
-                    fontSize: 14,
-                    fontWeight: FontWeight.w700,
-                  ),
+                      fontSize: 11, fontWeight: FontWeight.w700),
                 ),
-              ),
-              Expanded(
-                child: TextFormField(
-                  controller: maxCtrl,
-                  keyboardType: TextInputType.number,
-                  textAlign: TextAlign.center,
-                  style: GoogleFonts.inter(
-                    color: Colors.white,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                  ),
-                  decoration: InputDecoration(
-                    hintText: 'Max',
-                    hintStyle: GoogleFonts.inter(
-                      color: Colors.grey[700],
-                      fontSize: 11,
-                    ),
-                    filled: true,
-                    fillColor: _bg,
-                    contentPadding: const EdgeInsets.symmetric(vertical: 8),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(6),
-                      borderSide: BorderSide(color: _border),
-                    ),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(6),
-                      borderSide: BorderSide(color: _border),
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(6),
-                      borderSide: BorderSide(color: color, width: 1.5),
-                    ),
-                  ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: _green,
+                  foregroundColor: Colors.white,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(6)),
+                  elevation: 0,
                 ),
               ),
             ],
+          ),
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: _bg,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: _border),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'Recorded attendance rating from student scans',
+                    style: GoogleFonts.inter(
+                        color: Colors.grey[400], fontSize: 12),
+                  ),
+                ),
+                SizedBox(
+                  width: 70,
+                  child: TextField(
+                    controller: _attendRawCtrl,
+                    textAlign: TextAlign.center,
+                    keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true),
+                    style: GoogleFonts.inter(
+                      color: Colors.white,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                    ),
+                    decoration: InputDecoration(
+                      isDense: true,
+                      contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 6, vertical: 8),
+                      filled: true,
+                      fillColor: _surface,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(6),
+                        borderSide: BorderSide(color: _border),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(6),
+                        borderSide: BorderSide(color: _border),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(6),
+                        borderSide:
+                            const BorderSide(color: _green, width: 1.5),
+                      ),
+                    ),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 6),
+                  child: Text(
+                    '/',
+                    style: GoogleFonts.inter(
+                      color: Colors.grey[600],
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                SizedBox(
+                  width: 70,
+                  child: TextField(
+                    controller: _attendMaxCtrl,
+                    textAlign: TextAlign.center,
+                    keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true),
+                    style: GoogleFonts.inter(
+                      color: Colors.white,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                    ),
+                    decoration: InputDecoration(
+                      isDense: true,
+                      contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 6, vertical: 8),
+                      filled: true,
+                      fillColor: _surface,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(6),
+                        borderSide: BorderSide(color: _border),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(6),
+                        borderSide: BorderSide(color: _border),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(6),
+                        borderSide:
+                            const BorderSide(color: _green, width: 1.5),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Container(
+                  width: 54,
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  decoration: BoxDecoration(
+                    color: pctColor.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(color: pctColor.withValues(alpha: 0.3)),
+                  ),
+                  child: Text(
+                    '${pct.toStringAsFixed(0)}%',
+                    textAlign: TextAlign.center,
+                    style: GoogleFonts.inter(
+                      color: pctColor,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
       ),

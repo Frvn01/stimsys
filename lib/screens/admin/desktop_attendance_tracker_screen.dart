@@ -338,33 +338,47 @@ class _State extends State<DesktopAttendanceTrackerScreen> {
                 if (_subj != null) ...[
                   const SizedBox(height: 8),
                   Container(
+                    width: double.infinity,
                     padding: const EdgeInsets.symmetric(
                       horizontal: 10,
-                      vertical: 7,
+                      vertical: 8,
                     ),
                     decoration: BoxDecoration(
                       color: _ac.withValues(alpha: 0.08),
                       borderRadius: BorderRadius.circular(6),
+                      border: Border.all(color: _ac.withValues(alpha: 0.15)),
                     ),
                     child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Icon(Icons.schedule_rounded, color: _ac, size: 13),
-                        const SizedBox(width: 6),
-                        Expanded(
-                          child: Text(
-                            scheduleDayLabel(_subj!.scheduleDay),
-                            style: GoogleFonts.inter(
-                              color: _ac,
-                              fontSize: 11,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
+                        Padding(
+                          padding: const EdgeInsets.only(top: 2),
+                          child: Icon(Icons.schedule_rounded, color: _ac, size: 13),
                         ),
-                        Text(
-                          '${_subj!.scheduleStartTime}-${_subj!.scheduleEndTime}',
-                          style: GoogleFonts.inter(
-                            color: const Color(0xFF4B5E78),
-                            fontSize: 10,
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                scheduleDayLabel(_subj!.scheduleDay),
+                                style: GoogleFonts.inter(
+                                  color: _ac,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                _subj!.formattedTimeRange,
+                                style: GoogleFonts.inter(
+                                  color: const Color(0xFF8B9AB2),
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                       ],

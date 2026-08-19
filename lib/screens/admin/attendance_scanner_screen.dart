@@ -230,7 +230,7 @@ class _AttendanceScannerScreenState extends State<AttendanceScannerScreen>
                           Text('${s.subjectCode} — ${s.subjectTitle}',
                             style: GoogleFonts.inter(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600),
                             overflow: TextOverflow.ellipsis),
-                          Text('${s.scheduleDay} ${s.scheduleStartTime} • ${s.room}',
+                          Text('${s.scheduleDay} ${s.formattedStartTime} • ${s.room}',
                             style: GoogleFonts.inter(color: Colors.grey[500], fontSize: 11)),
                         ]),
                       )).toList(),
@@ -493,7 +493,7 @@ class _ScannedTile extends StatelessWidget {
             style: GoogleFonts.inter(color: color, fontSize: 11, fontWeight: FontWeight.w600)),
         ])),
         if (record.scannedAt != null)
-          Text(DateFormat('h:mm a').format(record.scannedAt!),
+          Text(record.formattedScanTime,
             style: GoogleFonts.inter(color: Colors.grey[500], fontSize: 11)),
       ]),
     );

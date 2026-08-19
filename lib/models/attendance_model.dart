@@ -1,3 +1,5 @@
+import 'package:intl/intl.dart';
+
 class AttendanceRecord {
   final String? id;
   final String enrollmentId;
@@ -81,12 +83,58 @@ class AttendanceRecord {
     }
   }
 
+  /// Converts any UTC or local DateTime to Philippine Standard Time (PST/PHT, UTC+8).
+  /// Handles self-healing for legacy records where local time numbers were stored as UTC.
+  static DateTime toPht(DateTime dt, [DateTime? referenceDate]) {
+    // If dt is not UTC and system is already UTC+8, it's already in PHT
+    if (!dt.isUtc && dt.timeZoneOffset.inHours == 8) {
+      return dt;
+    }
+
+    final asUtc = dt.toUtc();
+    final withOffset = asUtc.add(const Duration(hours: 8));
+
+    if (referenceDate != null) {
+      final refDay = DateTime(referenceDate.year, referenceDate.month, referenceDate.day);
+      final utcDay = DateTime(asUtc.year, asUtc.month, asUtc.day);
+      final offsetDay = DateTime(withOffset.year, withOffset.month, withOffset.day);
+
+      // If adding 8 hours shifts to the next day while utcDay was already on referenceDate,
+      // the record was saved with raw local time numbers.
+      if (utcDay.isAtSameMomentAs(refDay) && !offsetDay.isAtSameMomentAs(refDay)) {
+        return DateTime(asUtc.year, asUtc.month, asUtc.day, asUtc.hour, asUtc.minute, asUtc.second);
+      }
+    }
+
+    // If adding 8 hours rolls over past midnight (00:00 - 05:59) from evening (18:00+),
+    // it was already local evening time.
+    if (withOffset.hour < 6 && asUtc.hour >= 18) {
+      return DateTime(asUtc.year, asUtc.month, asUtc.day, asUtc.hour, asUtc.minute, asUtc.second);
+    }
+
+    return DateTime(withOffset.year, withOffset.month, withOffset.day, withOffset.hour, withOffset.minute, withOffset.second);
+  }
+
+  /// Formatted scan time in 12-hour Philippine Time (e.g. "06:18 PM").
+  String get formattedScanTime {
+    if (scannedAt == null) return '—';
+    final pht = toPht(scannedAt!, date);
+    return DateFormat('hh:mm a').format(pht);
+  }
+
+  /// Formatted scan time with seconds (e.g. "06:18:23 PM").
+  String get formattedScanTimeWithSeconds {
+    if (scannedAt == null) return '—';
+    final pht = toPht(scannedAt!, date);
+    return DateFormat('hh:mm:ss a').format(pht);
+  }
+
   Map<String, dynamic> toSupabase() {
     return {
       'enrollment_id': enrollmentId,
       'date': date.toIso8601String().split('T').first,
       'status': status,
-      'scanned_at': scannedAt?.toIso8601String(),
+      'scanned_at': scannedAt?.toUtc().toIso8601String(),
       'minutes_late': minutesLate,
       'remarks': remarks,
     };

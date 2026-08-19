@@ -128,6 +128,28 @@ class Subject {
     return slots.map((s) => s.formatted).join(' | ');
   }
 
+  /// Clean 12-hour format time range for the subject, e.g. "06:00 PM - 07:30 PM".
+  String get formattedTimeRange {
+    final slots = scheduleSlots;
+    if (slots.isEmpty) {
+      if (scheduleStartTime.isEmpty) return '';
+      return '$formattedStartTime - $formattedEndTime';
+    }
+    if (slots.length == 1) {
+      return '${slots.first.formattedStartTime} - ${slots.first.formattedEndTime}';
+    }
+    final firstStart = slots.first.formattedStartTime;
+    final firstEnd = slots.first.formattedEndTime;
+    final allSame = slots.every(
+        (s) => s.formattedStartTime == firstStart && s.formattedEndTime == firstEnd);
+    if (allSame) {
+      return '$firstStart - $firstEnd';
+    }
+    return slots
+        .map((s) => '${s.day}: ${s.formattedStartTime} - ${s.formattedEndTime}')
+        .join(', ');
+  }
+
   Map<String, dynamic> toSupabase() {
     return {
       'subject_code': subjectCode,

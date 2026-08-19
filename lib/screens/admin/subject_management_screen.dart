@@ -219,7 +219,7 @@ class _SubjectCardState extends State<_SubjectCard> {
 
             // Info chips
             Wrap(spacing: 10, runSpacing: 6, children: [
-              _chip(Icons.schedule_rounded, '${s.scheduleDay} • ${s.scheduleStartTime}–${s.scheduleEndTime}'),
+              _chip(Icons.schedule_rounded, '${s.scheduleDay} • ${s.formattedStartTime}–${s.formattedEndTime}'),
               _chip(Icons.room_rounded, s.room),
               _chip(Icons.timer_outlined, '${s.lateThresholdMinutes}min grace'),
               _chip(Icons.people_rounded, _loadedEnrollments ? '${_enrollments.length} enrolled' : '...'),
@@ -254,7 +254,7 @@ class _SubjectCardState extends State<_SubjectCard> {
             ),
             const SizedBox(height: 10),
             Text(s.subjectTitle, style: GoogleFonts.inter(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w800), textAlign: TextAlign.center),
-            Text('${s.scheduleDay} ${s.scheduleStartTime}–${s.scheduleEndTime} • ${s.room}',
+            Text('${s.scheduleDay} ${s.formattedStartTime}–${s.formattedEndTime} • ${s.room}',
               style: GoogleFonts.inter(color: Colors.grey[500], fontSize: 11)),
             const SizedBox(height: 20),
             Container(

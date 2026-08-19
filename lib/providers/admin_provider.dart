@@ -616,8 +616,20 @@ class AdminProvider extends ChangeNotifier {
     try {
       final all = await _service.getModules();
       if (_currentInstructor != null && !_isSuperAdmin) {
-        final allowedCodes = _subjects.map((s) => s.subjectCode).toSet();
-        _modules = all.where((m) => allowedCodes.contains(m.subject)).toList();
+        final allowedCodes =
+            _subjects.map((s) => s.subjectCode.toLowerCase().trim()).toSet();
+        final allowedTitles =
+            _subjects.map((s) => s.subjectTitle.toLowerCase().trim()).toSet();
+        _modules = all.where((m) {
+          final subj = m.subject.toLowerCase().trim();
+          if (allowedCodes.contains(subj) || allowedTitles.contains(subj)) {
+            return true;
+          }
+          return allowedCodes
+                  .any((code) => code.isNotEmpty && subj.contains(code)) ||
+              allowedTitles
+                  .any((title) => title.isNotEmpty && subj.contains(title));
+        }).toList();
       } else {
         _modules = all;
       }
@@ -1122,6 +1134,39 @@ class AdminProvider extends ChangeNotifier {
       notifyListeners();
     } catch (e) {
       debugPrint('Remove grade item error: $e');
+      rethrow;
+    }
+  }
+
+  Future<void> deleteGradeItemColumnForTerm({
+    required String term,
+    required String category,
+    required String label,
+  }) async {
+    try {
+      final gradeIds = _subjectGrades
+          .where((g) => g.term == term && g.id != null)
+          .map((g) => g.id!)
+          .toList();
+      if (gradeIds.isEmpty) return;
+
+      await _service.deleteGradeItemsByLabelAndCategory(
+        gradeIds: gradeIds,
+        category: category,
+        label: label,
+      );
+
+      for (final gid in gradeIds) {
+        _gradeItems[gid]
+            ?.removeWhere((i) => i.category == category && i.label == label);
+      }
+
+      if (_gradesSubjectId != null) {
+        await loadSubjectGrades(_gradesSubjectId!);
+      }
+      notifyListeners();
+    } catch (e) {
+      debugPrint('Delete grade item column error: $e');
       rethrow;
     }
   }

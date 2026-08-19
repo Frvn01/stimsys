@@ -132,7 +132,7 @@ class _WebPortalScreenState extends State<WebPortalScreen> {
                             children: [
                               Text(s.subjectTitle, style: GoogleFonts.inter(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w700)),
                               const SizedBox(height: 4),
-                              Text('${s.subjectCode} • ${s.scheduleDay} ${s.scheduleStartTime}-${s.scheduleEndTime}',
+                              Text('${s.subjectCode} • ${s.scheduleDay} ${s.formattedStartTime}-${s.formattedEndTime}',
                                   style: GoogleFonts.inter(color: Colors.grey[400], fontSize: 14)),
                             ],
                           ),

@@ -347,7 +347,7 @@ class _RecordTile extends StatelessWidget {
 
     final dateStr = DateFormat('EEE, MMM d yyyy').format(dayRecord.date);
     final timeStr = rec?.scannedAt != null
-        ? DateFormat('hh:mm:ss a').format(rec!.scannedAt!.toLocal())
+        ? rec!.formattedScanTimeWithSeconds
         : null;
 
     String getLabel(String s) {

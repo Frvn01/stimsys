@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'dart:ui';
 import 'dart:io';
@@ -501,28 +502,29 @@ class _ProfilePageState extends State<ProfilePage> {
                   ),
                 ],
               ),
-              Row(
-                children: [
-                  if (_isEditing)
-                    IconButton(
-                      onPressed: _cancelEdit,
-                      icon: const Icon(Icons.close_rounded, size: 20),
-                      color: const Color(0xFFEF4444),
-                      tooltip: 'Cancel',
-                    ),
-                  GestureDetector(
-                    onTap: _isSaving ? null : _toggleEdit,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                      decoration: BoxDecoration(
-                        color: _isEditing
-                            ? const Color(0xFF6366F1)
-                            : (isDark ? const Color(0xFF334155) : const Color(0xFFF1F5F9)),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                          color: _isEditing ? const Color(0xFF6366F1) : borderColor,
-                        ),
+              if (!kIsWeb)
+                Row(
+                  children: [
+                    if (_isEditing)
+                      IconButton(
+                        onPressed: _cancelEdit,
+                        icon: const Icon(Icons.close_rounded, size: 20),
+                        color: const Color(0xFFEF4444),
+                        tooltip: 'Cancel',
                       ),
+                    GestureDetector(
+                      onTap: _isSaving ? null : _toggleEdit,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: _isEditing
+                              ? const Color(0xFF6366F1)
+                              : (isDark ? const Color(0xFF334155) : const Color(0xFFF1F5F9)),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: _isEditing ? const Color(0xFF6366F1) : borderColor,
+                          ),
+                        ),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [

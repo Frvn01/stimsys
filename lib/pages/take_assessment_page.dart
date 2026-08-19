@@ -149,7 +149,8 @@ class _TakeAssessmentPageState extends State<TakeAssessmentPage> with WidgetsBin
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.paused) {
+    // paused or hidden triggers when switching tabs on mobile or web
+    if (state == AppLifecycleState.paused || state == AppLifecycleState.hidden) {
       if (_sessionVerified && !_submitting && _secondsLeft > 0 && !_isInvalidated) {
         _leaveCount++;
         if (_leaveCount >= 3) {
@@ -160,7 +161,7 @@ class _TakeAssessmentPageState extends State<TakeAssessmentPage> with WidgetsBin
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
-                content: Text('Warning: Do not leave the app. -5 pts deduction! ($_leaveCount/3)', 
+                content: Text('Warning: Do not leave the exam tab. -5 pts deduction! ($_leaveCount/3)', 
                   style: GoogleFonts.inter(fontWeight: FontWeight.w700)),
                 backgroundColor: Colors.red,
                 duration: const Duration(seconds: 4),

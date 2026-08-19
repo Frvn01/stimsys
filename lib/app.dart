@@ -41,12 +41,21 @@ class _MyAppState extends State<MyApp> {
           debugShowCheckedModeBanner: false,
           theme: _buildLightTheme(),
           darkTheme: _buildDarkTheme(),
+          builder: (context, child) {
+            if (kIsWeb && child != null) {
+              return Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 600),
+                  child: child,
+                ),
+              );
+            }
+            return child!;
+          },
           themeMode: _themeProvider.isDarkMode ? ThemeMode.dark : ThemeMode.light,
-          home: kIsWeb
-              ? const WebPortalScreen()
-              : _isDesktop
-                  ? const DesktopAdminLoginScreen()
-                  : SplashScreen(themeProvider: _themeProvider),
+          home: _isDesktop
+              ? const DesktopAdminLoginScreen()
+              : SplashScreen(themeProvider: _themeProvider),
         );
       },
     );

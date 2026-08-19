@@ -847,7 +847,7 @@ class SupabaseService {
         'enrollment_id': enrollmentId,
         'date': today.toIso8601String().split('T').first,
         'status': status,
-        'scanned_at': now.toIso8601String(),
+        'scanned_at': now.toUtc().toIso8601String(),
         'minutes_late': minutesLate,
         'remarks': remarks,
       };
@@ -2260,6 +2260,29 @@ class SupabaseService {
       await _client.from('student_grade_items').delete().eq('id', id);
     } catch (e) {
       debugPrint('Delete grade item error: $e');
+      rethrow;
+    }
+  }
+
+  Future<void> deleteGradeItemsByLabelAndCategory({
+    required List<String> gradeIds,
+    required String category,
+    required String label,
+  }) async {
+    try {
+      if (gradeIds.isEmpty) return;
+      await _client
+          .from('student_grade_items')
+          .delete()
+          .inFilter('grade_id', gradeIds)
+          .eq('category', category)
+          .eq('label', label);
+
+      for (final gid in gradeIds) {
+        await recalculateGradeTotals(gid);
+      }
+    } catch (e) {
+      debugPrint('Delete grade items by label and category error: $e');
       rethrow;
     }
   }
