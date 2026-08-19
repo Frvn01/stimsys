@@ -1058,6 +1058,117 @@ class _ProfilePageState extends State<ProfilePage> {
           ],
           const SizedBox(height: 24),
 
+          // ── About Stimsys Button ──────────────────────────────────────────
+          SizedBox(
+            width: double.infinity,
+            height: 48,
+            child: OutlinedButton.icon(
+              onPressed: () {
+                showDialog(
+                  context: context,
+                  builder: (BuildContext context) {
+                    return AlertDialog(
+                      backgroundColor: isDark ? const Color(0xFF1E1E2C) : Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      title: Row(
+                        children: [
+                          const Icon(Icons.info_outline_rounded, color: Color(0xFF6366F1)),
+                          const SizedBox(width: 10),
+                          Text(
+                            'About Stimsys',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: isDark ? Colors.white : Colors.black87,
+                            ),
+                          ),
+                        ],
+                      ),
+                      content: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Version 1.4',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w600,
+                              color: Color(0xFF6366F1),
+                              fontSize: 16,
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          Text(
+                            'Welcome to Stimsys! A beautifully crafted, seamless, and highly efficient system designed to provide the best user experience.',
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: isDark ? Colors.grey[300] : Colors.grey[700],
+                              height: 1.4,
+                            ),
+                          ),
+                          const SizedBox(height: 20),
+                          Text(
+                            'Core Developers:',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 14,
+                              color: isDark ? Colors.white : Colors.black87,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            '• Raven Ulrich A. Fabre (krepsusenpai)',
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: isDark ? Colors.grey[400] : Colors.grey[600],
+                              height: 1.5,
+                            ),
+                          ),
+                          Text(
+                            '• Rens Joshua Cardaña (rensusama) - Collaborator',
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: isDark ? Colors.grey[400] : Colors.grey[600],
+                              height: 1.5,
+                            ),
+                          ),
+                        ],
+                      ),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.of(context).pop(),
+                          child: const Text(
+                            'Close',
+                            style: TextStyle(
+                              color: Color(0xFF6366F1),
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ],
+                    );
+                  },
+                );
+              },
+              icon: const Icon(Icons.info_outline_rounded, size: 18),
+              label: const Text(
+                'About Stimsys',
+                style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+              ),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: const Color(0xFF6366F1),
+                side: BorderSide(
+                  color: const Color(0xFF6366F1).withValues(alpha: 0.3),
+                ),
+                backgroundColor: const Color(0xFF6366F1).withValues(alpha: 0.05),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+
           // ── Minimalist Logout Button ──────────────────────────────────────
           SizedBox(
             width: double.infinity,
