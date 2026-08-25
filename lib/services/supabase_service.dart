@@ -698,7 +698,9 @@ class SupabaseService {
           .select('*, students(*)')
           .eq('subject_id', subjectId);
 
-      return (response as List).map((e) => Enrollment.fromSupabase(e)).toList();
+      final list = (response as List).map((e) => Enrollment.fromSupabase(e)).toList();
+      list.sort((a, b) => (a.student?.lastName ?? '').compareTo(b.student?.lastName ?? ''));
+      return list;
     } catch (e) {
       debugPrint('Get subject enrollments error: $e');
       return [];
@@ -710,6 +712,19 @@ class SupabaseService {
       await _client.from('enrollments').delete().eq('id', enrollmentId);
     } catch (e) {
       debugPrint('Unenroll error: $e');
+      rethrow;
+    }
+  }
+
+  Future<void> unenrollStudentBySubjectAndStudentId(String subjectId, String studentId) async {
+    try {
+      await _client
+          .from('enrollments')
+          .delete()
+          .eq('subject_id', subjectId)
+          .eq('student_id', studentId);
+    } catch (e) {
+      debugPrint('Unenroll by subject and student error: $e');
       rethrow;
     }
   }

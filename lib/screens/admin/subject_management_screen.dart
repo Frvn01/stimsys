@@ -222,11 +222,174 @@ class _SubjectCardState extends State<_SubjectCard> {
               _chip(Icons.schedule_rounded, '${s.scheduleDay} • ${s.formattedStartTime}–${s.formattedEndTime}'),
               _chip(Icons.room_rounded, s.room),
               _chip(Icons.timer_outlined, '${s.lateThresholdMinutes}min grace'),
-              _chip(Icons.people_rounded, _loadedEnrollments ? '${_enrollments.length} enrolled' : '...'),
+              GestureDetector(
+                onTap: () => _showEnrolledStudentsSheet(context, s),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF6366F1).withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(color: const Color(0xFF6366F1).withValues(alpha: 0.2)),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.people_rounded, size: 13, color: Color(0xFF818CF8)),
+                      const SizedBox(width: 4),
+                      Text(
+                        _loadedEnrollments ? '${_enrollments.length} enrolled' : '...',
+                        style: GoogleFonts.inter(color: const Color(0xFF818CF8), fontSize: 11, fontWeight: FontWeight.w600),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
             ]),
           ]),
         ),
       ]),
+    );
+  }
+
+  void _showEnrolledStudentsSheet(BuildContext context, Subject s) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (context, setSheetState) {
+            return Container(
+              constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.75),
+              padding: const EdgeInsets.all(20),
+              decoration: const BoxDecoration(
+                color: Color(0xFF111633),
+                borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: Colors.grey.withValues(alpha: 0.3),
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Enrolled Students',
+                              style: GoogleFonts.inter(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w800),
+                            ),
+                            Text(
+                              '${s.subjectCode} • ${s.subjectTitle}',
+                              style: GoogleFonts.inter(color: Colors.grey[400], fontSize: 12),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF10B981).withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          '${_enrollments.length} students',
+                          style: GoogleFonts.inter(color: const Color(0xFF10B981), fontSize: 12, fontWeight: FontWeight.w700),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  Flexible(
+                    child: _enrollments.isEmpty
+                        ? Center(
+                            child: Padding(
+                              padding: const EdgeInsets.all(32),
+                              child: Text(
+                                'No students enrolled yet',
+                                style: GoogleFonts.inter(color: Colors.grey[500]),
+                              ),
+                            ),
+                          )
+                        : ListView.separated(
+                            shrinkWrap: true,
+                            itemCount: _enrollments.length,
+                            separatorBuilder: (_, __) => Divider(color: Colors.white.withValues(alpha: 0.05)),
+                            itemBuilder: (context, i) {
+                              final e = _enrollments[i];
+                              final student = e.student;
+                              final studentName = student?.fullName ?? 'Unknown Student';
+                              final usn = student?.usn ?? '';
+
+                              return ListTile(
+                                contentPadding: EdgeInsets.zero,
+                                leading: CircleAvatar(
+                                  backgroundColor: const Color(0xFF6366F1).withValues(alpha: 0.2),
+                                  child: Text(
+                                    studentName.isNotEmpty ? studentName[0].toUpperCase() : '?',
+                                    style: const TextStyle(color: Color(0xFF818CF8), fontWeight: FontWeight.bold),
+                                  ),
+                                ),
+                                title: Text(studentName, style: GoogleFonts.inter(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 14)),
+                                subtitle: Text('$usn • ${student?.course ?? ""} ${student?.yearSection ?? ""}', style: GoogleFonts.inter(color: Colors.grey[400], fontSize: 12)),
+                                trailing: IconButton(
+                                  icon: const Icon(Icons.person_remove_rounded, color: Color(0xFFEF4444), size: 20),
+                                  tooltip: 'Unenroll Student',
+                                  onPressed: () async {
+                                    final confirm = await showDialog<bool>(
+                                      context: context,
+                                      builder: (c) => AlertDialog(
+                                        backgroundColor: const Color(0xFF1E293B),
+                                        title: const Text('Unenroll Student', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                                        content: Text('Are you sure you want to unenroll $studentName ($usn) from ${s.subjectCode}?', style: const TextStyle(color: Colors.white70)),
+                                        actions: [
+                                          TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Cancel')),
+                                          ElevatedButton(
+                                            onPressed: () => Navigator.pop(c, true),
+                                            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFEF4444)),
+                                            child: const Text('Unenroll', style: TextStyle(color: Colors.white)),
+                                          ),
+                                        ],
+                                      ),
+                                    );
+                                    if (confirm == true && mounted) {
+                                      if (e.id != null) {
+                                        await context.read<AdminProvider>().unenrollStudent(e.id!);
+                                      } else if (student?.id != null) {
+                                        await context.read<AdminProvider>().unenrollStudentBySubjectAndStudentId(subjectId: s.id!, studentId: student!.id!);
+                                      }
+                                      await _loadEnrollments();
+                                      setSheetState(() {});
+                                      if (mounted) {
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          SnackBar(content: Text('Unenrolled $studentName'), backgroundColor: const Color(0xFF10B981)),
+                                        );
+                                      }
+                                    }
+                                  },
+                                ),
+                              );
+                            },
+                          ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
     );
   }
 

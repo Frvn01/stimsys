@@ -1,4 +1,5 @@
 import 'subject_model.dart';
+import 'student_model.dart';
 
 class Enrollment {
   final String? id;
@@ -8,6 +9,8 @@ class Enrollment {
 
   // Nested subject data (from join)
   final Subject? subject;
+  // Nested student data (from join)
+  final Student? student;
 
   Enrollment({
     this.id,
@@ -15,6 +18,7 @@ class Enrollment {
     required this.subjectId,
     this.enrolledAt,
     this.subject,
+    this.student,
   });
 
   // Convenience getters delegating to nested Subject
@@ -40,6 +44,9 @@ class Enrollment {
           : null,
       subject: map['subjects'] != null
           ? Subject.fromSupabase(map['subjects'])
+          : null,
+      student: map['students'] != null
+          ? Student.fromSupabase(map['students'])
           : null,
     );
   }

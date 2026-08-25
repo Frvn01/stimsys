@@ -9,6 +9,7 @@ import 'package:qr_flutter/qr_flutter.dart';
 import '../../providers/admin_provider.dart';
 import '../../models/subject_model.dart';
 import '../../models/student_model.dart';
+import '../../models/enrollment_model.dart';
 import '../../models/grading_config_model.dart';
 import '../../services/supabase_service.dart';
 
@@ -1967,30 +1968,127 @@ class _EnrolledStudentsDialog extends StatefulWidget {
 }
 
 class _EnrolledStudentsDialogState extends State<_EnrolledStudentsDialog> {
-  List<Student> _students = [];
+  List<Enrollment> _enrollments = [];
   bool _loading = true;
+  String? _deletingId;
 
   static const _surface = Color(0xFF1E293B);
   static const _border = Color(0xFF2D3B52);
   static const _accent = Color(0xFF6366F1);
   static const _green = Color(0xFF10B981);
+  static const _red = Color(0xFFEF4444);
 
   @override
   void initState() {
     super.initState();
-    _loadStudents();
+    _loadEnrollments();
   }
 
-  Future<void> _loadStudents() async {
+  Future<void> _loadEnrollments() async {
     setState(() => _loading = true);
     try {
       final service = SupabaseService();
-      final response = await service.getStudentsForSubject(widget.subject.id!);
-      if (mounted) setState(() => _students = response);
+      final response = await service.getSubjectEnrollments(widget.subject.id!);
+      if (mounted) setState(() => _enrollments = response);
     } catch (e) {
       debugPrint('Load enrolled students error: $e');
     }
     if (mounted) setState(() => _loading = false);
+  }
+
+  Future<void> _unenrollStudent(Enrollment enrollment) async {
+    final student = enrollment.student;
+    final studentName = student?.fullName ?? 'this student';
+    final usn = student?.usn ?? '';
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1E293B),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: const BorderSide(color: Color(0xFF334155)),
+        ),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: _red.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Icon(Icons.person_remove_rounded, color: _red, size: 20),
+            ),
+            const SizedBox(width: 10),
+            Text(
+              'Unenroll Student',
+              style: GoogleFonts.inter(
+                color: Colors.white,
+                fontWeight: FontWeight.w700,
+                fontSize: 16,
+              ),
+            ),
+          ],
+        ),
+        content: Text(
+          'Are you sure you want to unenroll $studentName${usn.isNotEmpty ? " ($usn)" : ""} from ${widget.subject.subjectCode} - ${widget.subject.subjectTitle}?\n\nThis will remove their enrollment and grade access for this subject.',
+          style: GoogleFonts.inter(color: Colors.grey[300], fontSize: 13, height: 1.5),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text('Cancel', style: GoogleFonts.inter(color: Colors.grey[400])),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: _red,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+            child: Text('Unenroll', style: GoogleFonts.inter(fontWeight: FontWeight.w700)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true || !mounted) return;
+
+    setState(() => _deletingId = enrollment.id ?? student?.id);
+    try {
+      final provider = context.read<AdminProvider>();
+      if (enrollment.id != null && enrollment.id!.isNotEmpty) {
+        await provider.unenrollStudent(enrollment.id!);
+      } else if (student?.id != null) {
+        await provider.unenrollStudentBySubjectAndStudentId(
+          subjectId: widget.subject.id!,
+          studentId: student!.id!,
+        );
+      }
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Successfully unenrolled $studentName from ${widget.subject.subjectCode}'),
+            backgroundColor: _green,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+        await _loadEnrollments();
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to unenroll student: $e'),
+            backgroundColor: _red,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _deletingId = null);
+    }
   }
 
   @override
@@ -1998,8 +2096,8 @@ class _EnrolledStudentsDialogState extends State<_EnrolledStudentsDialog> {
     return Dialog(
       backgroundColor: Colors.transparent,
       child: Container(
-        width: 520,
-        constraints: const BoxConstraints(maxHeight: 560),
+        width: 620,
+        constraints: const BoxConstraints(maxHeight: 580),
         padding: const EdgeInsets.all(24),
         decoration: BoxDecoration(
           color: _surface,
@@ -2050,7 +2148,7 @@ class _EnrolledStudentsDialogState extends State<_EnrolledStudentsDialog> {
                     border: Border.all(color: _green.withValues(alpha: 0.25)),
                   ),
                   child: Text(
-                    '${_students.length} students',
+                    '${_enrollments.length} enrolled',
                     style: GoogleFonts.inter(
                       color: _green,
                       fontSize: 12,
@@ -2077,9 +2175,10 @@ class _EnrolledStudentsDialogState extends State<_EnrolledStudentsDialog> {
               ),
               child: Row(
                 children: [
-                  Expanded(flex: 3, child: Text('Student', style: _thStyle)),
-                  Expanded(flex: 2, child: Text('USN', style: _thStyle)),
-                  Expanded(flex: 2, child: Text('Course / Section', style: _thStyle)),
+                  Expanded(flex: 4, child: Text('Student', style: _thStyle)),
+                  Expanded(flex: 3, child: Text('USN', style: _thStyle)),
+                  Expanded(flex: 3, child: Text('Course / Section', style: _thStyle)),
+                  SizedBox(width: 60, child: Text('Action', style: _thStyle, textAlign: TextAlign.center)),
                 ],
               ),
             ),
@@ -2093,7 +2192,7 @@ class _EnrolledStudentsDialogState extends State<_EnrolledStudentsDialog> {
                         child: CircularProgressIndicator(color: _accent),
                       ),
                     )
-                  : _students.isEmpty
+                  : _enrollments.isEmpty
                       ? Center(
                           child: Padding(
                             padding: const EdgeInsets.all(32),
@@ -2124,17 +2223,21 @@ class _EnrolledStudentsDialogState extends State<_EnrolledStudentsDialog> {
                             borderRadius: const BorderRadius.vertical(bottom: Radius.circular(10)),
                             child: ListView.separated(
                               shrinkWrap: true,
-                              itemCount: _students.length,
+                              itemCount: _enrollments.length,
                               separatorBuilder: (_, __) => Divider(height: 1, color: _border),
                               itemBuilder: (_, i) {
-                                final s = _students[i];
+                                final enrollment = _enrollments[i];
+                                final s = enrollment.student;
+                                final isItemDeleting = _deletingId != null &&
+                                    (_deletingId == enrollment.id || _deletingId == s?.id);
+
                                 return Container(
                                   padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                                   color: _surface,
                                   child: Row(
                                     children: [
                                       Expanded(
-                                        flex: 3,
+                                        flex: 4,
                                         child: Row(
                                           children: [
                                             Container(
@@ -2145,7 +2248,9 @@ class _EnrolledStudentsDialogState extends State<_EnrolledStudentsDialog> {
                                               ),
                                               child: Center(
                                                 child: Text(
-                                                  s.firstName.isNotEmpty ? s.firstName[0].toUpperCase() : '?',
+                                                  (s != null && s.firstName.isNotEmpty)
+                                                      ? s.firstName[0].toUpperCase()
+                                                      : '?',
                                                   style: GoogleFonts.inter(
                                                     color: _accent,
                                                     fontSize: 13,
@@ -2157,7 +2262,7 @@ class _EnrolledStudentsDialogState extends State<_EnrolledStudentsDialog> {
                                             const SizedBox(width: 10),
                                             Expanded(
                                               child: Text(
-                                                s.fullName,
+                                                s?.fullName ?? 'Unknown Student',
                                                 style: GoogleFonts.inter(
                                                   color: Colors.white,
                                                   fontSize: 13,
@@ -2170,9 +2275,9 @@ class _EnrolledStudentsDialogState extends State<_EnrolledStudentsDialog> {
                                         ),
                                       ),
                                       Expanded(
-                                        flex: 2,
+                                        flex: 3,
                                         child: Text(
-                                          s.usn,
+                                          s?.usn ?? '-',
                                           style: GoogleFonts.robotoMono(
                                             color: Colors.grey[400],
                                             fontSize: 12,
@@ -2180,13 +2285,51 @@ class _EnrolledStudentsDialogState extends State<_EnrolledStudentsDialog> {
                                         ),
                                       ),
                                       Expanded(
-                                        flex: 2,
+                                        flex: 3,
                                         child: Text(
-                                          '${s.course} ${s.yearSection}',
+                                          s != null ? '${s.course} ${s.yearSection}' : '-',
                                           style: GoogleFonts.inter(
                                             color: Colors.grey[400],
                                             fontSize: 12,
                                           ),
+                                        ),
+                                      ),
+                                      SizedBox(
+                                        width: 60,
+                                        child: Center(
+                                          child: isItemDeleting
+                                              ? const SizedBox(
+                                                  width: 16,
+                                                  height: 16,
+                                                  child: CircularProgressIndicator(
+                                                    strokeWidth: 2,
+                                                    color: _red,
+                                                  ),
+                                                )
+                                              : Tooltip(
+                                                  message: 'Unenroll Student',
+                                                  child: Material(
+                                                    color: Colors.transparent,
+                                                    borderRadius: BorderRadius.circular(6),
+                                                    child: InkWell(
+                                                      borderRadius: BorderRadius.circular(6),
+                                                      onTap: () => _unenrollStudent(enrollment),
+                                                      child: Container(
+                                                        padding: const EdgeInsets.all(6),
+                                                        decoration: BoxDecoration(
+                                                          color: _red.withValues(alpha: 0.1),
+                                                          borderRadius: BorderRadius.circular(6),
+                                                          border: Border.all(color: _red.withValues(alpha: 0.25)),
+                                                        ),
+                                                        child: const Icon(
+                                                          Icons.person_remove_rounded,
+                                                          color: _red,
+                                                          size: 15,
+                                                        ),
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ),
                                         ),
                                       ),
                                     ],

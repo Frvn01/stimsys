@@ -203,6 +203,19 @@ class Subject {
           : null,
     );
   }
+
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+    if (other is! Subject) return false;
+    if (id != null && other.id != null) {
+      return id == other.id;
+    }
+    return subjectCode == other.subjectCode;
+  }
+
+  @override
+  int get hashCode => (id ?? subjectCode).hashCode;
 }
 
 class ScheduleSlot {

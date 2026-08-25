@@ -287,7 +287,7 @@ class _State extends State<DesktopAttendanceTrackerScreen> {
                   ),
                   child: DropdownButtonHideUnderline(
                     child: DropdownButton<Subject>(
-                      value: _subj,
+                      value: _subj != null && p.subjects.contains(_subj) ? _subj : null,
                       isExpanded: true,
                       dropdownColor: _sf,
                       iconEnabledColor: const Color(0xFF4B5E78),

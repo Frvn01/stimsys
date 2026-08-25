@@ -166,7 +166,9 @@ class _AttendanceTrackerScreenState extends State<AttendanceTrackerScreen> {
                 ),
                 child: DropdownButtonHideUnderline(
                   child: DropdownButton<Subject>(
-                    value: _selectedSubject,
+                    value: _selectedSubject != null && provider.subjects.contains(_selectedSubject)
+                        ? _selectedSubject
+                        : null,
                     isExpanded: true,
                     dropdownColor: const Color(0xFF1A2140),
                     hint: Text('— Select Subject —', style: GoogleFonts.inter(color: Colors.grey[600], fontSize: 13)),

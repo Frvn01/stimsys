@@ -141,7 +141,9 @@ class _DesktopStudentGradesScreenState extends State<DesktopStudentGradesScreen>
                       ),
                       child: DropdownButtonHideUnderline(
                         child: DropdownButton<Subject>(
-                          value: _selectedSubject,
+                          value: _selectedSubject != null && subjects.contains(_selectedSubject)
+                              ? _selectedSubject
+                              : null,
                           hint: Text(
                             'Select a subject',
                             style: GoogleFonts.inter(

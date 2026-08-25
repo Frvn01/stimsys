@@ -577,29 +577,28 @@ class _ProfilePageState extends State<ProfilePage> {
                   ),
                 ],
               ),
-              if (!kIsWeb)
-                Row(
-                  children: [
-                    if (_isEditing)
-                      IconButton(
-                        onPressed: _cancelEdit,
-                        icon: const Icon(Icons.close_rounded, size: 20),
-                        color: const Color(0xFFEF4444),
-                        tooltip: 'Cancel',
-                      ),
-                    GestureDetector(
-                      onTap: _isSaving ? null : _toggleEdit,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                        decoration: BoxDecoration(
-                          color: _isEditing
-                              ? const Color(0xFF6366F1)
-                              : (isDark ? const Color(0xFF334155) : const Color(0xFFF1F5F9)),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                            color: _isEditing ? const Color(0xFF6366F1) : borderColor,
-                          ),
+              Row(
+                children: [
+                  if (_isEditing)
+                    IconButton(
+                      onPressed: _cancelEdit,
+                      icon: const Icon(Icons.close_rounded, size: 20),
+                      color: const Color(0xFFEF4444),
+                      tooltip: 'Cancel',
+                    ),
+                  GestureDetector(
+                    onTap: _isSaving ? null : _toggleEdit,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: _isEditing
+                            ? const Color(0xFF6366F1)
+                            : (isDark ? const Color(0xFF334155) : const Color(0xFFF1F5F9)),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: _isEditing ? const Color(0xFF6366F1) : borderColor,
                         ),
+                      ),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
@@ -755,7 +754,34 @@ class _ProfilePageState extends State<ProfilePage> {
 
                 // ── Official STIMSYS House Badge Banner ──
                 const SizedBox(height: 14),
-                _buildHouseBannerWidget(_selectedHouse),
+                GestureDetector(
+                  onTap: _showFrameAndTagCustomizer,
+                  child: MouseRegion(
+                    cursor: SystemMouseCursors.click,
+                    child: Stack(
+                      clipBehavior: Clip.none,
+                      children: [
+                        _buildHouseBannerWidget(_selectedHouse),
+                        Positioned(
+                          right: -4,
+                          top: -4,
+                          child: Container(
+                            padding: const EdgeInsets.all(4),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF6366F1),
+                              shape: BoxShape.circle,
+                              border: Border.all(
+                                color: isDark ? const Color(0xFF0F172A) : Colors.white,
+                                width: 2,
+                              ),
+                            ),
+                            child: const Icon(Icons.edit_rounded, size: 10, color: Colors.white),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
 
                 // Discord-style Profile Badges (Raven Privilege)
                 if (student.usn == '23002137800') ...[
@@ -816,19 +842,17 @@ class _ProfilePageState extends State<ProfilePage> {
                   ),
                 ],
 
-                if (_isEditing) ...[
-                  const SizedBox(height: 14),
-                  OutlinedButton.icon(
-                    onPressed: _showFrameAndTagCustomizer,
-                    icon: const Icon(Icons.palette_outlined, size: 16),
-                    label: const Text('Customize Frame & Student Tag', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: const Color(0xFF6366F1),
-                      side: BorderSide(color: const Color(0xFF6366F1).withValues(alpha: 0.3)),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                    ),
+                const SizedBox(height: 14),
+                OutlinedButton.icon(
+                  onPressed: _showFrameAndTagCustomizer,
+                  icon: const Icon(Icons.palette_outlined, size: 16),
+                  label: const Text('Customize House, Frame & Tag', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: const Color(0xFF6366F1),
+                    side: BorderSide(color: const Color(0xFF6366F1).withValues(alpha: 0.3)),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                   ),
-                ],
+                ),
               ],
             ),
           ),
@@ -1723,6 +1747,7 @@ class _ProfilePageState extends State<ProfilePage> {
                             _saveCustomizations(student.usn);
                           }
                           Navigator.pop(context);
+                          _showSnackBar('Profile effects & house badge updated successfully!');
                         },
                         style: ElevatedButton.styleFrom(
                           backgroundColor: const Color(0xFF6366F1),

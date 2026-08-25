@@ -432,8 +432,24 @@ class AdminProvider extends ChangeNotifier {
   Future<void> unenrollStudent(String enrollmentId) async {
     try {
       await _service.unenrollStudent(enrollmentId);
+      await loadSubjects();
+      notifyListeners();
     } catch (e) {
       debugPrint('Unenroll error: $e');
+      rethrow;
+    }
+  }
+
+  Future<void> unenrollStudentBySubjectAndStudentId({
+    required String subjectId,
+    required String studentId,
+  }) async {
+    try {
+      await _service.unenrollStudentBySubjectAndStudentId(subjectId, studentId);
+      await loadSubjects();
+      notifyListeners();
+    } catch (e) {
+      debugPrint('Unenroll by subject & student error: $e');
       rethrow;
     }
   }

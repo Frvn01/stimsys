@@ -99,6 +99,19 @@ class Student {
       createdAt: createdAt ?? this.createdAt,
     );
   }
+
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+    if (other is! Student) return false;
+    if (id != null && other.id != null) {
+      return id == other.id;
+    }
+    return usn == other.usn;
+  }
+
+  @override
+  int get hashCode => (id ?? usn).hashCode;
 }
 
 class StudentConstants {
