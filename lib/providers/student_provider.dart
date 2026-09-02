@@ -14,6 +14,7 @@ import '../models/student_grade_item_model.dart';
 import '../services/supabase_service.dart';
 import '../services/notification_service.dart';
 import '../models/announcement_model.dart';
+import '../models/exam_request_model.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 
@@ -196,9 +197,56 @@ class StudentProvider extends ChangeNotifier {
 
   RealtimeChannel? _assessmentsChannel;
   RealtimeChannel? _announcementsChannel;
+  RealtimeChannel? _modulesChannel;
+
+  void _showInAppNotification({
+    required String title,
+    required String body,
+    required IconData icon,
+    Color color = const Color(0xFF6366F1),
+  }) {
+    if (globalScaffoldMessengerKey.currentState != null) {
+      globalScaffoldMessengerKey.currentState!.clearSnackBars();
+      globalScaffoldMessengerKey.currentState!.showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              Icon(icon, color: Colors.white),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(title,
+                        style: const TextStyle(
+                            fontWeight: FontWeight.bold, color: Colors.white)),
+                    Text(body,
+                        style: const TextStyle(color: Colors.white),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          backgroundColor: color,
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 6),
+          margin: const EdgeInsets.all(16),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ),
+      );
+    }
+  }
+
   void _setupNotifications() {
     _assessmentsChannel?.unsubscribe();
     _announcementsChannel?.unsubscribe();
+    _modulesChannel?.unsubscribe();
+
+    // 1. ASSESSMENTS REALTIME (Session start + New Quizzes/Exams created)
     _assessmentsChannel = _service.client
         .channel('public:assessments_student')
         .onPostgresChanges(
@@ -209,74 +257,101 @@ class StudentProvider extends ChangeNotifier {
             try {
               final newCode = payload.newRecord['session_code'] as String?;
               if (newCode != null && newCode.contains('-')) {
-                 final parts = newCode.split('-');
-                 final setLetter = parts.last;
-                 
-                 // Safely resolve the assessment ID because Supabase realtime payloads vary
-                 final rawId = payload.newRecord['id'] ?? payload.oldRecord['id'];
-                 if (rawId == null) return;
-                 final assessmentId = rawId.toString();
-                 
-                 // Fetch the subject_id because realtime update payloads might only contain changed columns!
-                 final data = await _service.client.from('assessments').select('subject_id').eq('id', assessmentId).single();
-                 final subjectId = data['subject_id'] as String;
-                 
-                 // Check if the student is enrolled in this subject
-                 final isEnrolled = _enrollments.any((e) => e.subjectId == subjectId);
-                 if (isEnrolled && _currentStudent != null) {
-                   // Calculate the student's deterministic set for this assessment
-                   final hash = (assessmentId + _currentStudent!.usn).hashCode;
-                   final myAssignedSet = hash % 2 == 0 ? 'A' : 'B';
-                   
-                   debugPrint('Notification Triggered: Set $setLetter started. My deterministic set is $myAssignedSet.');
+                final parts = newCode.split('-');
+                final setLetter = parts.last;
 
-                   // ONLY notify the student if they actually belong to the Set that just started!
-                   if (setLetter == myAssignedSet) {
-                     NotificationService().showNotification(
-                       id: assessmentId.hashCode,
-                       title: 'Exam Set $setLetter Started!',
-                       body: 'Your Exam Set is now active! Please proceed to the room to start.',
-                     );
+                final rawId = payload.newRecord['id'] ?? payload.oldRecord['id'];
+                if (rawId == null) return;
+                final assessmentId = rawId.toString();
 
-                     // Also show an in-app SnackBar for users testing on Windows/Web
-                     if (globalScaffoldMessengerKey.currentState != null) {
-                       globalScaffoldMessengerKey.currentState!.clearSnackBars();
-                       globalScaffoldMessengerKey.currentState!.showSnackBar(
-                         SnackBar(
-                           content: Row(
-                             children: [
-                               const Icon(Icons.notifications_active_rounded, color: Colors.white),
-                               const SizedBox(width: 12),
-                               Expanded(
-                                 child: Column(
-                                   crossAxisAlignment: CrossAxisAlignment.start,
-                                   mainAxisSize: MainAxisSize.min,
-                                   children: [
-                                     Text('Your Exam Set ($setLetter) Started!', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
-                                     const Text('Please proceed to the room and scan the QR to start.', style: TextStyle(color: Colors.white)),
-                                   ],
-                                 ),
-                               ),
-                             ],
-                           ),
-                           backgroundColor: const Color(0xFF6366F1), // Accent color
-                           behavior: SnackBarBehavior.floating,
-                           duration: const Duration(seconds: 6),
-                           margin: const EdgeInsets.all(16),
-                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                         ),
-                       );
-                     }
-                   }
-                 }
+                final data = await _service.client
+                    .from('assessments')
+                    .select('subject_id')
+                    .eq('id', assessmentId)
+                    .single();
+                final subjectId = data['subject_id'] as String;
+
+                final isEnrolled =
+                    _enrollments.any((e) => e.subjectId == subjectId);
+                if (isEnrolled && _currentStudent != null) {
+                  final hash = (assessmentId + _currentStudent!.usn).hashCode;
+                  final myAssignedSet = hash % 2 == 0 ? 'A' : 'B';
+
+                  debugPrint(
+                      'Notification Triggered: Set $setLetter started. My deterministic set is $myAssignedSet.');
+
+                  if (setLetter == myAssignedSet) {
+                    NotificationService().showNotification(
+                      id: assessmentId.hashCode.abs(),
+                      title: 'Exam Set $setLetter Started!',
+                      body:
+                          'Your Exam Set is now active! Please proceed to the room to start.',
+                    );
+
+                    _showInAppNotification(
+                      title: 'Your Exam Set ($setLetter) Started!',
+                      body:
+                          'Please proceed to the room and scan the QR to start.',
+                      icon: Icons.notifications_active_rounded,
+                      color: const Color(0xFF6366F1),
+                    );
+                  }
+                }
               }
             } catch (e) {
-              debugPrint('Error in realtime notification callback: $e');
+              debugPrint('Error in realtime assessment update callback: $e');
+            }
+          },
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.insert,
+          schema: 'public',
+          table: 'assessments',
+          callback: (payload) async {
+            try {
+              final record = payload.newRecord;
+              final subjectId = record['subject_id'] as String?;
+              if (subjectId == null) return;
+
+              final isEnrolled =
+                  _enrollments.any((e) => e.subjectId == subjectId);
+              if (isEnrolled) {
+                final title = record['title'] as String? ?? 'Assessment';
+                final type = record['type'] as String? ?? 'quiz';
+                final isExam = type == 'exam';
+
+                final notifTitle = isExam ? 'New Exam Added!' : 'New Quiz Added!';
+                final notifBody = '$title is now available for your subject.';
+                final rawId = record['id']?.toString() ?? '';
+                final notifId = rawId.isNotEmpty
+                    ? rawId.hashCode.abs()
+                    : DateTime.now().millisecondsSinceEpoch % 100000;
+
+                await NotificationService().showNotification(
+                  id: notifId,
+                  title: notifTitle,
+                  body: notifBody,
+                );
+
+                _showInAppNotification(
+                  title: notifTitle,
+                  body: notifBody,
+                  icon: isExam ? Icons.assignment_rounded : Icons.quiz_rounded,
+                  color: isExam ? const Color(0xFFEF4444) : const Color(0xFF3B82F6),
+                );
+
+                if (_enrollments.isNotEmpty) {
+                  loadAvailableAssessments(subjectId);
+                }
+              }
+            } catch (e) {
+              debugPrint('Error in realtime assessment insert callback: $e');
             }
           },
         )
         .subscribe();
 
+    // 2. ANNOUNCEMENTS REALTIME
     _announcementsChannel = _service.client
         .channel('public:announcements_student')
         .onPostgresChanges(
@@ -289,8 +364,8 @@ class StudentProvider extends ChangeNotifier {
               debugPrint('Announcement realtime payload: $record');
 
               final title = record['title'] as String? ?? 'New Announcement';
-              final desc = record['description'] as String? ?? 'Check the calendar for details.';
-              // Ensure notification ID is always non-negative (Android requirement)
+              final desc = record['description'] as String? ??
+                  'Check the calendar for details.';
               final rawId = record['id']?.toString() ?? '';
               final notifId = rawId.isNotEmpty
                   ? rawId.hashCode.abs()
@@ -301,43 +376,76 @@ class StudentProvider extends ChangeNotifier {
               await NotificationService().showNotification(
                 id: notifId,
                 title: 'Announcement: $title',
-                body: desc.isNotEmpty ? desc : 'Check the calendar for details.',
+                body: desc.isNotEmpty
+                    ? desc
+                    : 'Check the calendar for details.',
               );
 
-              // Show in-app snackbar
-              if (globalScaffoldMessengerKey.currentState != null) {
-                globalScaffoldMessengerKey.currentState!.clearSnackBars();
-                globalScaffoldMessengerKey.currentState!.showSnackBar(
-                  SnackBar(
-                    content: Row(
-                      children: [
-                        const Icon(Icons.campaign_rounded, color: Colors.white),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text('Announcement: $title', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
-                              Text(desc.isNotEmpty ? desc : 'Check the calendar for details.', style: const TextStyle(color: Colors.white), maxLines: 1, overflow: TextOverflow.ellipsis),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                    backgroundColor: const Color(0xFF6366F1),
-                    behavior: SnackBarBehavior.floating,
-                    duration: const Duration(seconds: 6),
-                    margin: const EdgeInsets.all(16),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  ),
-                );
-              }
+              _showInAppNotification(
+                title: 'Announcement: $title',
+                body: desc.isNotEmpty
+                    ? desc
+                    : 'Check the calendar for details.',
+                icon: Icons.campaign_rounded,
+                color: const Color(0xFF6366F1),
+              );
 
-              // Refresh local list
               loadAnnouncements();
             } catch (e) {
               debugPrint('Error in announcement notification callback: $e');
+            }
+          },
+        )
+        .subscribe();
+
+    // 3. LEARNING MODULES REALTIME
+    _modulesChannel = _service.client
+        .channel('public:modules_student')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.insert,
+          schema: 'public',
+          table: 'modules',
+          callback: (payload) async {
+            try {
+              final record = payload.newRecord;
+              final subject = record['subject'] as String?;
+              final title = record['title'] as String? ?? 'New Module';
+
+              // Check if enrolled by subject code or subject title
+              final isEnrolled = _enrollments.any((e) =>
+                  subject == null ||
+                  subject.isEmpty ||
+                  (e.subject?.subjectCode.toLowerCase() ==
+                      subject.toLowerCase()) ||
+                  (e.subject?.subjectTitle.toLowerCase() ==
+                      subject.toLowerCase()));
+
+              if (isEnrolled) {
+                final rawId = record['id']?.toString() ?? '';
+                final notifId = rawId.isNotEmpty
+                    ? rawId.hashCode.abs()
+                    : DateTime.now().millisecondsSinceEpoch % 100000;
+
+                const notifTitle = 'New Learning Module Added!';
+                final notifBody = '$title has been uploaded.';
+
+                await NotificationService().showNotification(
+                  id: notifId,
+                  title: notifTitle,
+                  body: notifBody,
+                );
+
+                _showInAppNotification(
+                  title: notifTitle,
+                  body: notifBody,
+                  icon: Icons.menu_book_rounded,
+                  color: const Color(0xFF10B981),
+                );
+
+                loadModules();
+              }
+            } catch (e) {
+              debugPrint('Error in module notification callback: $e');
             }
           },
         )
@@ -362,6 +470,7 @@ class StudentProvider extends ChangeNotifier {
   Future<void> logout() async {
     _assessmentsChannel?.unsubscribe();
     _announcementsChannel?.unsubscribe();
+    _modulesChannel?.unsubscribe();
     _currentStudent = null;
     _enrollments = [];
     _attendanceRecords = [];
@@ -369,6 +478,7 @@ class StudentProvider extends ChangeNotifier {
     _availableAssessments = [];
     _mySubmissions = [];
     _announcements = [];
+    _myExamRequests = [];
     notifyListeners();
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -674,5 +784,82 @@ class StudentProvider extends ChangeNotifier {
       if (!isTermComplete(subjectId, termOrder[i])) return false;
     }
     return true;
+  }
+
+  // ═══════════════════════════════════════════════════
+  // EXAM REQUESTS (Student Side)
+  // ═══════════════════════════════════════════════════
+
+  List<ExamRequest> _myExamRequests = [];
+  List<ExamRequest> get myExamRequests => _myExamRequests;
+
+  /// Load current student's exam requests
+  Future<void> loadMyExamRequests({String? subjectId}) async {
+    if (_currentStudent?.id == null) return;
+    try {
+      _myExamRequests = await _service.getExamRequestsForStudent(
+        _currentStudent!.id!,
+        subjectId: subjectId,
+      );
+      notifyListeners();
+    } catch (e) {
+      debugPrint('Load my exam requests error: $e');
+    }
+  }
+
+  /// Submit an exam request with optional proctor signature & document image
+  Future<ExamRequest?> submitExamRequest({
+    required String subjectId,
+    String? assessmentId,
+    required String proctorName,
+    required String section,
+    required String course,
+    required String subjectName,
+    Uint8List? signatureBytes,
+    Uint8List? documentBytes,
+  }) async {
+    if (_currentStudent?.id == null) return null;
+    try {
+      String? signatureUrl;
+      String? documentUrl;
+
+      if (signatureBytes != null) {
+        signatureUrl = await _service.uploadExamRequestImage(
+          signatureBytes,
+          'sig_${_currentStudent!.usn}_$subjectId',
+          extension: 'png',
+        );
+      }
+
+      if (documentBytes != null) {
+        documentUrl = await _service.uploadExamRequestImage(
+          documentBytes,
+          'doc_${_currentStudent!.usn}_$subjectId',
+          extension: 'jpg',
+        );
+      }
+
+      final request = ExamRequest(
+        studentId: _currentStudent!.id!,
+        subjectId: subjectId,
+        assessmentId: assessmentId,
+        proctorName: proctorName,
+        section: section,
+        course: course,
+        subjectName: subjectName,
+        proctorSignatureUrl: signatureUrl,
+        documentImageUrl: documentUrl,
+      );
+
+      final created = await _service.createExamRequest(request);
+      if (created != null) {
+        _myExamRequests.insert(0, created);
+        notifyListeners();
+      }
+      return created;
+    } catch (e) {
+      debugPrint('Submit exam request error: $e');
+      rethrow;
+    }
   }
 }

@@ -14,6 +14,7 @@ import '../models/student_grade_model.dart';
 import '../models/assessment_model.dart';
 import '../models/student_grade_item_model.dart';
 import '../models/announcement_model.dart';
+import '../models/exam_request_model.dart';
 import '../services/supabase_service.dart';
 
 class AdminProvider extends ChangeNotifier {
@@ -938,16 +939,52 @@ class AdminProvider extends ChangeNotifier {
     }
   }
 
-  Future<void> publishAssessment(String id, bool publish) async {
+  Future<void> publishAssessment(String id, bool publish, {DateTime? availableUntil}) async {
     try {
-      await _service.publishAssessment(id, publish);
+      await _service.publishAssessment(id, publish, availableUntil: availableUntil);
       final idx = _assessments.indexWhere((a) => a.id == id);
       if (idx >= 0) {
-        _assessments[idx] = _assessments[idx].copyWith(isPublished: publish);
+        _assessments[idx] = _assessments[idx].copyWith(
+          isPublished: publish,
+          publishedAt: publish ? DateTime.now() : null,
+          availableUntil: publish ? availableUntil : null,
+          clearAvailableUntil: !publish,
+        );
         notifyListeners();
       }
     } catch (e) {
       debugPrint('Publish assessment error: $e');
+      rethrow;
+    }
+  }
+
+  Future<List<Subject>> getSubjectsWithSameCode(String subjectId) async {
+    return _service.getSubjectsWithSameCode(subjectId);
+  }
+
+  Future<int> duplicateAssessmentToSubjects(
+    String assessmentId,
+    List<String> targetSubjectIds,
+  ) async {
+    try {
+      final count = await _service.duplicateAssessmentToSubjects(
+        assessmentId,
+        targetSubjectIds,
+      );
+      return count;
+    } catch (e) {
+      debugPrint('Duplicate assessment to subjects error: $e');
+      rethrow;
+    }
+  }
+
+  Future<int> duplicateAssessmentToSameSubjects(String assessmentId) async {
+    try {
+      final count =
+          await _service.duplicateAssessmentToSameSubjects(assessmentId);
+      return count;
+    } catch (e) {
+      debugPrint('Duplicate assessment to same subjects error: $e');
       rethrow;
     }
   }
@@ -1060,10 +1097,34 @@ class AdminProvider extends ChangeNotifier {
 
   Future<void> loadGradeItems(String gradeId) async {
     try {
-      _gradeItems[gradeId] = await _service.getGradeItems(gradeId);
+      final items = await _service.getGradeItems(gradeId);
+      _gradeItems[gradeId] = items;
       notifyListeners();
     } catch (e) {
       debugPrint('Load grade items error: $e');
+    }
+  }
+
+  /// Add bonus / plus points to a student's grade record
+  Future<void> addBonusPoints({
+    required String gradeId,
+    required String label,
+    required double points,
+  }) async {
+    try {
+      await _service.addBonusPoints(
+        gradeId: gradeId,
+        label: label,
+        score: points,
+      );
+      if (_gradesSubjectId != null) {
+        await loadSubjectGrades(_gradesSubjectId!);
+      }
+      await loadGradeItems(gradeId);
+      notifyListeners();
+    } catch (e) {
+      debugPrint('Add bonus points error: $e');
+      rethrow;
     }
   }
 
@@ -1334,6 +1395,33 @@ class AdminProvider extends ChangeNotifier {
       notifyListeners();
     } catch (e) {
       debugPrint('Reject appeal error: $e');
+      rethrow;
+    }
+  }
+
+  // ═══════════════════════════════════════════════════
+  // EXAM REQUESTS
+  // ═══════════════════════════════════════════════════
+
+  List<ExamRequest> _examRequests = [];
+  List<ExamRequest> get examRequests => _examRequests;
+
+  Future<void> loadExamRequests(String subjectId) async {
+    try {
+      _examRequests = await _service.getExamRequestsForSubject(subjectId);
+      notifyListeners();
+    } catch (e) {
+      debugPrint('Load exam requests error: $e');
+    }
+  }
+
+  Future<void> deleteExamRequest(String id, String subjectId) async {
+    try {
+      await _service.deleteExamRequest(id);
+      _examRequests.removeWhere((r) => r.id == id);
+      notifyListeners();
+    } catch (e) {
+      debugPrint('Delete exam request error: $e');
       rethrow;
     }
   }

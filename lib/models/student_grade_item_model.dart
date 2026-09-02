@@ -42,6 +42,7 @@ class StudentGradeItem {
   bool get isQuiz => category == 'quiz';
   bool get isActivity => category == 'activity';
   bool get isExam => category == 'exam';
+  bool get isBonus => category == 'bonus';
   bool get isAutoImported => source == 'assessment_qr' || source == 'auto';
 
   double get percentage => maxScore > 0 ? (score / maxScore) * 100 : 0;

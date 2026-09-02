@@ -1,4 +1,7 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:flutter/gestures.dart';
+import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import '../../providers/admin_provider.dart';
@@ -403,6 +406,7 @@ class _TermGradeSheetState extends State<_TermGradeSheet> {
   bool _itemsLoaded = false;
   bool _loadingItems = false;
 
+  bool _isSyncing = false;
   late final ScrollController _headerHorizontalCtrl;
   late final ScrollController _bodyHorizontalCtrl;
   late final ScrollController _verticalScrollCtrl;
@@ -415,13 +419,65 @@ class _TermGradeSheetState extends State<_TermGradeSheet> {
     _verticalScrollCtrl = ScrollController();
 
     _bodyHorizontalCtrl.addListener(() {
+      if (_isSyncing) return;
       if (_headerHorizontalCtrl.hasClients &&
           _headerHorizontalCtrl.offset != _bodyHorizontalCtrl.offset) {
+        _isSyncing = true;
         _headerHorizontalCtrl.jumpTo(_bodyHorizontalCtrl.offset);
+        _isSyncing = false;
+      }
+    });
+
+    _headerHorizontalCtrl.addListener(() {
+      if (_isSyncing) return;
+      if (_bodyHorizontalCtrl.hasClients &&
+          _bodyHorizontalCtrl.offset != _headerHorizontalCtrl.offset) {
+        _isSyncing = true;
+        _bodyHorizontalCtrl.jumpTo(_headerHorizontalCtrl.offset);
+        _isSyncing = false;
       }
     });
 
     _loadItems();
+  }
+
+  void _scrollHorizontally(double delta) {
+    if (!_bodyHorizontalCtrl.hasClients) return;
+    final target = (_bodyHorizontalCtrl.offset + delta)
+        .clamp(0.0, _bodyHorizontalCtrl.position.maxScrollExtent);
+    _bodyHorizontalCtrl.animateTo(
+      target,
+      duration: const Duration(milliseconds: 250),
+      curve: Curves.easeOutCubic,
+    );
+  }
+
+  void _scrollToCategory(
+    String category,
+    List<({String category, String label})> columns,
+    double itemColW,
+    double subtotalW,
+  ) {
+    if (!_bodyHorizontalCtrl.hasClients) return;
+    double offset = 0;
+    String? lastCat;
+    for (final col in columns) {
+      if (lastCat != null && lastCat != col.category) {
+        offset += subtotalW;
+      }
+      if (col.category == category) {
+        break;
+      }
+      offset += itemColW;
+      lastCat = col.category;
+    }
+    final target =
+        offset.clamp(0.0, _bodyHorizontalCtrl.position.maxScrollExtent);
+    _bodyHorizontalCtrl.animateTo(
+      target,
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeOutCubic,
+    );
   }
 
   @override
@@ -461,6 +517,8 @@ class _TermGradeSheetState extends State<_TermGradeSheet> {
         return _accent;
       case 'activity':
         return _amber;
+      case 'bonus':
+        return _green;
       default:
         return Colors.grey;
     }
@@ -474,6 +532,8 @@ class _TermGradeSheetState extends State<_TermGradeSheet> {
         return 'QZ';
       case 'activity':
         return 'ACT';
+      case 'bonus':
+        return 'PLS';
       default:
         return cat.toUpperCase();
     }
@@ -558,32 +618,112 @@ class _TermGradeSheetState extends State<_TermGradeSheet> {
                 ),
               ),
               const SizedBox(width: 12),
-              // Category legend
+              // Category legend / Jump buttons
               ...hasCatItems.map(
                 (cat) => Padding(
-                  padding: const EdgeInsets.only(right: 10),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Container(
-                        width: 8,
-                        height: 8,
+                  padding: const EdgeInsets.only(right: 6),
+                  child: Tooltip(
+                    message: 'Jump to ${cat.toUpperCase()} columns',
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(4),
+                      onTap: () => _scrollToCategory(
+                        cat,
+                        columns,
+                        itemColW,
+                        subtotalW,
+                      ),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 3,
+                        ),
                         decoration: BoxDecoration(
-                          color: _categoryColor(cat),
-                          borderRadius: BorderRadius.circular(2),
+                          color: _categoryColor(cat).withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(4),
+                          border: Border.all(
+                            color: _categoryColor(cat).withValues(alpha: 0.3),
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Container(
+                              width: 7,
+                              height: 7,
+                              decoration: BoxDecoration(
+                                color: _categoryColor(cat),
+                                borderRadius: BorderRadius.circular(2),
+                              ),
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              cat.toUpperCase(),
+                              style: GoogleFonts.inter(
+                                color: _categoryColor(cat),
+                                fontSize: 9,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
-                      const SizedBox(width: 4),
-                      Text(
-                        cat.toUpperCase(),
-                        style: GoogleFonts.inter(
-                          color: _categoryColor(cat),
-                          fontSize: 9,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ],
+                    ),
                   ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              // Quick horizontal navigation buttons
+              Container(
+                decoration: BoxDecoration(
+                  color: _surface,
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(color: _border),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Tooltip(
+                      message: 'Scroll left (or Shift + Wheel)',
+                      child: InkWell(
+                        borderRadius: const BorderRadius.horizontal(
+                          left: Radius.circular(6),
+                        ),
+                        onTap: () => _scrollHorizontally(-220),
+                        child: const Padding(
+                          padding: EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 3,
+                          ),
+                          child: Icon(
+                            Icons.chevron_left_rounded,
+                            size: 16,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                    ),
+                    Container(width: 1, height: 14, color: _border),
+                    Tooltip(
+                      message: 'Scroll right (or Shift + Wheel)',
+                      child: InkWell(
+                        borderRadius: const BorderRadius.horizontal(
+                          right: Radius.circular(6),
+                        ),
+                        onTap: () => _scrollHorizontally(220),
+                        child: const Padding(
+                          padding: EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 3,
+                          ),
+                          child: Icon(
+                            Icons.chevron_right_rounded,
+                            size: 16,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
               const Spacer(),
@@ -617,153 +757,198 @@ class _TermGradeSheetState extends State<_TermGradeSheet> {
             ),
             child: ClipRRect(
               borderRadius: BorderRadius.circular(10),
-              child: Column(
-                children: [
-                  // ── Pinned Top Header Row ──
-                  Container(
-                    height: 56,
-                    decoration: BoxDecoration(
-                      color: _bg,
-                      border: Border(bottom: BorderSide(color: _border)),
-                    ),
-                    child: Row(
-                      children: [
-                        // Pinned Left Columns Header (#, Student Name, USN)
-                        SizedBox(
-                          width: fixedW,
-                          child: Container(
-                            decoration: BoxDecoration(
-                              border: Border(
-                                right: BorderSide(color: _border, width: 2),
-                              ),
-                            ),
-                            child: Row(
-                              children: [
-                                SizedBox(
-                                  width: numW,
-                                  child: Center(
-                                    child: Text('#', style: _headerStyle()),
-                                  ),
-                                ),
-                                Expanded(
-                                  child: Padding(
-                                    padding: const EdgeInsets.only(left: 10),
-                                    child: Text(
-                                      'Student Name',
-                                      style: _headerStyle(),
-                                    ),
-                                  ),
-                                ),
-                                SizedBox(
-                                  width: usnW,
-                                  child: Padding(
-                                    padding: const EdgeInsets.only(left: 10),
-                                    child: Text('USN', style: _headerStyle()),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
+              child: ScrollConfiguration(
+                behavior: const MaterialScrollBehavior().copyWith(
+                  dragDevices: {
+                    PointerDeviceKind.touch,
+                    PointerDeviceKind.mouse,
+                    PointerDeviceKind.trackpad,
+                    PointerDeviceKind.stylus,
+                  },
+                ),
+                child: Listener(
+                  onPointerSignal: (pointerSignal) {
+                    if (pointerSignal is PointerScrollEvent) {
+                      final dx = pointerSignal.scrollDelta.dx != 0
+                          ? pointerSignal.scrollDelta.dx
+                          : (HardwareKeyboard.instance.isShiftPressed
+                              ? pointerSignal.scrollDelta.dy
+                              : 0.0);
+                      if (dx != 0 && _bodyHorizontalCtrl.hasClients) {
+                        final newOffset = (_bodyHorizontalCtrl.offset + dx)
+                            .clamp(
+                              0.0,
+                              _bodyHorizontalCtrl.position.maxScrollExtent,
+                            );
+                        _bodyHorizontalCtrl.jumpTo(newOffset);
+                      }
+                    }
+                  },
+                  child: Column(
+                    children: [
+                      // ── Pinned Top Header Row ──
+                      Container(
+                        height: 56,
+                        decoration: BoxDecoration(
+                          color: _bg,
+                          border: Border(bottom: BorderSide(color: _border)),
                         ),
-
-                        // Horizontally Scrollable Column Headers
-                        Expanded(
-                          child: SingleChildScrollView(
-                            controller: _headerHorizontalCtrl,
-                            scrollDirection: Axis.horizontal,
-                            physics: const ClampingScrollPhysics(),
-                            child: SizedBox(
-                              width: scrollableW,
-                              child: Row(
-                                children: [
-                                  ..._buildColumnHeaders(
-                                    provider,
-                                    columns,
-                                    hasCatItems,
-                                    itemColW,
-                                    subtotalW,
+                        child: Row(
+                          children: [
+                            // Pinned Left Columns Header (#, Student Name, USN)
+                            SizedBox(
+                              width: fixedW,
+                              child: Container(
+                                decoration: BoxDecoration(
+                                  border: Border(
+                                    right: BorderSide(color: _border, width: 2),
                                   ),
-                                  // Attendance
-                                  _colHeader(
-                                    'Attend\n(score/max)',
-                                    attendW,
-                                    _green,
-                                  ),
-                                  // Grade
-                                  _colHeader('Grade', gradeW, _accent),
-                                  // Actions
-                                  SizedBox(
-                                    width: actionsW,
-                                    child: Center(
-                                      child: Icon(
-                                        Icons.more_horiz_rounded,
-                                        color: Colors.grey[700],
-                                        size: 16,
+                                ),
+                                child: Row(
+                                  children: [
+                                    SizedBox(
+                                      width: numW,
+                                      child: Center(
+                                        child: Text('#', style: _headerStyle()),
                                       ),
                                     ),
-                                  ),
-                                ],
+                                    Expanded(
+                                      child: Padding(
+                                        padding: const EdgeInsets.only(left: 10),
+                                        child: Text(
+                                          'Student Name',
+                                          style: _headerStyle(),
+                                        ),
+                                      ),
+                                    ),
+                                    SizedBox(
+                                      width: usnW,
+                                      child: Padding(
+                                        padding: const EdgeInsets.only(left: 10),
+                                        child: Text('USN', style: _headerStyle()),
+                                      ),
+                                    ),
+                                  ],
+                                ),
                               ),
                             ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
 
-                  // ── Unified Vertical Scroll Body (Names & Grades Locked Together!) ──
-                  Expanded(
-                    child: SingleChildScrollView(
-                      controller: _verticalScrollCtrl,
-                      scrollDirection: Axis.vertical,
-                      physics: const AlwaysScrollableScrollPhysics(),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          // Fixed Columns (#, Student Name, USN)
-                          SizedBox(
-                            width: fixedW,
-                            child: Column(
-                              children: [
-                                for (int i = 0; i < roster.length; i++)
-                                  _buildFixedNameRow(roster[i], i, numW, usnW),
-                              ],
-                            ),
-                          ),
-
-                          // Horizontally Scrollable Grade Matrix
-                          Expanded(
-                            child: SingleChildScrollView(
-                              controller: _bodyHorizontalCtrl,
-                              scrollDirection: Axis.horizontal,
-                              physics: const ClampingScrollPhysics(),
-                              child: SizedBox(
-                                width: scrollableW,
-                                child: Column(
-                                  children: [
-                                    for (int i = 0; i < roster.length; i++)
-                                      _buildDataRow(
-                                        roster[i],
-                                        i,
+                            // Horizontally Scrollable Column Headers
+                            Expanded(
+                              child: SingleChildScrollView(
+                                controller: _headerHorizontalCtrl,
+                                scrollDirection: Axis.horizontal,
+                                physics: const ClampingScrollPhysics(),
+                                child: SizedBox(
+                                  width: scrollableW,
+                                  child: Row(
+                                    children: [
+                                      ..._buildColumnHeaders(
                                         provider,
                                         columns,
                                         hasCatItems,
                                         itemColW,
                                         subtotalW,
-                                        attendW,
-                                        gradeW,
-                                        actionsW,
                                       ),
-                                  ],
+                                      // Attendance
+                                      _colHeader(
+                                        'Attend\n(score/max)',
+                                        attendW,
+                                        _green,
+                                      ),
+                                      // Grade
+                                      _colHeader('Grade', gradeW, _accent),
+                                      // Actions
+                                      SizedBox(
+                                        width: actionsW,
+                                        child: Center(
+                                          child: Icon(
+                                            Icons.more_horiz_rounded,
+                                            color: Colors.grey[700],
+                                            size: 16,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
                                 ),
                               ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
-                    ),
+
+                      // ── Unified Vertical Scroll Body (Names & Grades Locked Together!) ──
+                      Expanded(
+                        child: Scrollbar(
+                          controller: _verticalScrollCtrl,
+                          thumbVisibility: true,
+                          child: SingleChildScrollView(
+                            controller: _verticalScrollCtrl,
+                            scrollDirection: Axis.vertical,
+                            physics: const AlwaysScrollableScrollPhysics(),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                // Fixed Columns (#, Student Name, USN)
+                                SizedBox(
+                                  width: fixedW,
+                                  child: Column(
+                                    children: [
+                                      for (int i = 0; i < roster.length; i++)
+                                        _buildFixedNameRow(
+                                          roster[i],
+                                          i,
+                                          numW,
+                                          usnW,
+                                        ),
+                                    ],
+                                  ),
+                                ),
+
+                                // Horizontally Scrollable Grade Matrix with Horizontal Scrollbar
+                                Expanded(
+                                  child: Scrollbar(
+                                    controller: _bodyHorizontalCtrl,
+                                    thumbVisibility: true,
+                                    trackVisibility: true,
+                                    notificationPredicate: (notif) =>
+                                        notif.metrics.axis == Axis.horizontal,
+                                    child: SingleChildScrollView(
+                                      controller: _bodyHorizontalCtrl,
+                                      scrollDirection: Axis.horizontal,
+                                      physics: const ClampingScrollPhysics(),
+                                      child: SizedBox(
+                                        width: scrollableW,
+                                        child: Column(
+                                          children: [
+                                            for (int i = 0; i < roster.length; i++)
+                                              _buildDataRow(
+                                                roster[i],
+                                                i,
+                                                provider,
+                                                columns,
+                                                hasCatItems,
+                                                itemColW,
+                                                subtotalW,
+                                                attendW,
+                                                gradeW,
+                                                actionsW,
+                                              ),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
-                ],
+                ),
               ),
             ),
           ),
@@ -1524,11 +1709,11 @@ class _TermGradeSheetState extends State<_TermGradeSheet> {
                       ),
                     ),
                     const SizedBox(width: 10),
-                    ...['quiz', 'activity', 'exam'].map(
+                    ...['quiz', 'activity', 'exam', 'bonus'].map(
                       (c) => Padding(
                         padding: const EdgeInsets.only(right: 6),
                         child: ChoiceChip(
-                          label: Text(c.toUpperCase()),
+                          label: Text(c == 'bonus' ? 'PLUS / BONUS' : c.toUpperCase()),
                           selected: category == c,
                           onSelected: (s) => setDlgState(() => category = c),
                           selectedColor: _categoryColor(c),
@@ -2254,13 +2439,17 @@ class _StudentGradeEditorDialogState extends State<_StudentGradeEditorDialog> {
         _items.where((i) => !i.isDeleted && i.category == category).length + 1;
     final catName = category == 'quiz'
         ? 'Quiz'
-        : (category == 'activity' ? 'Activity' : 'Exam');
+        : (category == 'activity'
+            ? 'Activity'
+            : (category == 'bonus' ? 'Plus Points' : 'Exam'));
     final label = defaultLabel ?? '$catName $count';
     final newItem = _EditableItem(
       category: category,
       label: label,
-      score: 0,
-      maxScore: category == 'exam' ? 100 : (category == 'quiz' ? 20 : 100),
+      score: category == 'bonus' ? 5 : 0,
+      maxScore: category == 'bonus'
+          ? 0
+          : (category == 'exam' ? 100 : (category == 'quiz' ? 20 : 100)),
       isNew: true,
     );
     newItem.labelCtrl.addListener(() => setState(() {}));
@@ -2271,7 +2460,10 @@ class _StudentGradeEditorDialogState extends State<_StudentGradeEditorDialog> {
 
   double get totalQuizScore => _items
       .where((i) =>
-          !i.isDeleted && (i.category == 'quiz' || i.category == 'activity'))
+          !i.isDeleted &&
+          (i.category == 'quiz' ||
+              i.category == 'activity' ||
+              i.category == 'bonus'))
       .fold(0.0, (s, i) => s + i.score);
 
   double get totalQuizMax => _items
@@ -2418,7 +2610,9 @@ class _StudentGradeEditorDialogState extends State<_StudentGradeEditorDialog> {
               category: item.category,
               label: labelText,
               score: item.score,
-              maxScore: item.maxScore > 0 ? item.maxScore : 100,
+              maxScore: item.category == 'bonus'
+                  ? 0
+                  : (item.maxScore > 0 ? item.maxScore : 100),
               source: item.source,
             );
             await widget.provider.saveGradeItem(gradeItem);
@@ -2724,6 +2918,15 @@ class _StudentGradeEditorDialogState extends State<_StudentGradeEditorDialog> {
                           title: 'Major Exams',
                           icon: Icons.school_outlined,
                           color: _purple,
+                        ),
+                        const SizedBox(height: 18),
+
+                        // Plus / Bonus Points Section
+                        _buildCategorySection(
+                          category: 'bonus',
+                          title: 'Plus / Bonus Points',
+                          icon: Icons.stars_rounded,
+                          color: _green,
                         ),
                         const SizedBox(height: 18),
 

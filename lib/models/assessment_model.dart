@@ -15,6 +15,8 @@ class AssessmentConfig {
   final int setCount;       // 1 for quiz, 2 for exam (Set A/B)
   final String? sessionCode;
   final String? themeColor; // hex color for student UI
+  final DateTime? publishedAt;
+  final DateTime? availableUntil; // Expiration of submission period
   final DateTime? createdAt;
   final DateTime? updatedAt;
 
@@ -29,12 +31,47 @@ class AssessmentConfig {
     this.setCount = 1,
     this.sessionCode,
     this.themeColor,
+    this.publishedAt,
+    this.availableUntil,
     this.createdAt,
     this.updatedAt,
   });
 
   bool get isExam => type == 'exam';
   bool get isQuiz => type == 'quiz';
+
+  /// Check if the assessment is currently published and within its active submission window
+  bool get isAvailable {
+    if (!isPublished) return false;
+    if (availableUntil != null && DateTime.now().isAfter(availableUntil!)) {
+      return false; // Submission period expired
+    }
+    return true;
+  }
+
+  /// Check if the submission window has expired
+  bool get isExpired {
+    if (!isPublished) return false;
+    if (availableUntil == null) return false;
+    return DateTime.now().isAfter(availableUntil!);
+  }
+
+  /// Human-readable remaining submission window duration
+  String get remainingAvailabilityFormatted {
+    if (!isPublished) return 'Draft';
+    if (availableUntil == null) return 'No time limit';
+    final diff = availableUntil!.difference(DateTime.now());
+    if (diff.isNegative) return 'Expired';
+    if (diff.inDays > 0) {
+      return '${diff.inDays}d ${diff.inHours % 24}h left';
+    } else if (diff.inHours > 0) {
+      return '${diff.inHours}h ${diff.inMinutes % 60}m left';
+    } else if (diff.inMinutes > 0) {
+      return '${diff.inMinutes}m left';
+    } else {
+      return '${diff.inSeconds}s left';
+    }
+  }
 
   Map<String, dynamic> toSupabase() => {
         'subject_id': subjectId,
@@ -46,6 +83,8 @@ class AssessmentConfig {
         'set_count': setCount,
         'session_code': sessionCode,
         'theme_color': themeColor,
+        'published_at': publishedAt?.toIso8601String(),
+        'available_until': availableUntil?.toIso8601String(),
       };
 
   factory AssessmentConfig.fromSupabase(Map<String, dynamic> map) =>
@@ -60,6 +99,12 @@ class AssessmentConfig {
         setCount: map['set_count'] ?? 1,
         sessionCode: map['session_code'],
         themeColor: map['theme_color'],
+        publishedAt: map['published_at'] != null
+            ? DateTime.tryParse(map['published_at'])
+            : null,
+        availableUntil: map['available_until'] != null
+            ? DateTime.tryParse(map['available_until'])
+            : null,
         createdAt: map['created_at'] != null
             ? DateTime.tryParse(map['created_at'])
             : null,
@@ -79,6 +124,9 @@ class AssessmentConfig {
     int? setCount,
     String? sessionCode,
     String? themeColor,
+    DateTime? publishedAt,
+    DateTime? availableUntil,
+    bool clearAvailableUntil = false,
   }) =>
       AssessmentConfig(
         id: id ?? this.id,
@@ -91,6 +139,8 @@ class AssessmentConfig {
         setCount: setCount ?? this.setCount,
         sessionCode: sessionCode ?? this.sessionCode,
         themeColor: themeColor ?? this.themeColor,
+        publishedAt: publishedAt ?? this.publishedAt,
+        availableUntil: clearAvailableUntil ? null : (availableUntil ?? this.availableUntil),
         createdAt: createdAt,
         updatedAt: updatedAt,
       );

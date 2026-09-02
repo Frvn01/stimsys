@@ -166,58 +166,196 @@ class _QuizScreenState extends State<QuizScreen> {
 
   void _showSubmitDialog() {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final unanswered =
-        widget.assessment.questions.length - _answeredCount;
+    final surface = isDark ? const Color(0xFF1E293B) : Colors.white;
+    final textCol = isDark ? Colors.white : const Color(0xFF0F172A);
+    final subCol = isDark ? Colors.grey[400]! : Colors.grey[600]!;
 
+    final unansweredIndices = <int>[];
+    for (int i = 0; i < widget.assessment.questions.length; i++) {
+      if (!_isAnswered(i)) {
+        unansweredIndices.add(i);
+      }
+    }
+    final bool hasUnanswered = unansweredIndices.isNotEmpty;
+
+    int? jumpIndex;
     showDialog(
       context: context,
+      barrierDismissible: false,
       builder: (ctx) => AlertDialog(
-        backgroundColor:
-            isDark ? const Color(0xFF1E293B) : Colors.white,
-        shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16)),
-        title: const Text('Submit Assessment?',
-            style: TextStyle(
-                fontWeight: FontWeight.w700, fontSize: 18)),
-        content: Text(
-          unanswered > 0
-              ? 'You have $unanswered unanswered question${unanswered > 1 ? 's' : ''}. Once submitted, no changes can be made.'
-              : 'All questions answered. Once submitted, no changes can be made.',
-          style: TextStyle(
-              color:
-                  isDark ? Colors.grey[400] : Colors.grey[600],
-              height: 1.6,
-              fontSize: 14),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: Text('Review',
+        backgroundColor: surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: (hasUnanswered ? Colors.amber : const Color(0xFF6366F1)).withValues(alpha: 0.12),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                hasUnanswered ? Icons.warning_amber_rounded : Icons.check_circle_outline_rounded,
+                color: hasUnanswered ? Colors.amber[600] : const Color(0xFF6366F1),
+                size: 24,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                hasUnanswered ? 'Check Your Answers' : 'Submit Assessment',
                 style: TextStyle(
-                    color: isDark
-                        ? Colors.grey[400]
-                        : Colors.grey[600],
-                    fontWeight: FontWeight.w500)),
+                  color: textCol,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 17,
+                ),
+              ),
+            ),
+          ],
+        ),
+        content: SizedBox(
+          width: 440,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Kindly check your answers before submitting.',
+                  style: TextStyle(
+                    color: textCol,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                if (hasUnanswered) ...[
+                  Text(
+                    'You have ${unansweredIndices.length} blank answer${unansweredIndices.length > 1 ? "s" : ""} on the following question number${unansweredIndices.length > 1 ? "s" : ""}:',
+                    style: TextStyle(
+                      color: subCol,
+                      fontSize: 13,
+                      height: 1.4,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: unansweredIndices.map((idx) {
+                      final num = idx + 1;
+                      return Material(
+                        color: Colors.amber.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(8),
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(8),
+                          onTap: () {
+                            jumpIndex = idx;
+                            Navigator.of(ctx).pop(false);
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: Colors.amber.withValues(alpha: 0.4)),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  'Question #$num',
+                                  style: TextStyle(
+                                    color: isDark ? Colors.amber[300] : Colors.amber[900],
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                                const SizedBox(width: 4),
+                                Icon(
+                                  Icons.arrow_outward_rounded,
+                                  size: 12,
+                                  color: isDark ? Colors.amber[300] : Colors.amber[900],
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                  const SizedBox(height: 14),
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: isDark ? const Color(0xFF0F172A) : Colors.grey[100],
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(Icons.info_outline_rounded, size: 16, color: subCol),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'If you don\'t want to answer these, click "Done" to submit anyway or "Cancel" to return.',
+                            style: TextStyle(
+                              color: subCol,
+                              fontSize: 11,
+                              height: 1.3,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ] else ...[
+                  Text(
+                    'All questions have been answered. Would you like to finalize and submit your assessment now?',
+                    style: TextStyle(
+                      color: subCol,
+                      fontSize: 13,
+                      height: 1.4,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+        actionsPadding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+        actions: [
+          OutlinedButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: subCol,
+              side: BorderSide(color: isDark ? Colors.white.withValues(alpha: 0.15) : Colors.grey[300]!),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+            ),
+            child: const Text('Cancel',
+                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
           ),
           ElevatedButton(
             onPressed: () {
-              Navigator.of(ctx).pop();
+              Navigator.of(ctx).pop(true);
               _timer?.cancel();
               _submitAssessment();
             },
             style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF6366F1),
+              backgroundColor: hasUnanswered ? const Color(0xFFF59E0B) : const Color(0xFF6366F1),
               foregroundColor: Colors.white,
               elevation: 0,
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10)),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 10),
             ),
-            child: const Text('Submit',
-                style: TextStyle(fontWeight: FontWeight.w600)),
+            child: const Text('Done',
+                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
           ),
         ],
       ),
-    );
+    ).then((result) {
+      if (jumpIndex != null) {
+        _scrollToItem(jumpIndex!);
+      }
+    });
   }
 
   // ─── Build ───────────────────────────────────────────────────────────────────
@@ -629,10 +767,17 @@ class _QuizScreenState extends State<QuizScreen> {
             shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(14)),
           ),
-          child: const Text('Submit Assessment',
-              style: TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w600)),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: const [
+              Icon(Icons.check_circle_outline_rounded, size: 20),
+              SizedBox(width: 8),
+              Text('Done — Submit Assessment',
+                  style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700)),
+            ],
+          ),
         ),
       ),
     );

@@ -28,6 +28,7 @@ class _TakeAssessmentPageState extends State<TakeAssessmentPage> with WidgetsBin
   bool _loading = true;
   bool _submitting = false;
   List<AssessmentQuestion> _questions = [];
+  final Map<int, GlobalKey> _questionKeys = {};
   
   // questionId -> studentAnswer
   final Map<String, String> _answers = {};
@@ -205,28 +206,225 @@ class _TakeAssessmentPageState extends State<TakeAssessmentPage> with WidgetsBin
     _submitAssessment(isAuto: true);
   }
 
+  void _scrollToQuestion(int index) {
+    final key = _questionKeys[index];
+    if (key != null && key.currentContext != null) {
+      Scrollable.ensureVisible(
+        key.currentContext!,
+        duration: const Duration(milliseconds: 400),
+        curve: Curves.easeInOut,
+        alignment: 0.1,
+      );
+    }
+  }
+
   Future<void> _submitAssessment({bool isAuto = false}) async {
     if (!isAuto) {
-      final unans = _questions.where((q) => !(_answers.containsKey(q.id) && _answers[q.id]!.isNotEmpty)).length;
-      if (unans > 0) {
-        final confirm = await showDialog<bool>(
-          context: context,
-          builder: (ctx) => AlertDialog(
-            backgroundColor: widget.isDark ? const Color(0xFF1E293B) : Colors.white,
-            title: Text('Unanswered Questions', style: GoogleFonts.inter(color: widget.isDark ? Colors.white : Colors.black, fontWeight: FontWeight.w700)),
-            content: Text('You have $unans unanswered question(s). Are you sure you want to submit?',
-                style: GoogleFonts.inter(color: widget.isDark ? Colors.grey[400] : Colors.grey[600])),
+      final unansweredIndices = <int>[];
+      for (int i = 0; i < _questions.length; i++) {
+        final q = _questions[i];
+        final ans = _answers[q.id]?.trim() ?? '';
+        if (ans.isEmpty) {
+          unansweredIndices.add(i);
+        }
+      }
+
+      Color accent = widget.assessment.isExam ? const Color(0xFFF59E0B) : const Color(0xFF6366F1);
+      if (widget.assessment.themeColor != null) {
+        try {
+          final hexString = widget.assessment.themeColor!.replaceFirst('#', '');
+          accent = Color(int.parse(hexString, radix: 16) + 0xFF000000);
+        } catch (_) {}
+      }
+
+      int? jumpToQuestionIndex;
+      final confirm = await showDialog<bool>(
+        context: context,
+        barrierDismissible: false,
+        builder: (ctx) {
+          final isDark = widget.isDark;
+          final surface = isDark ? const Color(0xFF1E293B) : Colors.white;
+          final textCol = isDark ? Colors.white : const Color(0xFF0F172A);
+          final subCol = isDark ? Colors.grey[400]! : Colors.grey[600]!;
+          final bool hasUnanswered = unansweredIndices.isNotEmpty;
+
+          return AlertDialog(
+            backgroundColor: surface,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+            title: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: (hasUnanswered ? Colors.amber : accent).withValues(alpha: 0.12),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    hasUnanswered ? Icons.warning_amber_rounded : Icons.check_circle_outline_rounded,
+                    color: hasUnanswered ? Colors.amber[600] : accent,
+                    size: 24,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    hasUnanswered ? 'Check Your Answers' : 'Confirm Submission',
+                    style: GoogleFonts.inter(
+                      color: textCol,
+                      fontSize: 17,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            content: SizedBox(
+              width: 440,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Kindly check your answers before submitting.',
+                      style: GoogleFonts.inter(
+                        color: textCol,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    if (hasUnanswered) ...[
+                      Text(
+                        'You have ${unansweredIndices.length} blank answer${unansweredIndices.length > 1 ? "s" : ""} on the following question number${unansweredIndices.length > 1 ? "s" : ""}:',
+                        style: GoogleFonts.inter(
+                          color: subCol,
+                          fontSize: 13,
+                          height: 1.4,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: unansweredIndices.map((idx) {
+                          final num = idx + 1;
+                          return Material(
+                            color: Colors.amber.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(8),
+                            child: InkWell(
+                              borderRadius: BorderRadius.circular(8),
+                              onTap: () {
+                                jumpToQuestionIndex = idx;
+                                Navigator.pop(ctx, false);
+                              },
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(color: Colors.amber.withValues(alpha: 0.4)),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text(
+                                      'Question #$num',
+                                      style: GoogleFonts.inter(
+                                        color: isDark ? Colors.amber[300] : Colors.amber[900],
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 4),
+                                    Icon(
+                                      Icons.arrow_outward_rounded,
+                                      size: 12,
+                                      color: isDark ? Colors.amber[300] : Colors.amber[900],
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          );
+                        }).toList(),
+                      ),
+                      const SizedBox(height: 14),
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: isDark ? const Color(0xFF0F172A) : Colors.grey[100],
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(Icons.info_outline_rounded, size: 16, color: subCol),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                'If you don\'t want to answer these, click "Done" to submit anyway or "Cancel" to return to your assessment.',
+                                style: GoogleFonts.inter(
+                                  color: subCol,
+                                  fontSize: 11,
+                                  height: 1.3,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ] else ...[
+                      Text(
+                        'All questions have been answered. Would you like to finalize and submit your assessment now?',
+                        style: GoogleFonts.inter(
+                          color: subCol,
+                          fontSize: 13,
+                          height: 1.4,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+            actionsPadding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
             actions: [
-              TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+              OutlinedButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: subCol,
+                  side: BorderSide(color: isDark ? Colors.white.withValues(alpha: 0.15) : Colors.grey[300]!),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+                ),
+                child: Text(
+                  'Cancel',
+                  style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600),
+                ),
+              ),
               ElevatedButton(
                 onPressed: () => Navigator.pop(ctx, true),
-                style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF6366F1)),
-                child: const Text('Submit Anyway'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: hasUnanswered ? const Color(0xFFF59E0B) : accent,
+                  foregroundColor: Colors.white,
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 10),
+                ),
+                child: Text(
+                  'Done',
+                  style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w700),
+                ),
               ),
             ],
-          )
-        );
-        if (confirm != true) return;
+          );
+        },
+      );
+
+      if (confirm != true) {
+        if (jumpToQuestionIndex != null) {
+          _scrollToQuestion(jumpToQuestionIndex!);
+        }
+        return;
       }
     }
 
@@ -347,6 +545,31 @@ class _TakeAssessmentPageState extends State<TakeAssessmentPage> with WidgetsBin
           ),
           title: Text(widget.assessment.title, style: GoogleFonts.inter(color: textCol, fontSize: 16, fontWeight: FontWeight.w700)),
           actions: [
+            if (widget.assessment.availableUntil != null)
+              Center(
+                child: Container(
+                  margin: const EdgeInsets.only(right: 8),
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF3B82F6).withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.schedule_rounded, size: 13, color: Color(0xFF60A5FA)),
+                      const SizedBox(width: 4),
+                      Text(
+                        'Period: ${widget.assessment.remainingAvailabilityFormatted}',
+                        style: GoogleFonts.inter(
+                          color: const Color(0xFF60A5FA),
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
             Center(
               child: Container(
                 margin: const EdgeInsets.only(right: 16),
@@ -402,8 +625,17 @@ class _TakeAssessmentPageState extends State<TakeAssessmentPage> with WidgetsBin
                       ),
                       child: _submitting
                           ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                          : Text('Submit ${widget.assessment.isExam ? "Exam" : "Quiz"}',
-                              style: GoogleFonts.inter(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w700)),
+                          : Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                const Icon(Icons.check_circle_outline_rounded, color: Colors.white, size: 20),
+                                const SizedBox(width: 8),
+                                Text(
+                                  'Done — Submit ${widget.assessment.isExam ? "Exam" : "Quiz"}',
+                                  style: GoogleFonts.inter(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w700),
+                                ),
+                              ],
+                            ),
                     ),
                   )
                 ],
@@ -413,10 +645,12 @@ class _TakeAssessmentPageState extends State<TakeAssessmentPage> with WidgetsBin
   }
 
   Widget _buildQuestionCard(int index, AssessmentQuestion q, Color surface, Color textCol, Color subCol, Color accent) {
+    final key = _questionKeys.putIfAbsent(index, () => GlobalKey());
     final typeLabel = q.isMultipleChoice ? 'Multiple Choice' : q.isIdentification ? 'Identification' : q.isEssay ? 'Essay' : 'Enumeration';
     final ans = _answers[q.id] ?? '';
 
     return Container(
+      key: key,
       margin: const EdgeInsets.only(bottom: 16),
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(

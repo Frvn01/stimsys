@@ -18,6 +18,7 @@ import '../models/student_grade_model.dart';
 import '../models/assessment_model.dart';
 import '../models/student_grade_item_model.dart';
 import '../models/announcement_model.dart';
+import '../models/exam_request_model.dart';
 
 /// Thrown when a QR scan happens outside the subject's valid schedule window.
 class ScheduleValidationException implements Exception {
@@ -1778,9 +1779,23 @@ class SupabaseService {
             .single();
         return AssessmentConfig.fromSupabase(response);
       } catch (e) {
+        bool retry = false;
         if (data.containsKey('theme_color') &&
             (e.toString().contains('theme_color') || e.toString().contains('PGRST204'))) {
           data.remove('theme_color');
+          retry = true;
+        }
+        if (data.containsKey('available_until') &&
+            (e.toString().contains('available_until') || e.toString().contains('PGRST204'))) {
+          data.remove('available_until');
+          retry = true;
+        }
+        if (data.containsKey('published_at') &&
+            (e.toString().contains('published_at') || e.toString().contains('PGRST204'))) {
+          data.remove('published_at');
+          retry = true;
+        }
+        if (retry) {
           final response = await _client
               .from('assessments')
               .insert(data)
@@ -1809,9 +1824,23 @@ class SupabaseService {
             .single();
         return AssessmentConfig.fromSupabase(response);
       } catch (e) {
+        bool retry = false;
         if (data.containsKey('theme_color') &&
             (e.toString().contains('theme_color') || e.toString().contains('PGRST204'))) {
           data.remove('theme_color');
+          retry = true;
+        }
+        if (data.containsKey('available_until') &&
+            (e.toString().contains('available_until') || e.toString().contains('PGRST204'))) {
+          data.remove('available_until');
+          retry = true;
+        }
+        if (data.containsKey('published_at') &&
+            (e.toString().contains('published_at') || e.toString().contains('PGRST204'))) {
+          data.remove('published_at');
+          retry = true;
+        }
+        if (retry) {
           final response = await _client
               .from('assessments')
               .update(data)
@@ -1877,15 +1906,35 @@ class SupabaseService {
     }
   }
 
-  Future<void> publishAssessment(String id, bool publish) async {
+  Future<void> publishAssessment(String id, bool publish, {DateTime? availableUntil}) async {
     try {
-      await _client
-          .from('assessments')
-          .update({
-            'is_published': publish,
-            'updated_at': DateTime.now().toIso8601String(),
-          })
-          .eq('id', id);
+      final data = <String, dynamic>{
+        'is_published': publish,
+        'updated_at': DateTime.now().toIso8601String(),
+      };
+      if (publish) {
+        data['published_at'] = DateTime.now().toIso8601String();
+        data['available_until'] = availableUntil?.toIso8601String();
+      } else {
+        data['available_until'] = null;
+      }
+      try {
+        await _client
+            .from('assessments')
+            .update(data)
+            .eq('id', id);
+      } catch (e) {
+        if (e.toString().contains('available_until') || e.toString().contains('published_at') || e.toString().contains('PGRST204')) {
+          data.remove('available_until');
+          data.remove('published_at');
+          await _client
+              .from('assessments')
+              .update(data)
+              .eq('id', id);
+        } else {
+          rethrow;
+        }
+      }
     } catch (e) {
       debugPrint('Publish assessment error: $e');
       rethrow;
@@ -1906,6 +1955,109 @@ class SupabaseService {
       return code;
     } catch (e) {
       debugPrint('Generate session code error: $e');
+      rethrow;
+    }
+  }
+
+  /// Find other subjects that have the same subject_code as the given subject.
+  Future<List<Subject>> getSubjectsWithSameCode(String subjectId) async {
+    try {
+      final sourceSubjectMap = await _client
+          .from('subjects')
+          .select('id, subject_code')
+          .eq('id', subjectId)
+          .single();
+      final subjectCode = sourceSubjectMap['subject_code'] as String;
+
+      final response = await _client
+          .from('subjects')
+          .select('*, instructors(*)')
+          .eq('subject_code', subjectCode)
+          .neq('id', subjectId)
+          .order('subject_title');
+
+      return (response as List).map((e) => Subject.fromSupabase(e)).toList();
+    } catch (e) {
+      debugPrint('Get subjects with same code error: $e');
+      return [];
+    }
+  }
+
+  /// Duplicate an assessment and all its questions to specific target subject IDs.
+  /// Returns the count of subjects duplicated to.
+  Future<int> duplicateAssessmentToSubjects(
+    String assessmentId,
+    List<String> targetSubjectIds,
+  ) async {
+    try {
+      if (targetSubjectIds.isEmpty) return 0;
+
+      // 1. Fetch source assessment
+      final sourceAssessmentMap = await _client
+          .from('assessments')
+          .select()
+          .eq('id', assessmentId)
+          .single();
+      final sourceAssessment =
+          AssessmentConfig.fromSupabase(sourceAssessmentMap);
+
+      // 2. Fetch source questions
+      final questions = await getQuestions(assessmentId);
+
+      int count = 0;
+      for (final targetSubjectId in targetSubjectIds) {
+        // Create new assessment config for this target subject
+        final newConfig = sourceAssessment.copyWith(
+          id: null,
+          subjectId: targetSubjectId,
+          isPublished: false,
+          sessionCode: null,
+        );
+
+        final createdAssessment = await createAssessment(newConfig);
+        if (createdAssessment != null && createdAssessment.id != null) {
+          // Copy all questions
+          for (final q in questions) {
+            final newQ = q.copyWith(
+              id: null,
+              assessmentId: createdAssessment.id!,
+            );
+            await addQuestion(newQ);
+          }
+          count++;
+        }
+      }
+
+      return count;
+    } catch (e) {
+      debugPrint('Duplicate assessment error: $e');
+      rethrow;
+    }
+  }
+
+  /// Duplicate an assessment and all its questions to all other subjects with the same subject_code.
+  /// Returns the count of subjects duplicated to.
+  Future<int> duplicateAssessmentToSameSubjects(String assessmentId) async {
+    try {
+      // 1. Fetch source assessment
+      final sourceAssessmentMap = await _client
+          .from('assessments')
+          .select()
+          .eq('id', assessmentId)
+          .single();
+      final sourceAssessment =
+          AssessmentConfig.fromSupabase(sourceAssessmentMap);
+
+      final sameSubjects =
+          await getSubjectsWithSameCode(sourceAssessment.subjectId);
+      final targetIds = sameSubjects
+          .where((s) => s.id != null)
+          .map((s) => s.id!)
+          .toList();
+
+      return await duplicateAssessmentToSubjects(assessmentId, targetIds);
+    } catch (e) {
+      debugPrint('Duplicate assessment error: $e');
       rethrow;
     }
   }
@@ -2439,6 +2591,31 @@ class SupabaseService {
     }
   }
 
+  /// Add bonus / plus points to a student's grade record.
+  Future<StudentGradeItem?> addBonusPoints({
+    required String gradeId,
+    required String label,
+    required double score,
+    String source = 'manual',
+  }) async {
+    try {
+      final item = StudentGradeItem(
+        gradeId: gradeId,
+        category: 'bonus',
+        label: label,
+        score: score,
+        maxScore: 0,
+        source: source,
+      );
+      final created = await upsertGradeItem(item);
+      await recalculateGradeTotals(gradeId);
+      return created;
+    } catch (e) {
+      debugPrint('Add bonus points error: $e');
+      rethrow;
+    }
+  }
+
   /// Recalculate quiz_raw/quiz_max and exam_raw/exam_max from grade items.
   Future<void> recalculateGradeTotals(String gradeId) async {
     try {
@@ -2452,6 +2629,9 @@ class SupabaseService {
         } else if (item.category == 'exam') {
           examRaw += item.score;
           examMax += item.maxScore;
+        } else if (item.category == 'bonus') {
+          // Plus points: adds to student's raw score without increasing max points
+          quizRaw += item.score;
         }
       }
 
@@ -2899,3 +3079,104 @@ extension AnnouncementServiceExtension on SupabaseService {
     }
   }
 }
+
+// ═══════════════════════════════════════════════════
+// EXAM REQUESTS EXTENSION
+// ═══════════════════════════════════════════════════
+
+extension ExamRequestServiceExtension on SupabaseService {
+  /// Upload an image for Exam Request (e.g. signature or permit) to 'exam-requests' storage bucket.
+  Future<String> uploadExamRequestImage(
+    Uint8List imageBytes,
+    String fileName, {
+    String extension = 'jpg',
+  }) async {
+    try {
+      final cleanExt = extension.replaceAll('.', '');
+      final fullPath =
+          '${DateTime.now().millisecondsSinceEpoch}_$fileName.$cleanExt';
+      final mimeType = cleanExt == 'png' ? 'image/png' : 'image/jpeg';
+
+      await client.storage.from('exam-requests').uploadBinary(
+            fullPath,
+            imageBytes,
+            fileOptions: FileOptions(contentType: mimeType, upsert: true),
+          );
+
+      final publicUrl =
+          client.storage.from('exam-requests').getPublicUrl(fullPath);
+      return publicUrl;
+    } catch (e) {
+      debugPrint('Upload exam request image error: $e');
+      rethrow;
+    }
+  }
+
+  /// Create a new exam request.
+  Future<ExamRequest?> createExamRequest(ExamRequest request) async {
+    try {
+      final response = await client
+          .from('exam_requests')
+          .insert(request.toSupabase())
+          .select('*, students(*)')
+          .single();
+      return ExamRequest.fromSupabase(response);
+    } catch (e) {
+      debugPrint('Create exam request error: $e');
+      rethrow;
+    }
+  }
+
+  /// Get exam requests for a specific subject (for instructor/admin).
+  Future<List<ExamRequest>> getExamRequestsForSubject(String subjectId) async {
+    try {
+      final response = await client
+          .from('exam_requests')
+          .select('*, students(*)')
+          .eq('subject_id', subjectId)
+          .order('created_at', ascending: false);
+      return (response as List)
+          .map((e) => ExamRequest.fromSupabase(e))
+          .toList();
+    } catch (e) {
+      debugPrint('Get exam requests for subject error: $e');
+      return [];
+    }
+  }
+
+  /// Get exam requests for a student (optionally filtered by subject).
+  Future<List<ExamRequest>> getExamRequestsForStudent(
+    String studentId, {
+    String? subjectId,
+  }) async {
+    try {
+      var query = client
+          .from('exam_requests')
+          .select('*, students(*)')
+          .eq('student_id', studentId);
+
+      if (subjectId != null) {
+        query = query.eq('subject_id', subjectId);
+      }
+
+      final response = await query.order('created_at', ascending: false);
+      return (response as List)
+          .map((e) => ExamRequest.fromSupabase(e))
+          .toList();
+    } catch (e) {
+      debugPrint('Get exam requests for student error: $e');
+      return [];
+    }
+  }
+
+  /// Delete an exam request.
+  Future<void> deleteExamRequest(String id) async {
+    try {
+      await client.from('exam_requests').delete().eq('id', id);
+    } catch (e) {
+      debugPrint('Delete exam request error: $e');
+      rethrow;
+    }
+  }
+}
+

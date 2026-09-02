@@ -8,6 +8,7 @@ import 'student_modules_screen.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'take_assessment_page.dart';
 import 'assessment_result_page.dart';
+import '../widgets/exam_request_dialog.dart';
 
 
 class QuizPage extends StatefulWidget {
@@ -347,6 +348,36 @@ class _QuizPageState extends State<QuizPage> {
                             color: isDark ? Colors.grey[400] : Colors.grey[600],
                           ),
                         ),
+                        const SizedBox(height: 12),
+                        OutlinedButton.icon(
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: subjectColor,
+                            side: BorderSide(
+                                color: subjectColor.withValues(alpha: 0.5)),
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(10)),
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 14, vertical: 10),
+                          ),
+                          icon: const Icon(
+                              Icons.assignment_turned_in_rounded,
+                              size: 18),
+                          label: Text(
+                            'Submit Exam Request / Permit',
+                            style: GoogleFonts.inter(
+                                fontSize: 12, fontWeight: FontWeight.w700),
+                          ),
+                          onPressed: () {
+                            showDialog(
+                              context: context,
+                              builder: (_) => ExamRequestDialog(
+                                enrollment: enrollment,
+                                isDark: isDark,
+                                primaryColor: subjectColor,
+                              ),
+                            );
+                          },
+                        ),
                       ],
                     ),
                   ),
@@ -406,6 +437,11 @@ class _QuizPageState extends State<QuizPage> {
     final moduleCount = provider.modules
         .where((m) => m.subject == subjectIdentifier && m.term == termCode)
         .length;
+
+    final activeOrSubmittedAssessments = termAssessments.where((a) {
+      final isSubmitted = provider.hasSubmittedLocally(a.id!);
+      return isSubmitted || a.isAvailable;
+    }).toList();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -493,24 +529,33 @@ class _QuizPageState extends State<QuizPage> {
               ],
             ),
           )
-        else if (termAssessments.isEmpty)
+        else if (activeOrSubmittedAssessments.isEmpty)
           Container(
             padding: const EdgeInsets.all(12),
             child: Row(
               children: [
                 Icon(Icons.check_circle_outline_rounded, color: Colors.grey[500], size: 16),
                 const SizedBox(width: 10),
-                Text('No assessments yet for this term.', style: GoogleFonts.inter(color: Colors.grey[500], fontSize: 12)),
+                Text('No active assessments open for submission.', style: GoogleFonts.inter(color: Colors.grey[500], fontSize: 12)),
               ],
             ),
           )
         else
-          ...termAssessments.map((assessment) {
+          ...activeOrSubmittedAssessments.map((assessment) {
             final isExam = assessment.isExam;
             final iconCol = isExam ? const Color(0xFFF59E0B) : const Color(0xFF6366F1);
             final icon = isExam ? Icons.school_rounded : Icons.assignment_rounded;
             final isSubmitted = provider.hasSubmittedLocally(assessment.id!);
             final submission = provider.submissionFor(assessment.id!);
+
+            String subtitle;
+            if (isSubmitted) {
+              subtitle = 'Completed — Tap to view result';
+            } else if (assessment.availableUntil != null) {
+              subtitle = '${assessment.timeLimitSecs ~/ 60} mins • Closes in ${assessment.remainingAvailabilityFormatted}';
+            } else {
+              subtitle = '${assessment.timeLimitSecs ~/ 60} mins';
+            }
 
             return GestureDetector(
               onTap: () async {
@@ -521,11 +566,20 @@ class _QuizPageState extends State<QuizPage> {
                     isDark: isDark,
                   )));
                 } else {
-                    // For both quizzes and exams, push TakeAssessmentPage directly
-                    Navigator.push(context, MaterialPageRoute(builder: (_) => TakeAssessmentPage(
-                      assessment: assessment,
-                      isDark: isDark,
-                    )));
+                  if (!assessment.isAvailable) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('The submission window for this assessment has closed.'),
+                        backgroundColor: Colors.red,
+                      ),
+                    );
+                    return;
+                  }
+                  // For both quizzes and exams, push TakeAssessmentPage directly
+                  Navigator.push(context, MaterialPageRoute(builder: (_) => TakeAssessmentPage(
+                    assessment: assessment,
+                    isDark: isDark,
+                  )));
                 }
               },
               child: Container(
@@ -551,11 +605,57 @@ class _QuizPageState extends State<QuizPage> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(assessment.title, style: GoogleFonts.inter(color: isDark ? Colors.white : Colors.black87, fontSize: 13, fontWeight: FontWeight.w700)),
-                          Text(isSubmitted ? 'Completed — Tap to view result' : '${assessment.timeLimitSecs ~/ 60} mins', style: GoogleFonts.inter(color: isSubmitted ? const Color(0xFF10B981) : (isDark ? Colors.grey[400] : Colors.grey[600]), fontSize: 11)),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  assessment.title,
+                                  style: GoogleFonts.inter(
+                                    color: isDark ? Colors.white : Colors.black87,
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ),
+                              if (!isSubmitted && assessment.availableUntil != null)
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFF3B82F6).withValues(alpha: 0.12),
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      const Icon(Icons.schedule_rounded, color: Color(0xFF60A5FA), size: 11),
+                                      const SizedBox(width: 3),
+                                      Text(
+                                        assessment.remainingAvailabilityFormatted,
+                                        style: GoogleFonts.inter(
+                                          color: const Color(0xFF60A5FA),
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                            ],
+                          ),
+                          const SizedBox(height: 3),
+                          Text(
+                            subtitle,
+                            style: GoogleFonts.inter(
+                              color: isSubmitted
+                                  ? const Color(0xFF10B981)
+                                  : (isDark ? Colors.grey[400] : Colors.grey[600]),
+                              fontSize: 11,
+                            ),
+                          ),
                         ],
                       ),
                     ),
+                    const SizedBox(width: 8),
                     Icon(Icons.chevron_right_rounded, color: isDark ? Colors.grey[600] : Colors.grey[400], size: 20),
                   ],
                 ),
