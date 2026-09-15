@@ -1063,7 +1063,7 @@ class AdminProvider extends ChangeNotifier {
     }
   }
 
-  // ── Submissions ────────────────────────────────────
+  // ── Submissions & Essay Grading ─────────────────────
 
   Future<void> loadSubmissions(String assessmentId) async {
     try {
@@ -1072,6 +1072,42 @@ class AdminProvider extends ChangeNotifier {
       notifyListeners();
     } catch (e) {
       debugPrint('Load submissions error: $e');
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> loadSubmissionAnswers(
+      String submissionId) async {
+    try {
+      return await _service.getSubmissionAnswersWithQuestions(submissionId);
+    } catch (e) {
+      debugPrint('Load submission answers error: $e');
+      return [];
+    }
+  }
+
+  Future<void> gradeSubmissionEssayAnswer({
+    required String assessmentId,
+    required String submissionId,
+    required String answerId,
+    required double pointsEarned,
+    required bool isCorrect,
+  }) async {
+    try {
+      await _service.gradeSubmissionEssayAnswer(
+        submissionId: submissionId,
+        answerId: answerId,
+        pointsEarned: pointsEarned,
+        isCorrect: isCorrect,
+      );
+      // Reload submissions to reflect updated scores
+      await loadSubmissions(assessmentId);
+      // If subject grades currently active, refresh them too
+      if (_gradesSubjectId != null) {
+        await loadSubjectGrades(_gradesSubjectId!);
+      }
+    } catch (e) {
+      debugPrint('Grade submission essay error: $e');
+      rethrow;
     }
   }
 
@@ -1422,6 +1458,20 @@ class AdminProvider extends ChangeNotifier {
       notifyListeners();
     } catch (e) {
       debugPrint('Delete exam request error: $e');
+      rethrow;
+    }
+  }
+
+  Future<void> updateExamRequestStatus(String id, String status) async {
+    try {
+      await _service.updateExamRequestStatus(id, status);
+      final index = _examRequests.indexWhere((r) => r.id == id);
+      if (index != -1) {
+        _examRequests[index] = _examRequests[index].copyWith(status: status);
+        notifyListeners();
+      }
+    } catch (e) {
+      debugPrint('Update exam request status error: $e');
       rethrow;
     }
   }

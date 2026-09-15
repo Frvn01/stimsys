@@ -1,13 +1,10 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
-import 'package:qr_flutter/qr_flutter.dart';
-import 'package:mobile_scanner/mobile_scanner.dart';
 import '../../providers/admin_provider.dart';
 import '../../models/assessment_model.dart';
 import '../../models/subject_model.dart';
-import '../../models/exam_request_model.dart';
-import '../../core/supabase_config.dart';
 
 class DesktopAssessmentScreen extends StatefulWidget {
   const DesktopAssessmentScreen({super.key});
@@ -312,31 +309,18 @@ class _DesktopAssessmentScreenState extends State<DesktopAssessmentScreen> {
             ],
           ),
           const SizedBox(height: 10),
-          Row(
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
             children: [
               _infoChip(Icons.timer_rounded, '$minutes min exam time'),
-              if (assessment.isPublished && assessment.availableUntil != null) ...[
-                const SizedBox(width: 10),
+              if (assessment.isPublished && assessment.availableUntil != null)
                 _infoChip(
                   Icons.schedule_rounded,
                   assessment.isExpired
                       ? 'Window Expired'
                       : 'Closes in ${assessment.remainingAvailabilityFormatted}',
                 ),
-              ],
-              if (isExam && assessment.setCount > 1) ...[
-                const SizedBox(width: 10),
-                _infoChip(Icons.copy_rounded, 'Set A/B'),
-              ],
-              if (isExam && assessment.sessionCode != null) ...[
-                const SizedBox(width: 10),
-                _infoChip(
-                    Icons.check_circle_rounded, 
-                    assessment.sessionCode!.contains('-') 
-                        ? 'Notified: Set ${assessment.sessionCode!.split('-').last}'
-                        : 'Notified'),
-              ],
-              const Spacer(),
               _actionBtn(
                   Icons.edit_note_rounded, 'Questions', _accent, () {
                 setState(() {
@@ -345,27 +329,24 @@ class _DesktopAssessmentScreenState extends State<DesktopAssessmentScreen> {
                 });
                 provider.loadQuestions(assessment.id!);
               }),
-              const SizedBox(width: 6),
               _actionBtn(
                   Icons.tune_rounded, 'Edit', const Color(0xFF8B5CF6), () {
                 _showEditAssessmentDialog(provider, assessment);
               }),
-              const SizedBox(width: 6),
-              if (!assessment.isPublished) ...[
+              if (!assessment.isPublished)
                 _actionBtn(
                   Icons.publish_rounded,
                   'Publish',
                   _green,
                   () => _showPublishDialog(provider, assessment),
-                ),
-              ] else if (assessment.isExpired) ...[
+                )
+              else if (assessment.isExpired) ...[
                 _actionBtn(
                   Icons.replay_rounded,
                   'Re-publish / Extend',
                   _amber,
                   () => _showPublishDialog(provider, assessment),
                 ),
-                const SizedBox(width: 6),
                 _actionBtn(
                   Icons.visibility_off_rounded,
                   'Unpublish',
@@ -379,7 +360,6 @@ class _DesktopAssessmentScreenState extends State<DesktopAssessmentScreen> {
                   const Color(0xFF06B6D4),
                   () => _showPublishDialog(provider, assessment),
                 ),
-                const SizedBox(width: 6),
                 _actionBtn(
                   Icons.visibility_off_rounded,
                   'Unpublish',
@@ -387,32 +367,19 @@ class _DesktopAssessmentScreenState extends State<DesktopAssessmentScreen> {
                   () => provider.publishAssessment(assessment.id!, false),
                 ),
               ],
-              if (isExam) ...[
-                if (assessment.setCount > 1) ...[
-                  const SizedBox(width: 6),
-                  _actionBtn(Icons.play_arrow_rounded, 'Start Set A', _green, () {
-                    provider.generateExamSessionCode(assessment.id!, targetSet: 'A');
-                  }),
-                  const SizedBox(width: 6),
-                  _actionBtn(Icons.play_arrow_rounded, 'Start Set B', _green, () {
-                    provider.generateExamSessionCode(assessment.id!, targetSet: 'B');
-                  }),
-                ] else ...[
-                  const SizedBox(width: 6),
-                  _actionBtn(Icons.play_arrow_rounded, 'Start Exam', _green, () {
-                    provider.generateExamSessionCode(assessment.id!);
-                  }),
-                ],
-              ],
-              const SizedBox(width: 6),
+              if (isExam)
+                _actionBtn(Icons.play_arrow_rounded, 'Start Exam', _green, () {
+                  provider.generateExamSessionCode(assessment.id!);
+                }),
+              _actionBtn(Icons.rate_review_rounded, 'Grade Essays', _amber, () {
+                _showEssayGradingDialog(provider, assessment, null);
+              }),
               _actionBtn(Icons.people_rounded, 'Submissions', const Color(0xFF3B82F6), () {
                 _showSubmissionsDialog(provider, assessment);
               }),
-              const SizedBox(width: 6),
               _actionBtn(Icons.copy_all_rounded, 'Duplicate', const Color(0xFF06B6D4), () {
                 _confirmDuplicate(provider, assessment);
               }),
-              const SizedBox(width: 6),
               _actionBtn(Icons.delete_rounded, 'Delete', Colors.red, () {
                 _confirmDelete(provider, assessment);
               }),
@@ -511,6 +478,10 @@ class _DesktopAssessmentScreenState extends State<DesktopAssessmentScreen> {
                 _showAddQuestionDialog(provider, 'multiple_choice');
               }),
               const SizedBox(width: 8),
+              _buildCreateButton2('True / False', () {
+                _showAddQuestionDialog(provider, 'true_false');
+              }),
+              const SizedBox(width: 8),
               _buildCreateButton2('Identification', () {
                 _showAddQuestionDialog(provider, 'identification');
               }),
@@ -573,20 +544,24 @@ class _DesktopAssessmentScreenState extends State<DesktopAssessmentScreen> {
 
   Widget _buildQuestionCard(
       AdminProvider provider, AssessmentQuestion question, int idx) {
-    final typeColor = question.isMultipleChoice
-        ? _accent
-        : question.isIdentification
-            ? _green
-            : question.isEnumeration
-                ? _amber
-                : Colors.purpleAccent;
-    final typeLabel = question.isMultipleChoice
-        ? 'MC'
-        : question.isIdentification
-            ? 'ID'
-            : question.isEnumeration
-                ? 'ENUM'
-                : 'ESSAY';
+    final typeColor = question.isTrueFalse
+        ? const Color(0xFF06B6D4)
+        : question.isMultipleChoice
+            ? _accent
+            : question.isIdentification
+                ? _green
+                : question.isEnumeration
+                    ? _amber
+                    : Colors.purpleAccent;
+    final typeLabel = question.isTrueFalse
+        ? 'T/F'
+        : question.isMultipleChoice
+            ? 'MC'
+            : question.isIdentification
+                ? 'ID'
+                : question.isEnumeration
+                    ? 'ENUM'
+                    : 'ESSAY';
 
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
@@ -666,7 +641,8 @@ class _DesktopAssessmentScreenState extends State<DesktopAssessmentScreen> {
               ),
             ],
           ),
-          if (question.isMultipleChoice && question.choices != null) ...[
+          if ((question.isMultipleChoice || question.isTrueFalse) &&
+              question.choices != null) ...[
             const SizedBox(height: 8),
             Wrap(
               spacing: 6,
@@ -711,22 +687,48 @@ class _DesktopAssessmentScreenState extends State<DesktopAssessmentScreen> {
             ),
           ] else ...[
             const SizedBox(height: 6),
-            Row(
-              children: [
-                Icon(Icons.check_circle_rounded, color: _green, size: 12),
-                const SizedBox(width: 4),
-                Text(
-                  question.isEnumeration
-                      ? (question.enumerationAnswers?.join(', ') ??
-                          question.correctAnswer)
-                      : question.correctAnswer,
-                  style: GoogleFonts.inter(
-                      color: _green,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600),
-                ),
-              ],
-            ),
+            if (question.isIdentification && question.correctAnswer.contains('|'))
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: question.correctAnswer
+                    .split('|')
+                    .map((alt) => alt.trim())
+                    .where((alt) => alt.isNotEmpty)
+                    .map((alt) => Padding(
+                          padding: const EdgeInsets.only(bottom: 3),
+                          child: Row(
+                            children: [
+                              Icon(Icons.check_circle_rounded, color: _green, size: 12),
+                              const SizedBox(width: 4),
+                              Text(
+                                alt,
+                                style: GoogleFonts.inter(
+                                    color: _green,
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w600),
+                              ),
+                            ],
+                          ),
+                        ))
+                    .toList(),
+              )
+            else
+              Row(
+                children: [
+                  Icon(Icons.check_circle_rounded, color: _green, size: 12),
+                  const SizedBox(width: 4),
+                  Text(
+                    question.isEnumeration
+                        ? (question.enumerationAnswers?.join(', ') ??
+                            question.correctAnswer)
+                        : question.correctAnswer,
+                    style: GoogleFonts.inter(
+                        color: _green,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600),
+                  ),
+                ],
+              ),
           ],
         ],
       ),
@@ -1620,12 +1622,22 @@ class _DesktopAssessmentScreenState extends State<DesktopAssessmentScreen> {
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDialogState) {
+          final typeTitle = questionType == 'multiple_choice'
+              ? 'Multiple Choice'
+              : questionType == 'true_false'
+                  ? 'True / False'
+                  : questionType == 'identification'
+                      ? 'Identification'
+                      : questionType == 'essay'
+                          ? 'Essay'
+                          : 'Enumeration';
+
           return AlertDialog(
             backgroundColor: _surface,
             shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(14)),
             title: Text(
-              'Add ${questionType == 'multiple_choice' ? 'Multiple Choice' : questionType == 'identification' ? 'Identification' : questionType == 'essay' ? 'Essay' : 'Enumeration'}',
+              'Add $typeTitle',
               style: GoogleFonts.inter(
                   color: Colors.white,
                   fontSize: 16,
@@ -1692,16 +1704,125 @@ class _DesktopAssessmentScreenState extends State<DesktopAssessmentScreen> {
                           ),
                         );
                       }),
-                    ] else if (questionType == 'identification') ...[
-                      _dialogField(
-                          'Correct Answer', answerCtrl, 'Enter correct answer'),
-                    ] else if (questionType == 'essay') ...[
-                      const SizedBox(height: 12),
-                      Text('Essays do not have predefined correct answers. They will require manual grading.',
+                    ] else if (questionType == 'true_false') ...[
+                      Text('Select Correct Answer',
                           style: GoogleFonts.inter(
                               color: const Color(0xFF8B9AB2),
-                              fontSize: 12,
-                              fontWeight: FontWeight.w500)),
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600)),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: ['True', 'False'].map((tf) {
+                          final isSel = (tf == 'True' && correctIdx == 0) ||
+                              (tf == 'False' && correctIdx == 1);
+                          final tfColor = tf == 'True' ? _green : Colors.redAccent;
+                          return Expanded(
+                            child: GestureDetector(
+                              onTap: () => setDialogState(
+                                  () => correctIdx = tf == 'True' ? 0 : 1),
+                              child: Container(
+                                margin: EdgeInsets.only(
+                                    right: tf == 'True' ? 6 : 0,
+                                    left: tf == 'False' ? 6 : 0),
+                                padding: const EdgeInsets.symmetric(vertical: 12),
+                                decoration: BoxDecoration(
+                                  color: isSel
+                                      ? tfColor.withValues(alpha: 0.15)
+                                      : const Color(0xFF232D3F),
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(
+                                    color: isSel ? tfColor : Colors.transparent,
+                                    width: isSel ? 1.5 : 1,
+                                  ),
+                                ),
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(
+                                      isSel
+                                          ? (tf == 'True'
+                                              ? Icons.check_circle_rounded
+                                              : Icons.cancel_rounded)
+                                          : (tf == 'True'
+                                              ? Icons.check_circle_outline_rounded
+                                              : Icons.cancel_outlined),
+                                      color: isSel
+                                          ? tfColor
+                                          : const Color(0xFF8B9AB2),
+                                      size: 18,
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Text(
+                                      tf,
+                                      style: GoogleFonts.inter(
+                                        color: isSel
+                                            ? Colors.white
+                                            : const Color(0xFF8B9AB2),
+                                        fontWeight: isSel
+                                            ? FontWeight.w700
+                                            : FontWeight.w500,
+                                        fontSize: 13,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          );
+                        }).toList(),
+                      ),
+                    ] else if (questionType == 'identification') ...[
+                      _dialogField(
+                          'Correct Answer(s)', answerCtrl, 'e.g. Rizal | Jose Rizal'),
+                      const SizedBox(height: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: _green.withValues(alpha: 0.06),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: _green.withValues(alpha: 0.2)),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(Icons.info_outline_rounded, color: _green, size: 14),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                'Separate multiple accepted answers with a pipe  |  character.\nExample: Rizal | Jose Rizal | Dr. Jose Rizal',
+                                style: GoogleFonts.inter(
+                                    color: _green, fontSize: 11, height: 1.4),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ] else if (questionType == 'essay') ...[
+                      const SizedBox(height: 12),
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: _amber.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                              color: _amber.withValues(alpha: 0.3)),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(Icons.info_outline_rounded,
+                                color: _amber, size: 18),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Text(
+                                'Essays require manual grading by the instructor after submission.',
+                                style: GoogleFonts.inter(
+                                    color: _amber,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w500),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                     ] else ...[
                       Text('Correct Answers (fill in all)',
                           style: GoogleFonts.inter(
@@ -1763,6 +1884,9 @@ class _DesktopAssessmentScreenState extends State<DesktopAssessmentScreen> {
                         .toList();
                     if (choices.isEmpty) return;
                     correctAnswer = choices[correctIdx];
+                  } else if (questionType == 'true_false') {
+                    choices = ['True', 'False'];
+                    correctAnswer = correctIdx == 0 ? 'True' : 'False';
                   } else if (questionType == 'identification') {
                     correctAnswer = answerCtrl.text.trim();
                     if (correctAnswer.isEmpty) return;
@@ -1818,60 +1942,163 @@ class _DesktopAssessmentScreenState extends State<DesktopAssessmentScreen> {
     final answerCtrl = TextEditingController(text: question.correctAnswer);
     final pointsCtrl =
         TextEditingController(text: question.points.toString());
+    int tfIdx = question.correctAnswer.toLowerCase() == 'false' ? 1 : 0;
 
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: _surface,
-        shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(14)),
-        title: Text('Edit Question',
-            style: GoogleFonts.inter(
-                color: Colors.white, fontWeight: FontWeight.w700)),
-        content: SizedBox(
-          width: 450,
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                _dialogField('Question', textCtrl, ''),
-                const SizedBox(height: 12),
-                _dialogField('Correct Answer', answerCtrl, ''),
-                const SizedBox(height: 12),
-                _dialogField('Points', pointsCtrl, '1'),
-              ],
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          backgroundColor: _surface,
+          shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14)),
+          title: Text('Edit Question',
+              style: GoogleFonts.inter(
+                  color: Colors.white, fontWeight: FontWeight.w700)),
+          content: SizedBox(
+            width: 450,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _dialogField('Question', textCtrl, ''),
+                  const SizedBox(height: 12),
+                  if (question.isTrueFalse) ...[
+                    Text('Correct Answer',
+                        style: GoogleFonts.inter(
+                            color: const Color(0xFF8B9AB2),
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600)),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: ['True', 'False'].map((tf) {
+                        final isSel = (tf == 'True' && tfIdx == 0) ||
+                            (tf == 'False' && tfIdx == 1);
+                        final tfColor = tf == 'True' ? _green : Colors.redAccent;
+                        return Expanded(
+                          child: GestureDetector(
+                            onTap: () => setDialogState(
+                                () => tfIdx = tf == 'True' ? 0 : 1),
+                            child: Container(
+                              margin: EdgeInsets.only(
+                                  right: tf == 'True' ? 6 : 0,
+                                  left: tf == 'False' ? 6 : 0),
+                              padding: const EdgeInsets.symmetric(vertical: 10),
+                              decoration: BoxDecoration(
+                                color: isSel
+                                    ? tfColor.withValues(alpha: 0.15)
+                                    : const Color(0xFF232D3F),
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(
+                                  color: isSel ? tfColor : Colors.transparent,
+                                  width: isSel ? 1.5 : 1,
+                                ),
+                              ),
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(
+                                    isSel
+                                        ? (tf == 'True'
+                                            ? Icons.check_circle_rounded
+                                            : Icons.cancel_rounded)
+                                        : (tf == 'True'
+                                            ? Icons.check_circle_outline_rounded
+                                            : Icons.cancel_outlined),
+                                    color: isSel
+                                        ? tfColor
+                                        : const Color(0xFF8B9AB2),
+                                    size: 16,
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    tf,
+                                    style: GoogleFonts.inter(
+                                      color: isSel
+                                          ? Colors.white
+                                          : const Color(0xFF8B9AB2),
+                                      fontWeight: isSel
+                                          ? FontWeight.w700
+                                          : FontWeight.w500,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                  ] else if (!question.isEssay) ...[
+                    _dialogField(
+                      question.isIdentification ? 'Correct Answer(s)' : 'Correct Answer',
+                      answerCtrl,
+                      question.isIdentification ? 'e.g. Rizal | Jose Rizal' : '',
+                    ),
+                    if (question.isIdentification) ...[
+                      const SizedBox(height: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: _green.withValues(alpha: 0.06),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: _green.withValues(alpha: 0.2)),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(Icons.info_outline_rounded, color: _green, size: 14),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                'Separate multiple accepted answers with  |  (pipe).\nExample: Rizal | Jose Rizal',
+                                style: GoogleFonts.inter(
+                                    color: _green, fontSize: 11, height: 1.4),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ],
+                  const SizedBox(height: 12),
+                  _dialogField('Points', pointsCtrl, '1'),
+                ],
+              ),
             ),
           ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: Text('Cancel',
+                  style: GoogleFonts.inter(color: const Color(0xFF4B5E78))),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                  backgroundColor: _accent,
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8))),
+              onPressed: () async {
+                final correctAnswer = question.isTrueFalse
+                    ? (tfIdx == 0 ? 'True' : 'False')
+                    : answerCtrl.text.trim();
+                final updated = question.copyWith(
+                  questionText: textCtrl.text.trim(),
+                  correctAnswer: correctAnswer,
+                  choices: question.isTrueFalse ? const ['True', 'False'] : question.choices,
+                  points: double.tryParse(pointsCtrl.text) ?? 1,
+                );
+                await provider.updateQuestion(updated);
+                if (ctx.mounted) Navigator.pop(ctx);
+              },
+              child: Text('Save',
+                  style: GoogleFonts.inter(fontWeight: FontWeight.w700)),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: Text('Cancel',
-                style: GoogleFonts.inter(color: const Color(0xFF4B5E78))),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-                backgroundColor: _accent,
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8))),
-            onPressed: () async {
-              final updated = question.copyWith(
-                questionText: textCtrl.text.trim(),
-                correctAnswer: answerCtrl.text.trim(),
-                points: double.tryParse(pointsCtrl.text) ?? 1,
-              );
-              await provider.updateQuestion(updated);
-              if (ctx.mounted) Navigator.pop(ctx);
-            },
-            child: Text('Save',
-                style: GoogleFonts.inter(fontWeight: FontWeight.w700)),
-          ),
-        ],
       ),
     );
   }
-
-
 
   void _showSubmissionsDialog(
       AdminProvider provider, AssessmentConfig assessment) async {
@@ -1887,14 +2114,38 @@ class _DesktopAssessmentScreenState extends State<DesktopAssessmentScreen> {
             backgroundColor: _surface,
             shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(14)),
-            title: Text('Submissions — ${assessment.title}',
-                style: GoogleFonts.inter(
-                    color: Colors.white,
-                    fontSize: 15,
-                    fontWeight: FontWeight.w700)),
+            title: Row(
+              children: [
+                const Icon(Icons.people_alt_rounded,
+                    color: Color(0xFF3B82F6), size: 20),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text('Submissions — ${assessment.title}',
+                      style: GoogleFonts.inter(
+                          color: Colors.white,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w700)),
+                ),
+                TextButton.icon(
+                  style: TextButton.styleFrom(
+                    foregroundColor: _amber,
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  ),
+                  icon: const Icon(Icons.rate_review_rounded, size: 16),
+                  label: Text('Grade Essays',
+                      style: GoogleFonts.inter(
+                          fontSize: 12, fontWeight: FontWeight.w700)),
+                  onPressed: () {
+                    Navigator.pop(ctx);
+                    _showEssayGradingDialog(provider, assessment, null);
+                  },
+                ),
+              ],
+            ),
             content: SizedBox(
-              width: 500,
-              height: 400,
+              width: 560,
+              height: 420,
               child: subs.isEmpty
                   ? Center(
                       child: Text('No submissions yet',
@@ -1934,27 +2185,8 @@ class _DesktopAssessmentScreenState extends State<DesktopAssessmentScreen> {
                                   ],
                                 ),
                               ),
-                              if (s.setLabel != null)
-                                Container(
-                                  margin: const EdgeInsets.only(
-                                      right: 8),
-                                  padding: const EdgeInsets.symmetric(
-                                      horizontal: 6, vertical: 2),
-                                  decoration: BoxDecoration(
-                                    color: _amber
-                                        .withValues(alpha: 0.12),
-                                    borderRadius:
-                                        BorderRadius.circular(4),
-                                  ),
-                                  child: Text('Set ${s.setLabel}',
-                                      style: GoogleFonts.inter(
-                                          color: _amber,
-                                          fontSize: 10,
-                                          fontWeight:
-                                              FontWeight.w700)),
-                                ),
                               Text(
-                                  '${s.score.toStringAsFixed(0)}/${s.maxScore.toStringAsFixed(0)}',
+                                  '${s.score.toStringAsFixed(1)}/${s.maxScore.toStringAsFixed(1)}',
                                   style: GoogleFonts.inter(
                                       color: Colors.white,
                                       fontSize: 14,
@@ -1965,7 +2197,17 @@ class _DesktopAssessmentScreenState extends State<DesktopAssessmentScreen> {
                                       color: const Color(0xFF10B981),
                                       fontSize: 12,
                                       fontWeight: FontWeight.w700)),
-                              const SizedBox(width: 8),
+                              const SizedBox(width: 10),
+                              IconButton(
+                                tooltip: 'Grade Essays for this student',
+                                icon: const Icon(Icons.rate_review_rounded,
+                                    color: _amber, size: 18),
+                                onPressed: () {
+                                  Navigator.pop(ctx);
+                                  _showEssayGradingDialog(provider, assessment, s);
+                                },
+                              ),
+                              const SizedBox(width: 4),
                               Icon(
                                 s.isGraded
                                     ? Icons.check_circle_rounded
@@ -1987,6 +2229,419 @@ class _DesktopAssessmentScreenState extends State<DesktopAssessmentScreen> {
                 child: Text('Close',
                     style: GoogleFonts.inter(
                         color: const Color(0xFF4B5E78))),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  /// Dialog to view student essays and grade them manually.
+  void _showEssayGradingDialog(
+    AdminProvider provider,
+    AssessmentConfig assessment,
+    AssessmentSubmission? initialSubmission,
+  ) async {
+    await provider.loadSubmissions(assessment.id!);
+    if (!mounted) return;
+
+    final submissions = provider.currentSubmissions;
+    if (submissions.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('No student submissions found for this assessment.'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
+      return;
+    }
+
+    AssessmentSubmission selectedSub = initialSubmission ?? submissions.first;
+    List<Map<String, dynamic>> answers =
+        await provider.loadSubmissionAnswers(selectedSub.id!);
+
+    // Filter to only essay answers if available, otherwise show all
+    List<Map<String, dynamic>> essayAnswers = answers.where((a) {
+      final qMap = a['assessment_questions'] as Map<String, dynamic>?;
+      return qMap?['question_type'] == 'essay';
+    }).toList();
+
+    // If no explicit question_type='essay', fallback to all answers
+    final displayAnswers =
+        essayAnswers.isNotEmpty ? essayAnswers : answers;
+
+    final Map<String, TextEditingController> scoreControllers = {};
+    for (final a in displayAnswers) {
+      final ansId = a['id']?.toString() ?? '';
+      final currentScore =
+          (a['points_earned'] as num?)?.toDouble() ?? 0.0;
+      scoreControllers[ansId] =
+          TextEditingController(text: currentScore.toStringAsFixed(1));
+    }
+
+    if (!mounted) return;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) {
+          return AlertDialog(
+            backgroundColor: _surface,
+            shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14)),
+            title: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: _amber.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(Icons.rate_review_rounded,
+                      color: _amber, size: 20),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Essay Manual Grading',
+                        style: GoogleFonts.inter(
+                            color: Colors.white,
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700),
+                      ),
+                      Text(
+                        assessment.title,
+                        style: GoogleFonts.inter(
+                            color: const Color(0xFF8B9AB2), fontSize: 11),
+                      ),
+                    ],
+                  ),
+                ),
+                // Student selector dropdown
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF131B2B),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: _border),
+                  ),
+                  child: DropdownButtonHideUnderline(
+                    child: DropdownButton<String>(
+                      dropdownColor: const Color(0xFF131B2B),
+                      value: selectedSub.id,
+                      icon: const Icon(Icons.arrow_drop_down_rounded,
+                          color: Colors.white70),
+                      items: submissions.map((sub) {
+                        return DropdownMenuItem<String>(
+                          value: sub.id,
+                          child: Text(
+                            '${sub.studentName ?? "Student"} (${sub.score.toStringAsFixed(0)}/${sub.maxScore.toStringAsFixed(0)})',
+                            style: GoogleFonts.inter(
+                                color: Colors.white,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600),
+                          ),
+                        );
+                      }).toList(),
+                      onChanged: (newId) async {
+                        if (newId == null || newId == selectedSub.id) return;
+                        final newSub =
+                            submissions.firstWhere((s) => s.id == newId);
+                        final newAnswers =
+                            await provider.loadSubmissionAnswers(newSub.id!);
+                        final newEssays = newAnswers.where((a) {
+                          final qMap =
+                              a['assessment_questions'] as Map<String, dynamic>?;
+                          return qMap?['question_type'] == 'essay';
+                        }).toList();
+                        final list =
+                            newEssays.isNotEmpty ? newEssays : newAnswers;
+
+                        scoreControllers.clear();
+                        for (final a in list) {
+                          final ansId = a['id']?.toString() ?? '';
+                          final currentScore =
+                              (a['points_earned'] as num?)?.toDouble() ?? 0.0;
+                          scoreControllers[ansId] = TextEditingController(
+                              text: currentScore.toStringAsFixed(1));
+                        }
+
+                        setDialogState(() {
+                          selectedSub = newSub;
+                          answers = newAnswers;
+                        });
+                      },
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            content: SizedBox(
+              width: 680,
+              height: 480,
+              child: displayAnswers.isEmpty
+                  ? Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.check_circle_outline_rounded,
+                              color: Color(0xFF4B5E78), size: 48),
+                          const SizedBox(height: 12),
+                          Text('No essay questions found in this submission',
+                              style: GoogleFonts.inter(
+                                  color: const Color(0xFF8B9AB2),
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600)),
+                        ],
+                      ),
+                    )
+                  : ListView.builder(
+                      itemCount: displayAnswers.length,
+                      itemBuilder: (_, idx) {
+                        final ans = displayAnswers[idx];
+                        final ansId = ans['id']?.toString() ?? '';
+                        final qMap = ans['assessment_questions']
+                            as Map<String, dynamic>?;
+                        final qText = qMap?['question_text'] as String? ??
+                            'Essay Question ${idx + 1}';
+                        final maxPts =
+                            (qMap?['points'] as num?)?.toDouble() ?? 10.0;
+                        final studentAns = ans['student_answer'] as String? ??
+                            'No response submitted.';
+                        final ctrl = scoreControllers[ansId] ??
+                            TextEditingController(text: '0.0');
+
+                        return Container(
+                          margin: const EdgeInsets.only(bottom: 14),
+                          padding: const EdgeInsets.all(14),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF131B2B),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: _border),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              // Question Header
+                              Row(
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 8, vertical: 3),
+                                    decoration: BoxDecoration(
+                                      color: _amber.withValues(alpha: 0.15),
+                                      borderRadius: BorderRadius.circular(6),
+                                    ),
+                                    child: Text(
+                                      'QUESTION ${idx + 1}',
+                                      style: GoogleFonts.inter(
+                                          color: _amber,
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.w800),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    'Max: ${maxPts.toStringAsFixed(1)} pts',
+                                    style: GoogleFonts.inter(
+                                        color: const Color(0xFF8B9AB2),
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w600),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                qText,
+                                style: GoogleFonts.inter(
+                                    color: Colors.white,
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w600),
+                              ),
+                              const SizedBox(height: 10),
+
+                              // Student's typed response
+                              Text(
+                                "STUDENT'S ANSWER:",
+                                style: GoogleFonts.inter(
+                                    color: const Color(0xFF4B5E78),
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w700),
+                              ),
+                              const SizedBox(height: 4),
+                              Container(
+                                width: double.infinity,
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF1E2838),
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(
+                                      color: Colors.white.withValues(alpha: 0.05)),
+                                ),
+                                child: Text(
+                                  studentAns,
+                                  style: GoogleFonts.inter(
+                                      color: Colors.white.withValues(alpha: 0.9),
+                                      fontSize: 12,
+                                      height: 1.4),
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+
+                              // Scoring Row & Save Button
+                              Row(
+                                children: [
+                                  Text(
+                                    'Assign Score:',
+                                    style: GoogleFonts.inter(
+                                        color: Colors.white70,
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w600),
+                                  ),
+                                  const SizedBox(width: 10),
+                                  SizedBox(
+                                    width: 70,
+                                    height: 36,
+                                    child: TextField(
+                                      controller: ctrl,
+                                      keyboardType:
+                                          const TextInputType.numberWithOptions(
+                                              decimal: true),
+                                      style: GoogleFonts.inter(
+                                          color: Colors.white,
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w700),
+                                      decoration: InputDecoration(
+                                        filled: true,
+                                        fillColor: const Color(0xFF232D3F),
+                                        contentPadding:
+                                            const EdgeInsets.symmetric(
+                                                horizontal: 10, vertical: 8),
+                                        border: OutlineInputBorder(
+                                            borderRadius:
+                                                BorderRadius.circular(6),
+                                            borderSide: BorderSide.none),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    '/ ${maxPts.toStringAsFixed(1)}',
+                                    style: GoogleFonts.inter(
+                                        color: const Color(0xFF8B9AB2),
+                                        fontSize: 12),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  // Quick full credit button
+                                  OutlinedButton(
+                                    style: OutlinedButton.styleFrom(
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 10, vertical: 4),
+                                      side: BorderSide(
+                                          color: _green.withValues(alpha: 0.4)),
+                                      shape: RoundedRectangleBorder(
+                                          borderRadius:
+                                              BorderRadius.circular(6)),
+                                    ),
+                                    onPressed: () {
+                                      ctrl.text = maxPts.toStringAsFixed(1);
+                                    },
+                                    child: Text('Full (${maxPts.toStringAsFixed(0)})',
+                                        style: GoogleFonts.inter(
+                                            color: _green,
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.w600)),
+                                  ),
+                                  const Spacer(),
+                                  ElevatedButton.icon(
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: _green,
+                                      shape: RoundedRectangleBorder(
+                                          borderRadius:
+                                              BorderRadius.circular(6)),
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 12, vertical: 8),
+                                    ),
+                                    icon: const Icon(Icons.save_rounded,
+                                        color: Colors.white, size: 14),
+                                    label: Text('Save Grade',
+                                        style: GoogleFonts.inter(
+                                            color: Colors.white,
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.w700)),
+                                    onPressed: () async {
+                                      final pts =
+                                          double.tryParse(ctrl.text) ?? 0.0;
+                                      final isCorr = pts > 0;
+                                      try {
+                                        await provider
+                                            .gradeSubmissionEssayAnswer(
+                                          assessmentId: assessment.id!,
+                                          submissionId: selectedSub.id!,
+                                          answerId: ansId,
+                                          pointsEarned: pts,
+                                          isCorrect: isCorr,
+                                        );
+
+                                        final updatedSubs =
+                                            provider.currentSubmissions;
+                                        final newSub = updatedSubs.firstWhere(
+                                          (s) => s.id == selectedSub.id,
+                                          orElse: () => selectedSub,
+                                        );
+
+                                        setDialogState(() {
+                                          selectedSub = newSub;
+                                        });
+
+                                        if (ctx.mounted) {
+                                          ScaffoldMessenger.of(ctx)
+                                              .showSnackBar(
+                                            SnackBar(
+                                              content: Text(
+                                                  'Grade saved! Updated score: ${newSub.score.toStringAsFixed(1)} / ${newSub.maxScore.toStringAsFixed(1)}'),
+                                              backgroundColor:
+                                                  const Color(0xFF10B981),
+                                              duration:
+                                                  const Duration(seconds: 2),
+                                            ),
+                                          );
+                                        }
+                                      } catch (e) {
+                                        if (ctx.mounted) {
+                                          ScaffoldMessenger.of(ctx)
+                                              .showSnackBar(
+                                            SnackBar(
+                                              content: Text(
+                                                  'Failed to save grade: $e'),
+                                              backgroundColor: Colors.red,
+                                            ),
+                                          );
+                                        }
+                                      }
+                                    },
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: Text('Done',
+                    style: GoogleFonts.inter(
+                        color: _accent, fontWeight: FontWeight.w700)),
               ),
             ],
           );
@@ -2176,22 +2831,75 @@ class _DesktopAssessmentScreenState extends State<DesktopAssessmentScreen> {
                                       ],
                                     ),
                                   ),
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(
-                                        horizontal: 8, vertical: 4),
-                                    decoration: BoxDecoration(
-                                      color: const Color(0xFF10B981)
-                                          .withValues(alpha: 0.12),
-                                      borderRadius: BorderRadius.circular(6),
+                                  if (req.term != null && req.term!.isNotEmpty) ...[
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 8, vertical: 4),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFF6366F1)
+                                            .withValues(alpha: 0.15),
+                                        borderRadius: BorderRadius.circular(6),
+                                        border: Border.all(
+                                            color: const Color(0xFF6366F1)
+                                                .withValues(alpha: 0.4)),
+                                      ),
+                                      child: Text(
+                                        req.term!.toUpperCase(),
+                                        style: GoogleFonts.inter(
+                                            color: const Color(0xFF818CF8),
+                                            fontSize: 10,
+                                            fontWeight: FontWeight.w800),
+                                      ),
                                     ),
-                                    child: Text(
-                                      req.status.toUpperCase(),
-                                      style: GoogleFonts.inter(
-                                          color: const Color(0xFF10B981),
-                                          fontSize: 10,
-                                          fontWeight: FontWeight.w700),
-                                    ),
-                                  ),
+                                    const SizedBox(width: 6),
+                                  ],
+                                  Builder(builder: (_) {
+                                    final status = req.status.toLowerCase();
+                                    final isApproved = status == 'approved';
+                                    final isRejected = status == 'rejected';
+                                    final Color badgeColor = isApproved
+                                        ? const Color(0xFF10B981)
+                                        : isRejected
+                                            ? const Color(0xFFEF4444)
+                                            : const Color(0xFFF59E0B);
+                                    final String badgeText = isApproved
+                                        ? 'APPROVED'
+                                        : isRejected
+                                            ? 'REJECTED'
+                                            : 'SUBMITTED';
+                                    return Container(
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 8, vertical: 4),
+                                      decoration: BoxDecoration(
+                                        color: badgeColor.withValues(alpha: 0.15),
+                                        borderRadius: BorderRadius.circular(6),
+                                        border: Border.all(
+                                            color: badgeColor.withValues(alpha: 0.35)),
+                                      ),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Icon(
+                                            isApproved
+                                                ? Icons.check_circle_rounded
+                                                : isRejected
+                                                    ? Icons.cancel_rounded
+                                                    : Icons.schedule_rounded,
+                                            size: 11,
+                                            color: badgeColor,
+                                          ),
+                                          const SizedBox(width: 4),
+                                          Text(
+                                            badgeText,
+                                            style: GoogleFonts.inter(
+                                                color: badgeColor,
+                                                fontSize: 10,
+                                                fontWeight: FontWeight.w700),
+                                          ),
+                                        ],
+                                      ),
+                                    );
+                                  }),
                                   const SizedBox(width: 8),
                                   IconButton(
                                     icon: const Icon(
@@ -2313,6 +3021,126 @@ class _DesktopAssessmentScreenState extends State<DesktopAssessmentScreen> {
                                   ],
                                 ),
                               ),
+                              // Approve & Reject Action Row
+                              const SizedBox(height: 10),
+                              Builder(builder: (_) {
+                                final isApproved = req.status.toLowerCase() == 'approved';
+                                final isRejected = req.status.toLowerCase() == 'rejected';
+                                return Row(
+                                  mainAxisAlignment: MainAxisAlignment.end,
+                                  children: [
+                                    // Reject Button
+                                    OutlinedButton.icon(
+                                      style: OutlinedButton.styleFrom(
+                                        foregroundColor: const Color(0xFFEF4444),
+                                        backgroundColor: isRejected
+                                            ? const Color(0xFFEF4444).withValues(alpha: 0.2)
+                                            : const Color(0xFFEF4444).withValues(alpha: 0.05),
+                                        side: BorderSide(
+                                          color: const Color(0xFFEF4444)
+                                              .withValues(alpha: isRejected ? 0.9 : 0.4),
+                                          width: isRejected ? 1.5 : 1,
+                                        ),
+                                        shape: RoundedRectangleBorder(
+                                            borderRadius: BorderRadius.circular(6)),
+                                        padding: const EdgeInsets.symmetric(
+                                            horizontal: 12, vertical: 8),
+                                      ),
+                                      icon: Icon(
+                                        isRejected ? Icons.cancel_rounded : Icons.highlight_off_rounded,
+                                        size: 14,
+                                        color: const Color(0xFFEF4444),
+                                      ),
+                                      label: Text(
+                                        isRejected ? 'Rejected' : 'Reject',
+                                        style: GoogleFonts.inter(
+                                            fontSize: 11,
+                                            fontWeight: isRejected
+                                                ? FontWeight.w800
+                                                : FontWeight.w600),
+                                      ),
+                                      onPressed: () async {
+                                        try {
+                                          await prov.updateExamRequestStatus(req.id!, 'rejected');
+                                          if (context.mounted) {
+                                            ScaffoldMessenger.of(context).showSnackBar(
+                                              SnackBar(
+                                                content: Text('Permit for ${req.studentName ?? "student"} marked Rejected'),
+                                                backgroundColor: const Color(0xFFEF4444),
+                                                duration: const Duration(seconds: 2),
+                                              ),
+                                            );
+                                          }
+                                        } catch (e) {
+                                          if (context.mounted) {
+                                            ScaffoldMessenger.of(context).showSnackBar(
+                                              SnackBar(
+                                                content: Text('Error updating status: $e'),
+                                                backgroundColor: Colors.red,
+                                              ),
+                                            );
+                                          }
+                                        }
+                                      },
+                                    ),
+                                    const SizedBox(width: 8),
+                                    // Approve Button
+                                    ElevatedButton.icon(
+                                      style: ElevatedButton.styleFrom(
+                                        foregroundColor: Colors.white,
+                                        backgroundColor: isApproved
+                                            ? const Color(0xFF10B981)
+                                            : const Color(0xFF10B981).withValues(alpha: 0.25),
+                                        side: BorderSide(
+                                          color: const Color(0xFF10B981)
+                                              .withValues(alpha: isApproved ? 0.9 : 0.45),
+                                          width: isApproved ? 1.5 : 1,
+                                        ),
+                                        elevation: 0,
+                                        shape: RoundedRectangleBorder(
+                                            borderRadius: BorderRadius.circular(6)),
+                                        padding: const EdgeInsets.symmetric(
+                                            horizontal: 14, vertical: 8),
+                                      ),
+                                      icon: Icon(
+                                        Icons.check_circle_rounded,
+                                        size: 14,
+                                        color: isApproved ? Colors.white : const Color(0xFF34D399),
+                                      ),
+                                      label: Text(
+                                        isApproved ? 'Approved' : 'Approve',
+                                        style: GoogleFonts.inter(
+                                            color: isApproved ? Colors.white : const Color(0xFF34D399),
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.w700),
+                                      ),
+                                      onPressed: () async {
+                                        try {
+                                          await prov.updateExamRequestStatus(req.id!, 'approved');
+                                          if (context.mounted) {
+                                            ScaffoldMessenger.of(context).showSnackBar(
+                                              SnackBar(
+                                                content: Text('Permit for ${req.studentName ?? "student"} Approved!'),
+                                                backgroundColor: const Color(0xFF10B981),
+                                                duration: const Duration(seconds: 2),
+                                              ),
+                                            );
+                                          }
+                                        } catch (e) {
+                                          if (context.mounted) {
+                                            ScaffoldMessenger.of(context).showSnackBar(
+                                              SnackBar(
+                                                content: Text('Error updating status: $e'),
+                                                backgroundColor: Colors.red,
+                                              ),
+                                            );
+                                          }
+                                        }
+                                      },
+                                    ),
+                                  ],
+                                );
+                              }),
                             ],
                           ),
                         );
@@ -2332,6 +3160,103 @@ class _DesktopAssessmentScreenState extends State<DesktopAssessmentScreen> {
     );
   }
 
+  Widget _buildSafeImageView(String imageUrl) {
+    final cleanUrl = imageUrl.trim();
+
+    // 1. Data URI (e.g. data:image/jpeg;base64,/9j/...)
+    if (cleanUrl.startsWith('data:')) {
+      try {
+        final commaIdx = cleanUrl.indexOf(',');
+        final base64Data =
+            commaIdx != -1 ? cleanUrl.substring(commaIdx + 1) : cleanUrl;
+        final bytes = base64Decode(base64Data);
+        return InteractiveViewer(
+          minScale: 0.5,
+          maxScale: 4.0,
+          child: Image.memory(
+            bytes,
+            fit: BoxFit.contain,
+            errorBuilder: (_, err, ___) => Center(
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Text('Corrupt image data ($err)',
+                    style: const TextStyle(color: Colors.redAccent, fontSize: 12)),
+              ),
+            ),
+          ),
+        );
+      } catch (e) {
+        return Center(
+          child: Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Text('Failed to decode base64 image: $e',
+                style: const TextStyle(color: Colors.redAccent, fontSize: 12)),
+          ),
+        );
+      }
+    }
+
+    // 2. Standard Network URL (http / https)
+    if (cleanUrl.startsWith('http://') || cleanUrl.startsWith('https://')) {
+      return InteractiveViewer(
+        minScale: 0.5,
+        maxScale: 4.0,
+        child: Image.network(
+          cleanUrl,
+          fit: BoxFit.contain,
+          loadingBuilder: (_, child, progress) {
+            if (progress == null) return child;
+            return const Center(
+              child: CircularProgressIndicator(color: Color(0xFF6366F1)),
+            );
+          },
+          errorBuilder: (_, err, ___) => Center(
+            child: Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.broken_image_rounded,
+                      color: Colors.redAccent, size: 40),
+                  const SizedBox(height: 8),
+                  Text('Could not load image from server ($err)',
+                      style: const TextStyle(
+                          color: Colors.redAccent, fontSize: 12),
+                      textAlign: TextAlign.center),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    // 3. Raw base64 string fallback
+    try {
+      final bytes = base64Decode(cleanUrl);
+      return InteractiveViewer(
+        minScale: 0.5,
+        maxScale: 4.0,
+        child: Image.memory(
+          bytes,
+          fit: BoxFit.contain,
+          errorBuilder: (_, err, ___) => Center(
+            child: Text('Could not render image: $err',
+                style: const TextStyle(color: Colors.redAccent, fontSize: 12)),
+          ),
+        ),
+      );
+    } catch (_) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.all(16.0),
+          child: Text('Invalid image source URL',
+              style: TextStyle(color: Colors.redAccent, fontSize: 12)),
+        ),
+      );
+    }
+  }
+
   void _viewImageDialog(
       BuildContext parentContext, String imageUrl, String title) {
     showDialog(
@@ -2340,21 +3265,32 @@ class _DesktopAssessmentScreenState extends State<DesktopAssessmentScreen> {
         backgroundColor: _surface,
         shape:
             RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-        title: Text(title,
-            style: GoogleFonts.inter(
-                color: Colors.white, fontWeight: FontWeight.w700)),
+        title: Row(
+          children: [
+            const Icon(Icons.image_rounded, color: Color(0xFF6366F1), size: 20),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(title,
+                  style: GoogleFonts.inter(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 16)),
+            ),
+            IconButton(
+              icon: const Icon(Icons.close_rounded,
+                  color: Color(0xFF8B9AB2), size: 18),
+              onPressed: () => Navigator.pop(ctx),
+            ),
+          ],
+        ),
         content: SizedBox(
-          width: 500,
-          height: 400,
+          width: 580,
+          height: 440,
           child: ClipRRect(
             borderRadius: BorderRadius.circular(8),
-            child: Image.network(
-              imageUrl,
-              fit: BoxFit.contain,
-              errorBuilder: (_, __, ___) => Center(
-                child: Text('Could not load image: $imageUrl',
-                    style: const TextStyle(color: Colors.redAccent)),
-              ),
+            child: Container(
+              color: const Color(0xFF0F172A),
+              child: _buildSafeImageView(imageUrl),
             ),
           ),
         ),
@@ -2362,7 +3298,7 @@ class _DesktopAssessmentScreenState extends State<DesktopAssessmentScreen> {
           TextButton(
             onPressed: () => Navigator.pop(ctx),
             child: Text('Close',
-                style: GoogleFonts.inter(color: const Color(0xFF4B5E78))),
+                style: GoogleFonts.inter(color: const Color(0xFF8B9AB2))),
           ),
         ],
       ),

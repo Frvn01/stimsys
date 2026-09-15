@@ -1,11 +1,10 @@
-import 'package:flutter/foundation.dart';
-
 /// Represents a student's submitted Exam Request / Permit with proctor details & signature images.
 class ExamRequest {
   final String? id;
   final String studentId;
   final String subjectId;
   final String? assessmentId;
+  final String? term; // 'prelim', 'midterm', 'semi_finals', 'finals'
   final String proctorName;
   final String section;
   final String course;
@@ -24,6 +23,7 @@ class ExamRequest {
     required this.studentId,
     required this.subjectId,
     this.assessmentId,
+    this.term,
     required this.proctorName,
     required this.section,
     required this.course,
@@ -40,7 +40,8 @@ class ExamRequest {
         if (id != null) 'id': id,
         'student_id': studentId,
         'subject_id': subjectId,
-        'assessment_id': assessmentId,
+        if (assessmentId != null) 'assessment_id': assessmentId,
+        if (term != null) 'term': term,
         'proctor_name': proctorName,
         'section': section,
         'course': course,
@@ -52,12 +53,14 @@ class ExamRequest {
 
   factory ExamRequest.fromSupabase(Map<String, dynamic> map) {
     final studentMap = map['students'] as Map<String, dynamic>?;
+    final assessmentMap = map['assessments'] as Map<String, dynamic>?;
 
     return ExamRequest(
       id: map['id']?.toString(),
       studentId: map['student_id'] ?? '',
       subjectId: map['subject_id'] ?? '',
-      assessmentId: map['assessment_id'],
+      assessmentId: map['assessment_id']?.toString(),
+      term: map['term'] ?? assessmentMap?['term'],
       proctorName: map['proctor_name'] ?? '',
       section: map['section'] ?? '',
       course: map['course'] ?? '',
@@ -80,6 +83,7 @@ class ExamRequest {
     String? studentId,
     String? subjectId,
     String? assessmentId,
+    String? term,
     String? proctorName,
     String? section,
     String? course,
@@ -96,11 +100,13 @@ class ExamRequest {
         studentId: studentId ?? this.studentId,
         subjectId: subjectId ?? this.subjectId,
         assessmentId: assessmentId ?? this.assessmentId,
+        term: term ?? this.term,
         proctorName: proctorName ?? this.proctorName,
         section: section ?? this.section,
         course: course ?? this.course,
         subjectName: subjectName ?? this.subjectName,
-        proctorSignatureUrl: proctorSignatureUrl ?? this.proctorSignatureUrl,
+        proctorSignatureUrl:
+            proctorSignatureUrl ?? this.proctorSignatureUrl,
         documentImageUrl: documentImageUrl ?? this.documentImageUrl,
         status: status ?? this.status,
         createdAt: createdAt ?? this.createdAt,

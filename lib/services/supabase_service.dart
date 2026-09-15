@@ -1910,11 +1910,13 @@ class SupabaseService {
     try {
       final data = <String, dynamic>{
         'is_published': publish,
-        'updated_at': DateTime.now().toIso8601String(),
+        // Always send UTC — local DateTime.toIso8601String() has no timezone
+        // offset, so Supabase would interpret it as UTC, causing an 8-hour shift.
+        'updated_at': DateTime.now().toUtc().toIso8601String(),
       };
       if (publish) {
-        data['published_at'] = DateTime.now().toIso8601String();
-        data['available_until'] = availableUntil?.toIso8601String();
+        data['published_at'] = DateTime.now().toUtc().toIso8601String();
+        data['available_until'] = availableUntil?.toUtc().toIso8601String();
       } else {
         data['available_until'] = null;
       }
@@ -2364,6 +2366,78 @@ class SupabaseService {
     } catch (e) {
       debugPrint('Get submissions error: $e');
       return [];
+    }
+  }
+
+  /// Get individual answers for a submission along with question details.
+  Future<List<Map<String, dynamic>>> getSubmissionAnswersWithQuestions(
+    String submissionId,
+  ) async {
+    try {
+      final response = await _client
+          .from('assessment_answers')
+          .select('*, assessment_questions(*)')
+          .eq('submission_id', submissionId);
+      return List<Map<String, dynamic>>.from(response);
+    } catch (e) {
+      debugPrint('Get submission answers with questions error: $e');
+      return [];
+    }
+  }
+
+  /// Manual grading: Grade a specific essay answer, update total score and auto-record to student grades.
+  Future<void> gradeSubmissionEssayAnswer({
+    required String submissionId,
+    required String answerId,
+    required double pointsEarned,
+    required bool isCorrect,
+  }) async {
+    try {
+      // 1. Update the answer points
+      await _client
+          .from('assessment_answers')
+          .update({
+            'points_earned': pointsEarned,
+            'is_correct': isCorrect,
+          })
+          .eq('id', answerId);
+
+      // 2. Recalculate total score for this submission from all answers
+      final answers = await _client
+          .from('assessment_answers')
+          .select('points_earned')
+          .eq('submission_id', submissionId);
+
+      double totalScore = 0.0;
+      for (final a in answers) {
+        totalScore += (a['points_earned'] as num?)?.toDouble() ?? 0.0;
+      }
+
+      // 3. Update the submission score and mark as graded
+      final subRes = await _client
+          .from('assessment_submissions')
+          .update({
+            'score': totalScore,
+            'is_graded': true,
+          })
+          .eq('id', submissionId)
+          .select('assessment_id, student_id, max_score')
+          .single();
+
+      final assessmentId = subRes['assessment_id'] as String;
+      final studentId = subRes['student_id'] as String;
+      final maxScore = (subRes['max_score'] as num?)?.toDouble() ?? totalScore;
+
+      // 4. Auto-record to grades
+      await autoRecordAssessmentToGrade(
+        assessmentId: assessmentId,
+        studentId: studentId,
+        score: totalScore,
+        maxScore: maxScore,
+      );
+    } catch (e) {
+      debugPrint('Grade submission essay error: $e');
+      rethrow;
     }
   }
 
@@ -3086,6 +3160,7 @@ extension AnnouncementServiceExtension on SupabaseService {
 
 extension ExamRequestServiceExtension on SupabaseService {
   /// Upload an image for Exam Request (e.g. signature or permit) to 'exam-requests' storage bucket.
+  /// Falls back to a base64 data URI if the bucket upload fails (e.g., RLS policy not yet set).
   Future<String> uploadExamRequestImage(
     Uint8List imageBytes,
     String fileName, {
@@ -3107,20 +3182,40 @@ extension ExamRequestServiceExtension on SupabaseService {
           client.storage.from('exam-requests').getPublicUrl(fullPath);
       return publicUrl;
     } catch (e) {
-      debugPrint('Upload exam request image error: $e');
-      rethrow;
+      debugPrint('Storage upload failed, using base64 fallback: $e');
+      // Fallback: encode image as base64 data URI so the exam request can
+      // still be submitted even when the Supabase RLS policy is not yet set.
+      final cleanExt = extension.replaceAll('.', '');
+      final mime = cleanExt == 'png' ? 'image/png' : 'image/jpeg';
+      final base64Str = base64Encode(imageBytes);
+      return 'data:$mime;base64,$base64Str';
     }
   }
 
   /// Create a new exam request.
   Future<ExamRequest?> createExamRequest(ExamRequest request) async {
     try {
-      final response = await client
-          .from('exam_requests')
-          .insert(request.toSupabase())
-          .select('*, students(*)')
-          .single();
-      return ExamRequest.fromSupabase(response);
+      final data = request.toSupabase();
+      try {
+        final response = await client
+            .from('exam_requests')
+            .insert(data)
+            .select('*, students(*)')
+            .single();
+        return ExamRequest.fromSupabase(response);
+      } catch (e) {
+        // If 'term' column does not exist in backend schema yet, fallback without it
+        if (data.containsKey('term')) {
+          final fallbackData = Map<String, dynamic>.from(data)..remove('term');
+          final response = await client
+              .from('exam_requests')
+              .insert(fallbackData)
+              .select('*, students(*)')
+              .single();
+          return ExamRequest.fromSupabase(response).copyWith(term: request.term);
+        }
+        rethrow;
+      }
     } catch (e) {
       debugPrint('Create exam request error: $e');
       rethrow;
@@ -3175,6 +3270,19 @@ extension ExamRequestServiceExtension on SupabaseService {
       await client.from('exam_requests').delete().eq('id', id);
     } catch (e) {
       debugPrint('Delete exam request error: $e');
+      rethrow;
+    }
+  }
+
+  /// Update the status of an exam request (e.g. 'approved', 'rejected', 'submitted').
+  Future<void> updateExamRequestStatus(String id, String status) async {
+    try {
+      await client
+          .from('exam_requests')
+          .update({'status': status})
+          .eq('id', id);
+    } catch (e) {
+      debugPrint('Update exam request status error: $e');
       rethrow;
     }
   }

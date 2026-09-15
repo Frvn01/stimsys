@@ -43,20 +43,23 @@ class AnswerCacheService {
   }
 
   /// Save the timestamp when the student started (for resuming timer).
+  /// Always stored in UTC to avoid timezone offset issues on refresh.
   static Future<void> saveStartTime(
       String assessmentId, String usn, DateTime startTime) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(
-        '${_key(assessmentId, usn)}_start', startTime.toIso8601String());
+        '${_key(assessmentId, usn)}_start', startTime.toUtc().toIso8601String());
   }
 
   /// Get the saved start time (for resuming timer).
+  /// Returned as local time so elapsed-seconds math works correctly.
   static Future<DateTime?> getStartTime(
       String assessmentId, String usn) async {
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getString('${_key(assessmentId, usn)}_start');
     if (raw == null) return null;
-    return DateTime.tryParse(raw);
+    final parsed = DateTime.tryParse(raw);
+    return parsed?.toLocal();
   }
 
   /// Clear start time.

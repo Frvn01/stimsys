@@ -6,6 +6,7 @@ import '../providers/student_provider.dart';
 import '../models/enrollment_model.dart';
 import 'student_modules_screen.dart';
 import 'package:google_fonts/google_fonts.dart';
+import '../models/assessment_model.dart';
 import 'take_assessment_page.dart';
 import 'assessment_result_page.dart';
 import '../widgets/exam_request_dialog.dart';
@@ -28,7 +29,9 @@ class _QuizPageState extends State<QuizPage> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<StudentProvider>().loadModules();
+      final prov = context.read<StudentProvider>();
+      prov.loadModules();
+      prov.loadMyExamRequests();
     });
   }
 
@@ -575,7 +578,30 @@ class _QuizPageState extends State<QuizPage> {
                     );
                     return;
                   }
-                  // For both quizzes and exams, push TakeAssessmentPage directly
+
+                  // For Exams: Check per-term exam permit requirement
+                  if (isExam) {
+                    final hasPermit = provider.hasExamPermit(
+                      subjectId: subject.id!,
+                      term: assessment.term,
+                      assessmentId: assessment.id,
+                    );
+
+                    if (!hasPermit) {
+                      _showExamPermitRequiredDialog(
+                        context: context,
+                        enrollment: enrollment,
+                        assessment: assessment,
+                        termLabel: term,
+                        termCode: termCode,
+                        isDark: isDark,
+                        primaryColor: subjectColor,
+                      );
+                      return;
+                    }
+                  }
+
+                  // Launch TakeAssessmentPage
                   Navigator.push(context, MaterialPageRoute(builder: (_) => TakeAssessmentPage(
                     assessment: assessment,
                     isDark: isDark,
@@ -670,6 +696,217 @@ class _QuizPageState extends State<QuizPage> {
               : Colors.grey.shade100,
         ),
       ],
+    );
+  }
+
+  void _showExamPermitRequiredDialog({
+    required BuildContext context,
+    required Enrollment enrollment,
+    required AssessmentConfig assessment,
+    required String termLabel,
+    required String termCode,
+    required bool isDark,
+    required Color primaryColor,
+  }) {
+    final provider = Provider.of<StudentProvider>(context, listen: false);
+    final existingReq = provider.getExamRequestForTerm(
+      subjectId: enrollment.subjectId,
+      term: assessment.term,
+      assessmentId: assessment.id,
+    );
+
+    final status = existingReq?.status.toLowerCase();
+    final isPending = status == 'submitted';
+    final isRejected = status == 'rejected';
+
+    final Color headerColor = isRejected
+        ? const Color(0xFFEF4444)
+        : const Color(0xFFF59E0B);
+    final IconData headerIcon = isRejected
+        ? Icons.cancel_rounded
+        : isPending
+            ? Icons.hourglass_top_rounded
+            : Icons.assignment_late_rounded;
+
+    final String dialogTitle = isRejected
+        ? 'Exam Permit Rejected'
+        : isPending
+            ? 'Permit Pending Approval'
+            : 'Exam Permit Required';
+
+    final String mainMessage = isRejected
+        ? 'Your exam permit for the $termLabel Exam was rejected by the instructor. Please review your permit photo and proctor details, and resubmit.'
+        : isPending
+            ? 'Your exam permit for the $termLabel Exam has been submitted and is currently awaiting approval from your instructor.'
+            : 'An approved Exam Permit is required before taking the $termLabel Exam for ${enrollment.subjectTitle ?? "this subject"}.';
+
+    final String helpMessage = isRejected
+        ? 'Status: REJECTED — Please take a clear photo of your valid exam permit and resubmit.'
+        : isPending
+            ? 'Status: PENDING APPROVAL — Once your instructor approves your permit, you will be able to start the exam.'
+            : 'Please submit your proctor details and permit image to proceed.';
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: isDark ? const Color(0xFF1E293B) : Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: headerColor.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(headerIcon, color: headerColor, size: 22),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                dialogTitle,
+                style: GoogleFonts.inter(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w800,
+                  color: isDark ? Colors.white : Colors.black87,
+                ),
+              ),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              mainMessage,
+              style: GoogleFonts.inter(
+                fontSize: 13,
+                height: 1.4,
+                color: isDark ? Colors.grey[300] : Colors.grey[700],
+              ),
+            ),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: isDark
+                    ? Colors.white.withValues(alpha: 0.04)
+                    : Colors.grey.shade100,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                  color: isDark
+                      ? Colors.white.withValues(alpha: 0.08)
+                      : Colors.grey.shade300,
+                ),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    isRejected
+                        ? Icons.error_outline_rounded
+                        : isPending
+                            ? Icons.timer_outlined
+                            : Icons.info_outline_rounded,
+                    color: headerColor,
+                    size: 18,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      helpMessage,
+                      style: GoogleFonts.inter(
+                        fontSize: 11,
+                        color: isDark ? Colors.grey[400] : Colors.grey[600],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text(
+              'Close',
+              style: GoogleFonts.inter(
+                color: isDark ? Colors.grey[400] : Colors.grey[600],
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          if (isPending) ...[
+            OutlinedButton.icon(
+              style: OutlinedButton.styleFrom(
+                side: BorderSide(
+                    color: primaryColor.withValues(alpha: 0.5)),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10)),
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 14, vertical: 10),
+              ),
+              icon: Icon(Icons.refresh_rounded, color: primaryColor, size: 16),
+              label: Text(
+                'Check Status',
+                style: GoogleFonts.inter(
+                  color: primaryColor,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 13,
+                ),
+              ),
+              onPressed: () async {
+                Navigator.pop(ctx);
+                await provider.loadMyExamRequests();
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Permit status refreshed'),
+                      duration: Duration(seconds: 1),
+                    ),
+                  );
+                }
+              },
+            ),
+            const SizedBox(width: 6),
+          ],
+          ElevatedButton.icon(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: isRejected ? const Color(0xFFEF4444) : primaryColor,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10)),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            ),
+            icon: const Icon(Icons.send_rounded, color: Colors.white, size: 16),
+            label: Text(
+              isRejected
+                  ? 'Resubmit Permit Now'
+                  : isPending
+                      ? 'Update / Resubmit'
+                      : 'Submit Permit Now',
+              style: GoogleFonts.inter(
+                color: Colors.white,
+                fontWeight: FontWeight.w700,
+                fontSize: 13,
+              ),
+            ),
+            onPressed: () {
+              Navigator.pop(ctx);
+              showDialog(
+                context: context,
+                builder: (_) => ExamRequestDialog(
+                  enrollment: enrollment,
+                  initialTerm: termCode,
+                  assessmentId: assessment.id,
+                  isDark: isDark,
+                  primaryColor: primaryColor,
+                ),
+              );
+            },
+          ),
+        ],
+      ),
     );
   }
 }

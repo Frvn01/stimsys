@@ -83,8 +83,11 @@ class AssessmentConfig {
         'set_count': setCount,
         'session_code': sessionCode,
         'theme_color': themeColor,
-        'published_at': publishedAt?.toIso8601String(),
-        'available_until': availableUntil?.toIso8601String(),
+        // Always send UTC so Supabase/PostgreSQL stores the correct epoch.
+        // Dart's toIso8601String() on a local DateTime omits the timezone
+        // offset, which causes Supabase to mis-interpret the value as UTC.
+        'published_at': publishedAt?.toUtc().toIso8601String(),
+        'available_until': availableUntil?.toUtc().toIso8601String(),
       };
 
   factory AssessmentConfig.fromSupabase(Map<String, dynamic> map) =>
@@ -99,17 +102,19 @@ class AssessmentConfig {
         setCount: map['set_count'] ?? 1,
         sessionCode: map['session_code'],
         themeColor: map['theme_color'],
+        // Convert UTC timestamps from Supabase back to device-local time so
+        // all DateTime comparisons and display use the same timezone.
         publishedAt: map['published_at'] != null
-            ? DateTime.tryParse(map['published_at'])
+            ? DateTime.tryParse(map['published_at'])?.toLocal()
             : null,
         availableUntil: map['available_until'] != null
-            ? DateTime.tryParse(map['available_until'])
+            ? DateTime.tryParse(map['available_until'])?.toLocal()
             : null,
         createdAt: map['created_at'] != null
-            ? DateTime.tryParse(map['created_at'])
+            ? DateTime.tryParse(map['created_at'])?.toLocal()
             : null,
         updatedAt: map['updated_at'] != null
-            ? DateTime.tryParse(map['updated_at'])
+            ? DateTime.tryParse(map['updated_at'])?.toLocal()
             : null,
       );
 
@@ -188,7 +193,16 @@ class AssessmentQuestion {
     this.points = 1,
   });
 
-  bool get isMultipleChoice => questionType == 'multiple_choice';
+  bool get isTrueFalse {
+    if (questionType == 'true_false') return true;
+    final c = choices;
+    if (c == null || c.length != 2) return false;
+    return c.any((x) => x.trim().toLowerCase() == 'true') &&
+        c.any((x) => x.trim().toLowerCase() == 'false');
+  }
+
+  bool get isMultipleChoice =>
+      questionType == 'multiple_choice' && !isTrueFalse;
   bool get isIdentification => questionType == 'identification';
   bool get isEnumeration => questionType == 'enumeration';
   bool get isEssay => questionType == 'essay';
@@ -200,6 +214,10 @@ class AssessmentQuestion {
 
     if (isEssay) return false; // Needs manual grading
 
+    if (isTrueFalse) {
+      return sa == correctAnswer.trim().toLowerCase();
+    }
+
     if (isEnumeration && enumerationAnswers != null) {
       // For enumeration, check if the student's comma-separated answers
       // contain all correct answers (order-independent).
@@ -209,6 +227,17 @@ class AssessmentQuestion {
           .map((e) => e.trim().toLowerCase())
           .toSet();
       return correctParts.difference(studentParts).isEmpty;
+    }
+
+    if (isIdentification) {
+      // Support pipe-separated ( | ) alternative correct answers so that
+      // multiple valid answers are all accepted.
+      final alternatives = correctAnswer
+          .split('|')
+          .map((e) => e.trim().toLowerCase())
+          .where((e) => e.isNotEmpty)
+          .toList();
+      return alternatives.contains(sa);
     }
 
     return sa == correctAnswer.trim().toLowerCase();
@@ -238,26 +267,36 @@ class AssessmentQuestion {
         'assessment_id': assessmentId,
         'question_order': questionOrder,
         'question_text': questionText,
-        'question_type': questionType,
-        'choices': choices,
+        'question_type': isTrueFalse ? 'multiple_choice' : questionType,
+        'choices': isTrueFalse ? (choices ?? const ['True', 'False']) : choices,
         'correct_answer': correctAnswer,
         'enumeration_answers': enumerationAnswers,
         'points': points,
       };
 
-  factory AssessmentQuestion.fromSupabase(Map<String, dynamic> map) =>
-      AssessmentQuestion(
-        id: map['id'],
-        assessmentId: map['assessment_id'] ?? '',
-        questionOrder: map['question_order'] ?? 0,
-        questionText: map['question_text'] ?? '',
-        questionType: map['question_type'] ?? 'multiple_choice',
-        choices: (map['choices'] as List?)?.cast<String>(),
-        correctAnswer: map['correct_answer'] ?? '',
-        enumerationAnswers:
-            (map['enumeration_answers'] as List?)?.cast<String>(),
-        points: (map['points'] as num?)?.toDouble() ?? 1,
-      );
+  factory AssessmentQuestion.fromSupabase(Map<String, dynamic> map) {
+    final rawType = map['question_type'] ?? 'multiple_choice';
+    final choicesList = (map['choices'] as List?)?.cast<String>();
+    final isTf = rawType == 'true_false' ||
+        (rawType == 'multiple_choice' &&
+            choicesList != null &&
+            choicesList.length == 2 &&
+            choicesList.any((c) => c.trim().toLowerCase() == 'true') &&
+            choicesList.any((c) => c.trim().toLowerCase() == 'false'));
+
+    return AssessmentQuestion(
+      id: map['id'],
+      assessmentId: map['assessment_id'] ?? '',
+      questionOrder: map['question_order'] ?? 0,
+      questionText: map['question_text'] ?? '',
+      questionType: isTf ? 'true_false' : rawType,
+      choices: isTf ? (choicesList ?? const ['True', 'False']) : choicesList,
+      correctAnswer: map['correct_answer'] ?? '',
+      enumerationAnswers:
+          (map['enumeration_answers'] as List?)?.cast<String>(),
+      points: (map['points'] as num?)?.toDouble() ?? 1,
+    );
+  }
 
   AssessmentQuestion copyWith({
     String? id,
@@ -340,9 +379,10 @@ class AssessmentSubmission {
         'set_label': setLabel,
         'score': score,
         'max_score': maxScore,
-        'started_at': startedAt?.toIso8601String(),
-        'submitted_at':
-            submittedAt?.toIso8601String() ?? DateTime.now().toIso8601String(),
+        // Use UTC to avoid Supabase treating local time strings as UTC.
+        'started_at': startedAt?.toUtc().toIso8601String(),
+        'submitted_at': submittedAt?.toUtc().toIso8601String() ??
+            DateTime.now().toUtc().toIso8601String(),
         'is_graded': isGraded,
         'is_invalidated': isInvalidated,
         'appeal_status': appealStatus,
@@ -362,10 +402,10 @@ class AssessmentSubmission {
       score: (map['score'] as num?)?.toDouble() ?? 0,
       maxScore: (map['max_score'] as num?)?.toDouble() ?? 0,
       startedAt: map['started_at'] != null
-          ? DateTime.tryParse(map['started_at'])
+          ? DateTime.tryParse(map['started_at'])?.toLocal()
           : null,
       submittedAt: map['submitted_at'] != null
-          ? DateTime.tryParse(map['submitted_at'])
+          ? DateTime.tryParse(map['submitted_at'])?.toLocal()
           : null,
       isGraded: map['is_graded'] ?? false,
       isInvalidated: map['is_invalidated'] ?? false,

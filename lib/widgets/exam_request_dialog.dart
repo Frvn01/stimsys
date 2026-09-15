@@ -10,12 +10,16 @@ class ExamRequestDialog extends StatefulWidget {
   final Enrollment enrollment;
   final bool isDark;
   final Color primaryColor;
+  final String? initialTerm;
+  final String? assessmentId;
 
   const ExamRequestDialog({
     super.key,
     required this.enrollment,
     required this.isDark,
     required this.primaryColor,
+    this.initialTerm,
+    this.assessmentId,
   });
 
   @override
@@ -27,6 +31,8 @@ class _ExamRequestDialogState extends State<ExamRequestDialog> {
   final _proctorNameCtrl = TextEditingController();
   final _sectionCtrl = TextEditingController();
   final _courseCtrl = TextEditingController();
+
+  late String _selectedTerm;
 
   Uint8List? _signatureBytes;
   String? _signatureName;
@@ -42,6 +48,7 @@ class _ExamRequestDialogState extends State<ExamRequestDialog> {
     final student = context.read<StudentProvider>().currentStudent;
     _sectionCtrl.text = student?.section ?? '';
     _courseCtrl.text = student?.course ?? '';
+    _selectedTerm = widget.initialTerm ?? 'prelim';
   }
 
   @override
@@ -107,6 +114,8 @@ class _ExamRequestDialogState extends State<ExamRequestDialog> {
 
       await provider.submitExamRequest(
         subjectId: subjectId,
+        term: _selectedTerm,
+        assessmentId: widget.assessmentId,
         proctorName: _proctorNameCtrl.text.trim(),
         section: _sectionCtrl.text.trim(),
         course: _courseCtrl.text.trim(),
@@ -226,6 +235,63 @@ class _ExamRequestDialogState extends State<ExamRequestDialog> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      // Exam Term
+                      Text('EXAM TERM',
+                          style: GoogleFonts.inter(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                              color: isDark
+                                  ? Colors.grey[400]
+                                  : Colors.grey[700])),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          {'label': 'Prelim', 'code': 'prelim'},
+                          {'label': 'Midterm', 'code': 'midterm'},
+                          {'label': 'Pre-Finals', 'code': 'semi_finals'},
+                          {'label': 'Finals', 'code': 'finals'},
+                        ].map((t) {
+                          final isSel = _selectedTerm == t['code'];
+                          return Expanded(
+                            child: GestureDetector(
+                              onTap: () => setState(() => _selectedTerm = t['code']!),
+                              child: Container(
+                                margin: const EdgeInsets.symmetric(horizontal: 3),
+                                padding: const EdgeInsets.symmetric(vertical: 9),
+                                decoration: BoxDecoration(
+                                  color: isSel
+                                      ? widget.primaryColor.withValues(alpha: 0.15)
+                                      : (isDark
+                                          ? Colors.white.withValues(alpha: 0.04)
+                                          : Colors.grey.shade100),
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(
+                                    color: isSel
+                                        ? widget.primaryColor
+                                        : (isDark
+                                            ? Colors.white.withValues(alpha: 0.1)
+                                            : Colors.grey.shade300),
+                                    width: isSel ? 1.5 : 1,
+                                  ),
+                                ),
+                                alignment: Alignment.center,
+                                child: Text(
+                                  t['label']!,
+                                  style: GoogleFonts.inter(
+                                    fontSize: 11,
+                                    fontWeight: isSel ? FontWeight.w700 : FontWeight.w500,
+                                    color: isSel
+                                        ? widget.primaryColor
+                                        : (isDark ? Colors.grey[400] : Colors.grey[700]),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          );
+                        }).toList(),
+                      ),
+                      const SizedBox(height: 16),
+
                       // Proctor Name
                       Text('PROCTOR NAME',
                           style: GoogleFonts.inter(

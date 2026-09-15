@@ -55,18 +55,10 @@ class _TakeAssessmentPageState extends State<TakeAssessmentPage> with WidgetsBin
     WidgetsBinding.instance.addObserver(this);
     _secondsLeft = widget.assessment.timeLimitSecs;
     
-    _initializeSetAndSession();
+    _initializeSession();
   }
 
-  Future<void> _initializeSetAndSession() async {
-    final provider = context.read<StudentProvider>();
-    if (widget.assessment.setCount > 1) {
-      // Deterministic set assignment based on student USN and assessment ID
-      final hash = (widget.assessment.id! + provider.usn).hashCode;
-      final assignedSet = hash % 2 == 0 ? 'A' : 'B';
-      setState(() => _assignedSet = assignedSet);
-    }
-
+  Future<void> _initializeSession() async {
     // Bypass session verification completely
     setState(() => _sessionVerified = true);
     _loadDataAndCache();
@@ -646,7 +638,15 @@ class _TakeAssessmentPageState extends State<TakeAssessmentPage> with WidgetsBin
 
   Widget _buildQuestionCard(int index, AssessmentQuestion q, Color surface, Color textCol, Color subCol, Color accent) {
     final key = _questionKeys.putIfAbsent(index, () => GlobalKey());
-    final typeLabel = q.isMultipleChoice ? 'Multiple Choice' : q.isIdentification ? 'Identification' : q.isEssay ? 'Essay' : 'Enumeration';
+    final typeLabel = q.isTrueFalse
+        ? 'True / False'
+        : q.isMultipleChoice
+            ? 'Multiple Choice'
+            : q.isIdentification
+                ? 'Identification'
+                : q.isEssay
+                    ? 'Essay'
+                    : 'Enumeration';
     final ans = _answers[q.id] ?? '';
 
     return Container(
@@ -689,7 +689,71 @@ class _TakeAssessmentPageState extends State<TakeAssessmentPage> with WidgetsBin
           ),
           const SizedBox(height: 20),
 
-          if (q.isMultipleChoice)
+          if (q.isTrueFalse)
+            Row(
+              children: ['True', 'False'].map((opt) {
+                final isSelected = ans.toLowerCase() == opt.toLowerCase();
+                final optColor = opt == 'True'
+                    ? const Color(0xFF10B981)
+                    : const Color(0xFFEF4444);
+                return Expanded(
+                  child: GestureDetector(
+                    onTap: () => _updateAnswer(q.id!, opt),
+                    child: Container(
+                      margin: EdgeInsets.only(
+                        right: opt == 'True' ? 8 : 0,
+                        left: opt == 'False' ? 8 : 0,
+                      ),
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      decoration: BoxDecoration(
+                        color: isSelected
+                            ? optColor.withValues(alpha: 0.15)
+                            : (widget.isDark
+                                ? const Color(0xFF0F172A)
+                                : Colors.grey[50]),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: isSelected
+                              ? optColor
+                              : (widget.isDark
+                                  ? Colors.transparent
+                                  : Colors.grey[200]!),
+                          width: isSelected ? 2 : 1,
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            isSelected
+                                ? (opt == 'True'
+                                    ? Icons.check_circle_rounded
+                                    : Icons.cancel_rounded)
+                                : (opt == 'True'
+                                    ? Icons.check_circle_outline_rounded
+                                    : Icons.cancel_outlined),
+                            color: isSelected ? optColor : subCol,
+                            size: 20,
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            opt,
+                            style: GoogleFonts.inter(
+                              color: isSelected ? textCol : subCol,
+                              fontSize: 15,
+                              fontWeight: isSelected
+                                  ? FontWeight.w700
+                                  : FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              }).toList(),
+            )
+          else if (q.isMultipleChoice)
             ...q.choices!.map((c) {
               final isSelected = ans == c;
               return GestureDetector(

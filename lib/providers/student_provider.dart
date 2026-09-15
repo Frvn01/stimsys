@@ -111,6 +111,10 @@ class StudentProvider extends ChangeNotifier {
           debugPrint('Load modules error: $e');
           return <LearningModule>[];
         }),
+        _service.getExamRequestsForStudent(_currentStudent!.id!).then((data) => _myExamRequests = data).catchError((e) {
+          debugPrint('Load exam requests error: $e');
+          return <ExamRequest>[];
+        }),
       ]);
     } catch (e) {
       debugPrint('Load all data error: $e');
@@ -246,7 +250,7 @@ class StudentProvider extends ChangeNotifier {
     _announcementsChannel?.unsubscribe();
     _modulesChannel?.unsubscribe();
 
-    // 1. ASSESSMENTS REALTIME (Session start + New Quizzes/Exams created)
+    // 1. ASSESSMENTS REALTIME (New Quizzes/Exams Published)
     _assessmentsChannel = _service.client
         .channel('public:assessments_student')
         .onPostgresChanges(
@@ -255,47 +259,43 @@ class StudentProvider extends ChangeNotifier {
           table: 'assessments',
           callback: (payload) async {
             try {
-              final newCode = payload.newRecord['session_code'] as String?;
-              if (newCode != null && newCode.contains('-')) {
-                final parts = newCode.split('-');
-                final setLetter = parts.last;
+              final newRecord = payload.newRecord;
+              final oldRecord = payload.oldRecord;
+              final isPublishedNow = newRecord['is_published'] == true;
+              final wasPublished = oldRecord['is_published'] == true;
 
-                final rawId = payload.newRecord['id'] ?? payload.oldRecord['id'];
-                if (rawId == null) return;
-                final assessmentId = rawId.toString();
+              final subjectId = newRecord['subject_id'] as String?;
+              if (subjectId == null) return;
 
-                final data = await _service.client
-                    .from('assessments')
-                    .select('subject_id')
-                    .eq('id', assessmentId)
-                    .single();
-                final subjectId = data['subject_id'] as String;
+              final isEnrolled =
+                  _enrollments.any((e) => e.subjectId == subjectId);
+              if (isEnrolled && isPublishedNow && !wasPublished) {
+                final title = newRecord['title'] as String? ?? 'Assessment';
+                final type = newRecord['type'] as String? ?? 'quiz';
+                final isExam = type == 'exam';
 
-                final isEnrolled =
-                    _enrollments.any((e) => e.subjectId == subjectId);
-                if (isEnrolled && _currentStudent != null) {
-                  final hash = (assessmentId + _currentStudent!.usn).hashCode;
-                  final myAssignedSet = hash % 2 == 0 ? 'A' : 'B';
+                final notifTitle = isExam ? 'New Exam Published!' : 'New Quiz Published!';
+                final notifBody = '$title has been published for your subject.';
+                final rawId = newRecord['id']?.toString() ?? '';
+                final notifId = rawId.isNotEmpty
+                    ? rawId.hashCode.abs()
+                    : DateTime.now().millisecondsSinceEpoch % 100000;
 
-                  debugPrint(
-                      'Notification Triggered: Set $setLetter started. My deterministic set is $myAssignedSet.');
+                await NotificationService().showNotification(
+                  id: notifId,
+                  title: notifTitle,
+                  body: notifBody,
+                );
 
-                  if (setLetter == myAssignedSet) {
-                    NotificationService().showNotification(
-                      id: assessmentId.hashCode.abs(),
-                      title: 'Exam Set $setLetter Started!',
-                      body:
-                          'Your Exam Set is now active! Please proceed to the room to start.',
-                    );
+                _showInAppNotification(
+                  title: notifTitle,
+                  body: notifBody,
+                  icon: isExam ? Icons.school_rounded : Icons.assignment_rounded,
+                  color: isExam ? const Color(0xFFEF4444) : const Color(0xFF3B82F6),
+                );
 
-                    _showInAppNotification(
-                      title: 'Your Exam Set ($setLetter) Started!',
-                      body:
-                          'Please proceed to the room and scan the QR to start.',
-                      icon: Icons.notifications_active_rounded,
-                      color: const Color(0xFF6366F1),
-                    );
-                  }
+                if (_enrollments.isNotEmpty) {
+                  loadAvailableAssessments(subjectId);
                 }
               }
             } catch (e) {
@@ -311,16 +311,17 @@ class StudentProvider extends ChangeNotifier {
             try {
               final record = payload.newRecord;
               final subjectId = record['subject_id'] as String?;
+              final isPublished = record['is_published'] == true;
               if (subjectId == null) return;
 
               final isEnrolled =
                   _enrollments.any((e) => e.subjectId == subjectId);
-              if (isEnrolled) {
+              if (isEnrolled && isPublished) {
                 final title = record['title'] as String? ?? 'Assessment';
                 final type = record['type'] as String? ?? 'quiz';
                 final isExam = type == 'exam';
 
-                final notifTitle = isExam ? 'New Exam Added!' : 'New Quiz Added!';
+                final notifTitle = isExam ? 'New Exam Published!' : 'New Quiz Published!';
                 final notifBody = '$title is now available for your subject.';
                 final rawId = record['id']?.toString() ?? '';
                 final notifId = rawId.isNotEmpty
@@ -336,7 +337,7 @@ class StudentProvider extends ChangeNotifier {
                 _showInAppNotification(
                   title: notifTitle,
                   body: notifBody,
-                  icon: isExam ? Icons.assignment_rounded : Icons.quiz_rounded,
+                  icon: isExam ? Icons.school_rounded : Icons.assignment_rounded,
                   color: isExam ? const Color(0xFFEF4444) : const Color(0xFF3B82F6),
                 );
 
@@ -807,9 +808,66 @@ class StudentProvider extends ChangeNotifier {
     }
   }
 
+  /// Get current exam request for a specific subject and term (if any)
+  ExamRequest? getExamRequestForTerm({
+    required String subjectId,
+    required String term,
+    String? assessmentId,
+  }) {
+    final normTerm =
+        term.toLowerCase().replaceAll('-', '_').replaceAll(' ', '_');
+
+    try {
+      return _myExamRequests.firstWhere((req) {
+        if (req.subjectId != subjectId) return false;
+
+        // Direct assessment link
+        if (assessmentId != null && req.assessmentId == assessmentId) {
+          return true;
+        }
+
+        // Term match
+        if (req.term != null) {
+          final reqTerm =
+              req.term!.toLowerCase().replaceAll('-', '_').replaceAll(' ', '_');
+          if (reqTerm == normTerm) return true;
+          if ((normTerm == 'pre_finals' || normTerm == 'semi_finals') &&
+              (reqTerm == 'pre_finals' || reqTerm == 'semi_finals')) {
+            return true;
+          }
+        }
+
+        // Legacy fallback
+        if (req.term == null && req.assessmentId == null) {
+          return true;
+        }
+
+        return false;
+      });
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Check if the student has an APPROVED exam permit for a specific subject and term
+  bool hasExamPermit({
+    required String subjectId,
+    required String term,
+    String? assessmentId,
+  }) {
+    final req = getExamRequestForTerm(
+      subjectId: subjectId,
+      term: term,
+      assessmentId: assessmentId,
+    );
+    if (req == null) return false;
+    return req.status.toLowerCase() == 'approved';
+  }
+
   /// Submit an exam request with optional proctor signature & document image
   Future<ExamRequest?> submitExamRequest({
     required String subjectId,
+    String? term,
     String? assessmentId,
     required String proctorName,
     required String section,
@@ -842,6 +900,7 @@ class StudentProvider extends ChangeNotifier {
       final request = ExamRequest(
         studentId: _currentStudent!.id!,
         subjectId: subjectId,
+        term: term,
         assessmentId: assessmentId,
         proctorName: proctorName,
         section: section,
