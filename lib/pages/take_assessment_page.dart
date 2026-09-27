@@ -33,6 +33,9 @@ class _TakeAssessmentPageState extends State<TakeAssessmentPage> with WidgetsBin
   // questionId -> studentAnswer
   final Map<String, String> _answers = {};
 
+  // questionId -> per-blank controllers for identification questions
+  final Map<String, List<TextEditingController>> _idControllers = {};
+
   // Session verified (always true now — QR removed)
   bool _sessionVerified = false;
 
@@ -68,6 +71,9 @@ class _TakeAssessmentPageState extends State<TakeAssessmentPage> with WidgetsBin
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _timer?.cancel();
+    for (final ctrls in _idControllers.values) {
+      for (final c in ctrls) { c.dispose(); }
+    }
     super.dispose();
   }
 
@@ -216,7 +222,11 @@ class _TakeAssessmentPageState extends State<TakeAssessmentPage> with WidgetsBin
       for (int i = 0; i < _questions.length; i++) {
         final q = _questions[i];
         final ans = _answers[q.id]?.trim() ?? '';
-        if (ans.isEmpty) {
+        // For identification, consider it unanswered only if ALL blanks are empty
+        final isUnanswered = q.isIdentification
+            ? ans.isEmpty || ans.split('||').every((b) => b.trim().isEmpty)
+            : ans.isEmpty;
+        if (isUnanswered) {
           unansweredIndices.add(i);
         }
       }
@@ -778,21 +788,7 @@ class _TakeAssessmentPageState extends State<TakeAssessmentPage> with WidgetsBin
               );
             }).toList()
           else if (q.isIdentification)
-            TextField(
-              onChanged: (v) => _updateAnswer(q.id!, v),
-              controller: TextEditingController.fromValue(
-                TextEditingValue(text: ans, selection: TextSelection.collapsed(offset: ans.length))
-              ),
-              style: GoogleFonts.inter(color: textCol, fontSize: 14),
-              decoration: InputDecoration(
-                hintText: 'Type your answer here',
-                hintStyle: GoogleFonts.inter(color: subCol, fontSize: 13),
-                filled: true,
-                fillColor: widget.isDark ? const Color(0xFF0F172A) : Colors.grey[50],
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
-                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-              ),
-            )
+            _buildIdentificationBlanks(q, textCol, subCol, accent)
           else if (q.isEssay)
             TextField(
               onChanged: (v) => _updateAnswer(q.id!, v),
@@ -829,6 +825,168 @@ class _TakeAssessmentPageState extends State<TakeAssessmentPage> with WidgetsBin
             ),
         ],
       ),
+    );
+  }
+
+  /// Builds multiple labeled blank fields for an Identification question.
+  /// Each pipe-separated entry in [q.correctAnswer] becomes one blank.
+  /// The student must fill every blank; answers are joined with '||' and
+  /// stored in [_answers] for grading.
+  Widget _buildIdentificationBlanks(
+    AssessmentQuestion q,
+    Color textCol,
+    Color subCol,
+    Color accent,
+  ) {
+    final blanks = q.identificationBlanks;
+    final count = blanks.isNotEmpty ? blanks.length : 1;
+    final qid = q.id!;
+
+    // Initialise controllers once per question
+    if (!_idControllers.containsKey(qid)) {
+      final existing = (_answers[qid] ?? '').split('||');
+      _idControllers[qid] = List.generate(count, (i) {
+        final initial = i < existing.length ? existing[i] : '';
+        return TextEditingController(text: initial);
+      });
+    }
+
+    final controllers = _idControllers[qid]!;
+    // Ensure controller count always matches blank count
+    while (controllers.length < count) {
+      controllers.add(TextEditingController());
+    }
+
+    void onBlankChanged() {
+      final combined = controllers.map((c) => c.text).join('||');
+      _updateAnswer(qid, combined);
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (count > 1)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: (q.isInterchangeable ? accent : const Color(0xFFF59E0B))
+                    .withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: (q.isInterchangeable ? accent : const Color(0xFFF59E0B))
+                      .withValues(alpha: 0.25),
+                ),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    q.isInterchangeable
+                        ? Icons.shuffle_rounded
+                        : Icons.format_list_numbered_rounded,
+                    size: 14,
+                    color: q.isInterchangeable ? accent : const Color(0xFFF59E0B),
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    q.isInterchangeable
+                        ? 'Interchangeable — blanks can be answered in any order'
+                        : 'Strict order — fill in blanks in the correct sequence',
+                    style: GoogleFonts.inter(
+                      color: q.isInterchangeable ? accent : const Color(0xFFF59E0B),
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ...List.generate(count, (i) {
+          final filled = controllers[i].text.trim().isNotEmpty;
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: filled
+                            ? accent.withValues(alpha: 0.15)
+                            : (widget.isDark
+                                ? Colors.white.withValues(alpha: 0.06)
+                                : Colors.grey[200]),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (filled)
+                            Padding(
+                              padding: const EdgeInsets.only(right: 4),
+                              child: Icon(Icons.check_circle_rounded, size: 11, color: accent),
+                            ),
+                          Text(
+                            'Blank ${i + 1}',
+                            style: GoogleFonts.inter(
+                              color: filled ? accent : subCol,
+                              fontSize: 10,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 5),
+                TextField(
+                  controller: controllers[i],
+                  onChanged: (_) {
+                    setState(() {});
+                    onBlankChanged();
+                  },
+                  style: GoogleFonts.inter(color: textCol, fontSize: 14),
+                  textCapitalization: TextCapitalization.sentences,
+                  decoration: InputDecoration(
+                    hintText: q.isInterchangeable
+                        ? 'Type an answer for this blank'
+                        : 'Type your answer for blank ${i + 1}',
+                    hintStyle: GoogleFonts.inter(color: subCol, fontSize: 13),
+                  filled: true,
+                  fillColor: widget.isDark ? const Color(0xFF0F172A) : Colors.grey[50],
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10),
+                    borderSide: BorderSide.none,
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10),
+                    borderSide: BorderSide(
+                      color: filled
+                          ? accent.withValues(alpha: 0.4)
+                          : (widget.isDark
+                              ? Colors.white.withValues(alpha: 0.06)
+                              : Colors.grey[200]!),
+                      width: filled ? 1.5 : 1,
+                    ),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10),
+                    borderSide: BorderSide(color: accent, width: 2),
+                  ),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                ),
+              ),
+            ],
+          ),
+        );
+      }),
+      ],
     );
   }
 }

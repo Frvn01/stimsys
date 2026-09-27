@@ -19,6 +19,7 @@ import '../models/assessment_model.dart';
 import '../models/student_grade_item_model.dart';
 import '../models/announcement_model.dart';
 import '../models/exam_request_model.dart';
+import '../utils/attendance_utils.dart';
 
 /// Thrown when a QR scan happens outside the subject's valid schedule window.
 class ScheduleValidationException implements Exception {
@@ -1673,6 +1674,57 @@ class SupabaseService {
     }
   }
 
+  /// Fetch grading configs for many subjects in a single query.
+  /// Returns a map keyed by `subjectId`.
+  Future<Map<String, GradingConfig>> getGradingConfigsForSubjects(
+    List<String> subjectIds,
+  ) async {
+    if (subjectIds.isEmpty) return {};
+    try {
+      final response = await _client
+          .from('subject_grading_config')
+          .select()
+          .inFilter('subject_id', subjectIds);
+      final map = <String, GradingConfig>{};
+      for (final row in (response as List)) {
+        final cfg = GradingConfig.fromSupabase(row);
+        if (cfg.subjectId.isNotEmpty) map[cfg.subjectId] = cfg;
+      }
+      return map;
+    } catch (e) {
+      debugPrint('Get grading configs error: $e');
+      return {};
+    }
+  }
+
+  /// Cancelled class dates (`'yyyy-MM-dd'`) for many subjects in a single
+  /// query. Returns a map of `subjectId` → set of date keys.
+  Future<Map<String, Set<String>>> getCancelledDatesForSubjects(
+    List<String> subjectIds,
+  ) async {
+    if (subjectIds.isEmpty) return {};
+    try {
+      final response = await _client
+          .from('class_cancellations')
+          .select('subject_id, date')
+          .inFilter('subject_id', subjectIds);
+      final map = <String, Set<String>>{};
+      for (final row in (response as List)) {
+        final sid = row['subject_id'] as String?;
+        final raw = row['date'];
+        if (sid == null || raw == null) continue;
+        final key = raw is String
+            ? raw.split('T').first
+            : DateTime.parse(raw.toString()).toIso8601String().split('T').first;
+        map.putIfAbsent(sid, () => <String>{}).add(key);
+      }
+      return map;
+    } catch (e) {
+      debugPrint('Get cancelled dates error: $e');
+      return {};
+    }
+  }
+
   /// Upsert (insert or update) a grading config for a subject.
   Future<GradingConfig?> saveGradingConfig(GradingConfig config) async {
     try {
@@ -1857,8 +1909,81 @@ class SupabaseService {
     }
   }
 
+  /// Deletes an assessment together with everything that references it.
+  ///
+  /// Questions, submissions, answers, exam requests and auto-recorded grade
+  /// items all hold plain foreign keys to `assessments` (no ON DELETE
+  /// CASCADE), so they must be removed first — otherwise Postgres rejects the
+  /// delete and the quiz silently stays in the list.
   Future<void> deleteAssessment(String id) async {
     try {
+      // Collect child ids first so dependents can be removed in order.
+      final questionRows = await _client
+          .from('assessment_questions')
+          .select('id')
+          .eq('assessment_id', id);
+      final questionIds = (questionRows as List)
+          .map((row) => row['id'] as String)
+          .toList();
+
+      final submissionRows = await _client
+          .from('assessment_submissions')
+          .select('id')
+          .eq('assessment_id', id);
+      final submissionIds = (submissionRows as List)
+          .map((row) => row['id'] as String)
+          .toList();
+
+      // 1. Answers reference both submissions and questions.
+      if (questionIds.isNotEmpty) {
+        await _client
+            .from('assessment_answers')
+            .delete()
+            .inFilter('question_id', questionIds);
+      }
+      if (submissionIds.isNotEmpty) {
+        await _client
+            .from('assessment_answers')
+            .delete()
+            .inFilter('submission_id', submissionIds);
+      }
+
+      // 2. Submissions, questions and pending exam requests.
+      await _client
+          .from('assessment_submissions')
+          .delete()
+          .eq('assessment_id', id);
+      await _client
+          .from('assessment_questions')
+          .delete()
+          .eq('assessment_id', id);
+      await _client.from('exam_requests').delete().eq('assessment_id', id);
+
+      // 3. Auto-recorded grade items, then recompute the affected grade
+      //    totals so students' grades stop counting the deleted quiz.
+      final itemRows = await _client
+          .from('student_grade_items')
+          .select('grade_id')
+          .eq('assessment_id', id);
+      if (itemRows.isNotEmpty) {
+        final gradeIds = <String>{
+          for (final row in (itemRows as List))
+            if (row['grade_id'] != null) row['grade_id'] as String,
+        };
+        await _client
+            .from('student_grade_items')
+            .delete()
+            .eq('assessment_id', id);
+        for (final gradeId in gradeIds) {
+          try {
+            await recalculateGradeTotals(gradeId);
+          } catch (e) {
+            debugPrint('Recalculate grade after assessment delete error: $e');
+          }
+        }
+      }
+
+      // 4. Finally the assessment itself.
       await _client.from('assessments').delete().eq('id', id);
     } catch (e) {
       debugPrint('Delete assessment error: $e');
@@ -2101,6 +2226,12 @@ class SupabaseService {
 
   Future<void> deleteQuestion(String id) async {
     try {
+      // Student answers hold a foreign key to the question (no cascade),
+      // so they must go first or the delete is rejected.
+      await _client
+          .from('assessment_answers')
+          .delete()
+          .eq('question_id', id);
       await _client.from('assessment_questions').delete().eq('id', id);
     } catch (e) {
       debugPrint('Delete question error: $e');
@@ -2849,7 +2980,14 @@ class SupabaseService {
   // ═══════════════════════════════════════════════════
 
   /// Compute attendance score from attendance records.
-  /// Formula: (present + 0.5 * late) / total_days × maxScore
+  ///
+  /// Formula: (present + 0.5 × late + excused) ÷ effective class days × maxScore
+  ///
+  /// The denominator is the subject's **expected** class days (schedule
+  /// pattern ∩ term range, capped at today, cancelled days excluded) instead
+  /// of "days that happen to have a record". Class days the student was never
+  /// recorded for are therefore counted as absences — a student who attended
+  /// 9 of 10 held classes scores 90, not 100.
   Future<({double raw, double max})> computeAttendanceScore({
     required String enrollmentId,
     required double maxScore,
@@ -2857,6 +2995,7 @@ class SupabaseService {
     DateTime? endDate,
   }) async {
     try {
+      // ── 1. Attendance records already on file ──────────────
       var query = _client
           .from('attendance')
           .select('status, date')
@@ -2870,21 +3009,80 @@ class SupabaseService {
       }
 
       final records = await query;
+      final attendanceRecords = <AttendanceRecord>[];
+      for (final r in (records as List)) {
+        final dateStr = r['date'];
+        if (dateStr == null) continue;
+        final date = DateTime.tryParse(dateStr.toString());
+        if (date == null) continue;
+        attendanceRecords.add(AttendanceRecord(
+          enrollmentId: enrollmentId,
+          date: date,
+          status: (r['status'] as String?) ?? 'absent',
+        ));
+      }
 
-      if ((records as List).isEmpty) return (raw: 0.0, max: maxScore);
+      // ── 2. Schedule + date range → expected class days ─────
+      String? scheduleDay;
+      String? subjectId;
+      DateTime? rangeStart = startDate;
+      DateTime? rangeEnd = endDate;
 
-      int present = 0, late = 0, total = 0;
-      for (final r in records) {
-        final status = r['status'] as String? ?? '';
-        if (status == 'present' || status == 'late' || status == 'absent') {
-          total++;
-          if (status == 'present') present++;
-          if (status == 'late') late++;
+      try {
+        final enrollmentMap = await _client
+            .from('enrollments')
+            .select('subject_id, enrolled_at, subjects(schedule_day)')
+            .eq('id', enrollmentId)
+            .maybeSingle();
+
+        if (enrollmentMap != null) {
+          subjectId = enrollmentMap['subject_id'] as String?;
+          final subjects = enrollmentMap['subjects'];
+          final subjectMap = subjects is List
+              ? (subjects.isEmpty ? null : subjects.first)
+              : subjects;
+          if (subjectMap is Map) {
+            scheduleDay = subjectMap['schedule_day'] as String?;
+          }
+          if (rangeStart == null) {
+            final enrolledAt = enrollmentMap['enrolled_at'];
+            if (enrolledAt is String) {
+              rangeStart = DateTime.tryParse(enrolledAt);
+            }
+          }
+        }
+      } catch (e) {
+        debugPrint('Compute attendance — enrollment lookup error: $e');
+      }
+
+      // Term boundaries give the correct window when the caller didn't pass one.
+      if (subjectId != null && (rangeStart == null || rangeEnd == null)) {
+        final config = await getGradingConfig(subjectId);
+        if (config != null) {
+          rangeStart ??= config.prelimStart;
+          rangeEnd ??= config.finalsEnd;
         }
       }
 
-      if (total == 0) return (raw: 0.0, max: maxScore);
-      final raw = ((present + 0.5 * late) / total) * maxScore;
+      // ── 3. Cancelled class days (subject level) ────────────
+      final cancelledDates = <String>{};
+      if (subjectId != null) {
+        final cancelled =
+            await getCancelledDatesForSubjects([subjectId]);
+        cancelledDates.addAll(cancelled[subjectId] ?? const <String>{});
+      }
+
+      // ── 4. Tally ───────────────────────────────────────────
+      final summary = summarizeAttendance(
+        records: attendanceRecords,
+        scheduleDay: scheduleDay,
+        rangeStart: rangeStart,
+        rangeEnd: rangeEnd,
+        cancelledDates: cancelledDates,
+      );
+
+      if (summary.total == 0) return (raw: 0.0, max: maxScore);
+      final raw = summary.scoreRate * maxScore;
       return (raw: double.parse(raw.toStringAsFixed(1)), max: maxScore);
     } catch (e) {
       debugPrint('Compute attendance score error: $e');

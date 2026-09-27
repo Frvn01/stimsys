@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import 'core/supabase_config.dart';
 import 'providers/student_provider.dart';
 import 'providers/admin_provider.dart';
+import 'providers/appearance_provider.dart';
 import 'app.dart';
 import 'services/notification_service.dart';
 
@@ -18,6 +19,7 @@ void main() async {
       providers: [
         ChangeNotifierProvider(create: (_) => StudentProvider()),
         ChangeNotifierProvider(create: (_) => AdminProvider()),
+        ChangeNotifierProvider(create: (_) => AppearanceProvider()),
       ],
       child: const MyApp(),
     ),

@@ -480,6 +480,8 @@ class StudentProvider extends ChangeNotifier {
     _mySubmissions = [];
     _announcements = [];
     _myExamRequests = [];
+    _cancelledDates.clear();
+    _attendanceContextLoaded = false;
     notifyListeners();
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -619,6 +621,110 @@ class StudentProvider extends ChangeNotifier {
   ({int present, int late, int absent, int excused, int total})?
       liveAttendanceFor(String enrollmentId) =>
           _liveAttendance[enrollmentId];
+
+  // ── Attendance-rate context (expected class days) ─────────────
+
+  /// Cancelled class dates (`yyyy-MM-dd`) keyed by subjectId.
+  final Map<String, Set<String>> _cancelledDates = {};
+  bool _attendanceContextLoaded = false;
+
+  bool get attendanceContextLoaded => _attendanceContextLoaded;
+
+  Set<String> cancelledDatesFor(String subjectId) =>
+      _cancelledDates[subjectId] ?? const <String>{};
+
+  /// Loads what is needed to compute attendance from *expected* class days
+  /// instead of only the days that have a record: the grading config (term
+  /// date ranges) and the subject's cancelled class days.
+  Future<void> loadAttendanceContext() async {
+    if (_attendanceContextLoaded) return;
+    final subjectIds = _enrollments
+        .map((e) => e.subjectId)
+        .where((id) => id.isNotEmpty)
+        .toSet()
+        .toList();
+    if (subjectIds.isEmpty) return;
+    try {
+      final missing =
+          subjectIds.where((id) => !_gradingConfigs.containsKey(id)).toList();
+      if (missing.isNotEmpty) {
+        final configs = await _service.getGradingConfigsForSubjects(missing);
+        _gradingConfigs.addAll(configs);
+      }
+      final cancelled = await _service.getCancelledDatesForSubjects(subjectIds);
+      _cancelledDates
+        ..clear()
+        ..addAll(cancelled);
+      _attendanceContextLoaded = true;
+      notifyListeners();
+    } catch (e) {
+      debugPrint('Load attendance context error: $e');
+    }
+  }
+
+  bool _attendanceGradesRefreshed = false;
+
+  /// One-shot refresh of the *stored* attendance scores so the graded
+  /// percentage follows the expected-class-days formula right away instead of
+  /// waiting for the instructor to re-sync. Only terms that already have a
+  /// grade row and a configured date range are touched.
+  Future<void> refreshAttendanceGrades() async {
+    if (_attendanceGradesRefreshed || !_attendanceContextLoaded) return;
+    _attendanceGradesRefreshed = true;
+
+    for (final e in _enrollments) {
+      final enrollmentId = e.id;
+      if (enrollmentId == null) continue;
+      final config = _gradingConfigs[e.subjectId];
+      if (config == null) continue;
+
+      try {
+        final grades = await _service.getGradesForEnrollment(enrollmentId);
+        bool changed = false;
+
+        for (final grade in grades) {
+          final gradeId = grade.id;
+          if (gradeId == null) continue;
+          final range = config.termRanges[grade.term];
+          final start = range?.start;
+          final end = range?.end;
+          if (start == null || end == null) continue;
+
+          final max =
+              (grade.attendanceMax != null && grade.attendanceMax! > 0)
+                  ? grade.attendanceMax!
+                  : 100.0;
+          final score = await _service.computeAttendanceScore(
+            enrollmentId: enrollmentId,
+            maxScore: max,
+            startDate: start,
+            endDate: end,
+          );
+
+          if (score.raw == grade.attendanceRaw) continue;
+
+          await _service.client
+              .from('student_grades')
+              .update({
+                'attendance_raw': score.raw,
+                'attendance_max': score.max,
+                'updated_at': DateTime.now().toIso8601String(),
+              })
+              .eq('id', gradeId);
+          await _service.recalculateGradeTotals(gradeId);
+          changed = true;
+        }
+
+        if (changed) {
+          _enrollmentGrades[enrollmentId] =
+              await _service.getGradesForEnrollment(enrollmentId);
+          notifyListeners();
+        }
+      } catch (e) {
+        debugPrint('Refresh attendance grades error: $e');
+      }
+    }
+  }
 
   /// Load all grade data for a subject (config + grades + items + live attendance).
   Future<void> loadGradesForSubject(Enrollment enrollment) async {

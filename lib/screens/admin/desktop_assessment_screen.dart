@@ -6,6 +6,37 @@ import '../../providers/admin_provider.dart';
 import '../../models/assessment_model.dart';
 import '../../models/subject_model.dart';
 
+/// Splits a stored Identification answer key (e.g. `"[IC]Rizal | Jose Rizal"`)
+/// into the individual accepted answers, stripping any `[IC]` prefix.
+List<String> splitAnswers(String raw) {
+  var text = raw.trim();
+  if (text.startsWith('[IC]')) {
+    text = text.substring(4).trim();
+  }
+  return text
+      .split('|')
+      .map((e) => e.trim())
+      .where((e) => e.isNotEmpty)
+      .toList();
+}
+
+/// Joins accepted answers back into the stored pipe-separated form,
+/// dropping blanks and (case-insensitive) duplicates.
+/// Prepends `[IC]` if [isInterchangeable] is true.
+String joinAnswers(List<String> answers, {bool isInterchangeable = false}) {
+  final seen = <String>{};
+  final cleaned = <String>[];
+  for (final a in answers) {
+    final value = a.trim();
+    if (value.isEmpty) continue;
+    if (!seen.add(value.toLowerCase())) continue;
+    cleaned.add(value);
+  }
+  final joined = cleaned.join(' | ');
+  if (joined.isEmpty) return '';
+  return isInterchangeable ? '[IC]$joined' : joined;
+}
+
 class DesktopAssessmentScreen extends StatefulWidget {
   const DesktopAssessmentScreen({super.key});
 
@@ -687,31 +718,74 @@ class _DesktopAssessmentScreenState extends State<DesktopAssessmentScreen> {
             ),
           ] else ...[
             const SizedBox(height: 6),
-            if (question.isIdentification && question.correctAnswer.contains('|'))
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: question.correctAnswer
-                    .split('|')
-                    .map((alt) => alt.trim())
-                    .where((alt) => alt.isNotEmpty)
-                    .map((alt) => Padding(
-                          padding: const EdgeInsets.only(bottom: 3),
+            if (question.isIdentification)
+              // Each entry = one blank field for the student
+              Builder(builder: (_) {
+                final blanks = question.identificationBlanks;
+                final isIC = question.isInterchangeable;
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (blanks.length > 1)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 6),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: (isIC ? _accent : _amber).withValues(alpha: 0.15),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
                           child: Row(
+                            mainAxisSize: MainAxisSize.min,
                             children: [
-                              Icon(Icons.check_circle_rounded, color: _green, size: 12),
+                              Icon(
+                                isIC ? Icons.shuffle_rounded : Icons.format_list_numbered_rounded,
+                                size: 11,
+                                color: isIC ? const Color(0xFF818CF8) : _amber,
+                              ),
                               const SizedBox(width: 4),
                               Text(
-                                alt,
+                                isIC ? 'Interchangeable (Any order)' : 'Strict order (Blank 1, 2…)',
                                 style: GoogleFonts.inter(
-                                    color: _green,
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w600),
+                                  color: isIC ? const Color(0xFF818CF8) : _amber,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w700,
+                                ),
                               ),
                             ],
                           ),
-                        ))
-                    .toList(),
-              )
+                        ),
+                      ),
+                    ...blanks.asMap().entries.map((e) => Padding(
+                      padding: const EdgeInsets.only(bottom: 3),
+                      child: Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                            decoration: BoxDecoration(
+                              color: _green.withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text('Blank ${e.key + 1}',
+                                style: GoogleFonts.inter(color: _green, fontSize: 9, fontWeight: FontWeight.w800)),
+                          ),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: Text(
+                              e.value,
+                              overflow: TextOverflow.ellipsis,
+                              style: GoogleFonts.inter(
+                                  color: _green,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600),
+                            ),
+                          ),
+                        ],
+                      ),
+                    )),
+                  ],
+                );
+              })
             else
               Row(
                 children: [
@@ -1609,12 +1683,239 @@ class _DesktopAssessmentScreenState extends State<DesktopAssessmentScreen> {
     );
   }
 
+  /// Editor for an Identification question's accepted answers.
+  ///
+  /// One question can hold any number of answers — the student only has to
+  /// type one of them. The list is stored pipe-separated (`Rizal | Jose Rizal`)
+  /// so existing questions keep working.
+  Widget _identificationAnswersEditor({
+    required List<String> answers,
+    required TextEditingController inputCtrl,
+    required void Function(void Function() fn) update,
+    required bool isInterchangeable,
+    required ValueChanged<bool> onInterchangeableChanged,
+  }) {
+    void addAnswer() {
+      final value = inputCtrl.text.trim();
+      if (value.isEmpty) return;
+      final exists =
+          answers.any((a) => a.trim().toLowerCase() == value.toLowerCase());
+      inputCtrl.clear();
+      if (exists) return;
+      update(() => answers.add(value));
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Answer Blanks — each entry = one blank field for the student',
+            style: GoogleFonts.inter(
+                color: const Color(0xFF8B9AB2),
+                fontSize: 11,
+                fontWeight: FontWeight.w600)),
+        const SizedBox(height: 6),
+        if (answers.isEmpty)
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+            decoration: BoxDecoration(
+              color: const Color(0xFF232D3F),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Text('No answers yet — add at least one.',
+                style:
+                    GoogleFonts.inter(color: const Color(0xFF4B5E78), fontSize: 11)),
+          ),
+        ...answers.asMap().entries.map((e) {
+          final idx = e.key;
+          return Container(
+            margin: const EdgeInsets.only(bottom: 6),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            decoration: BoxDecoration(
+              color: _green.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: _green.withValues(alpha: 0.25)),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.check_circle_rounded, color: _green, size: 15),
+                const SizedBox(width: 8),
+                Text(
+                  'Blank ${idx + 1}: ',
+                  style: GoogleFonts.inter(
+                    color: _green,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                Expanded(
+                  child: Text(e.value,
+                      overflow: TextOverflow.ellipsis,
+                      style: GoogleFonts.inter(
+                          color: Colors.white,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600)),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.close_rounded,
+                      color: Color(0xFF4B5E78), size: 15),
+                  tooltip: 'Remove answer',
+                  padding: EdgeInsets.zero,
+                  constraints:
+                      const BoxConstraints(minWidth: 26, minHeight: 26),
+                  onPressed: () => update(() => answers.removeAt(idx)),
+                ),
+              ],
+            ),
+          );
+        }),
+        const SizedBox(height: 2),
+        Row(
+          children: [
+            Expanded(
+              child: TextField(
+                controller: inputCtrl,
+                style: GoogleFonts.inter(color: Colors.white, fontSize: 13),
+                onSubmitted: (_) => addAnswer(),
+                decoration: InputDecoration(
+                  hintText: 'Type an accepted answer, e.g. Jose Rizal',
+                  hintStyle: GoogleFonts.inter(
+                      color: const Color(0xFF374151), fontSize: 13),
+                  filled: true,
+                  fillColor: const Color(0xFF232D3F),
+                  border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: BorderSide.none),
+                  contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 12, vertical: 10),
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Material(
+              color: _green.withValues(alpha: 0.15),
+              borderRadius: BorderRadius.circular(8),
+              child: InkWell(
+                borderRadius: BorderRadius.circular(8),
+                onTap: addAnswer,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 12, vertical: 10),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.add_rounded, color: _green, size: 16),
+                      const SizedBox(width: 4),
+                      Text('Add',
+                          style: GoogleFonts.inter(
+                              color: _green,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700)),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        // Interchangeable Toggle Option
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: const Color(0xFF232D3F),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(
+              color: isInterchangeable
+                  ? _accent.withValues(alpha: 0.4)
+                  : const Color(0xFF334155),
+            ),
+          ),
+          child: Row(
+            children: [
+              Icon(
+                isInterchangeable
+                    ? Icons.shuffle_rounded
+                    : Icons.format_list_numbered_rounded,
+                color: isInterchangeable ? const Color(0xFF818CF8) : const Color(0xFF8B9AB2),
+                size: 18,
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Interchangeable blanks',
+                      style: GoogleFonts.inter(
+                        color: Colors.white,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    Text(
+                      isInterchangeable
+                          ? 'Students can answer in any order (order independent)'
+                          : 'Strict order (Blank 1 must match Answer 1, etc.)',
+                      style: GoogleFonts.inter(
+                        color: isInterchangeable ? const Color(0xFF818CF8) : const Color(0xFF8B9AB2),
+                        fontSize: 11,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Switch(
+                value: isInterchangeable,
+                onChanged: (val) {
+                  update(() {
+                    onInterchangeableChanged(val);
+                  });
+                },
+                activeThumbColor: _accent,
+                activeTrackColor: _accent.withValues(alpha: 0.4),
+                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 8),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          decoration: BoxDecoration(
+            color: _green.withValues(alpha: 0.06),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: _green.withValues(alpha: 0.2)),
+          ),
+          child: Row(
+            children: [
+              const Icon(Icons.info_outline_rounded, color: _green, size: 14),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  isInterchangeable
+                      ? 'Each entry creates a blank field on the student\'s exam. With Interchangeable enabled, students can write their answers in ANY blank and still earn points.'
+                      : 'Each entry creates a blank field on the student\'s exam. Order matters — Blank 1 matches Answer 1, Blank 2 matches Answer 2, etc.',
+                  style: GoogleFonts.inter(
+                      color: _green, fontSize: 11, height: 1.4),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
   void _showAddQuestionDialog(
       AdminProvider provider, String questionType) {
     final textCtrl = TextEditingController();
-    final answerCtrl = TextEditingController();
     final choicesCtrls = List.generate(4, (_) => TextEditingController());
     final enumCtrls = List.generate(5, (_) => TextEditingController());
+    // Identification: one question can hold several accepted answers.
+    final answers = <String>[];
+    final answerInputCtrl = TextEditingController();
+    bool isInterchangeable = false;
     final pointsCtrl = TextEditingController(text: '1');
     int correctIdx = 0;
 
@@ -1772,29 +2073,12 @@ class _DesktopAssessmentScreenState extends State<DesktopAssessmentScreen> {
                         }).toList(),
                       ),
                     ] else if (questionType == 'identification') ...[
-                      _dialogField(
-                          'Correct Answer(s)', answerCtrl, 'e.g. Rizal | Jose Rizal'),
-                      const SizedBox(height: 6),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                        decoration: BoxDecoration(
-                          color: _green.withValues(alpha: 0.06),
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: _green.withValues(alpha: 0.2)),
-                        ),
-                        child: Row(
-                          children: [
-                            Icon(Icons.info_outline_rounded, color: _green, size: 14),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                'Separate multiple accepted answers with a pipe  |  character.\nExample: Rizal | Jose Rizal | Dr. Jose Rizal',
-                                style: GoogleFonts.inter(
-                                    color: _green, fontSize: 11, height: 1.4),
-                              ),
-                            ),
-                          ],
-                        ),
+                      _identificationAnswersEditor(
+                        answers: answers,
+                        inputCtrl: answerInputCtrl,
+                        update: setDialogState,
+                        isInterchangeable: isInterchangeable,
+                        onInterchangeableChanged: (val) => isInterchangeable = val,
                       ),
                     ] else if (questionType == 'essay') ...[
                       const SizedBox(height: 12),
@@ -1888,7 +2172,7 @@ class _DesktopAssessmentScreenState extends State<DesktopAssessmentScreen> {
                     choices = ['True', 'False'];
                     correctAnswer = correctIdx == 0 ? 'True' : 'False';
                   } else if (questionType == 'identification') {
-                    correctAnswer = answerCtrl.text.trim();
+                    correctAnswer = joinAnswers(answers, isInterchangeable: isInterchangeable);
                     if (correctAnswer.isEmpty) return;
                   } else if (questionType == 'essay') {
                     correctAnswer = 'Requires Manual Grading';
@@ -1940,6 +2224,10 @@ class _DesktopAssessmentScreenState extends State<DesktopAssessmentScreen> {
       AdminProvider provider, AssessmentQuestion question) {
     final textCtrl = TextEditingController(text: question.questionText);
     final answerCtrl = TextEditingController(text: question.correctAnswer);
+    // Identification: one question, several accepted answers.
+    final answers = splitAnswers(question.correctAnswer);
+    bool isInterchangeable = question.isInterchangeable;
+    final answerInputCtrl = TextEditingController();
     final pointsCtrl =
         TextEditingController(text: question.points.toString());
     int tfIdx = question.correctAnswer.toLowerCase() == 'false' ? 1 : 0;
@@ -2030,36 +2318,16 @@ class _DesktopAssessmentScreenState extends State<DesktopAssessmentScreen> {
                         );
                       }).toList(),
                     ),
-                  ] else if (!question.isEssay) ...[
-                    _dialogField(
-                      question.isIdentification ? 'Correct Answer(s)' : 'Correct Answer',
-                      answerCtrl,
-                      question.isIdentification ? 'e.g. Rizal | Jose Rizal' : '',
+                  ] else if (question.isIdentification) ...[
+                    _identificationAnswersEditor(
+                      answers: answers,
+                      inputCtrl: answerInputCtrl,
+                      update: setDialogState,
+                      isInterchangeable: isInterchangeable,
+                      onInterchangeableChanged: (val) => isInterchangeable = val,
                     ),
-                    if (question.isIdentification) ...[
-                      const SizedBox(height: 6),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                        decoration: BoxDecoration(
-                          color: _green.withValues(alpha: 0.06),
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: _green.withValues(alpha: 0.2)),
-                        ),
-                        child: Row(
-                          children: [
-                            Icon(Icons.info_outline_rounded, color: _green, size: 14),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                'Separate multiple accepted answers with  |  (pipe).\nExample: Rizal | Jose Rizal',
-                                style: GoogleFonts.inter(
-                                    color: _green, fontSize: 11, height: 1.4),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
+                  ] else if (!question.isEssay) ...[
+                    _dialogField('Correct Answer', answerCtrl, ''),
                   ],
                   const SizedBox(height: 12),
                   _dialogField('Points', pointsCtrl, '1'),
@@ -2081,7 +2349,10 @@ class _DesktopAssessmentScreenState extends State<DesktopAssessmentScreen> {
               onPressed: () async {
                 final correctAnswer = question.isTrueFalse
                     ? (tfIdx == 0 ? 'True' : 'False')
-                    : answerCtrl.text.trim();
+                    : question.isIdentification
+                        ? joinAnswers(answers, isInterchangeable: isInterchangeable)
+                        : answerCtrl.text.trim();
+                if (correctAnswer.isEmpty) return;
                 final updated = question.copyWith(
                   questionText: textCtrl.text.trim(),
                   correctAnswer: correctAnswer,
@@ -2654,39 +2925,73 @@ class _DesktopAssessmentScreenState extends State<DesktopAssessmentScreen> {
 
   void _confirmDelete(
       AdminProvider provider, AssessmentConfig assessment) {
+    var deleting = false;
+
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: _surface,
-        shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(14)),
-        title: Text('Delete Assessment?',
-            style: GoogleFonts.inter(
-                color: Colors.white, fontWeight: FontWeight.w700)),
-        content: Text(
-            'This will permanently delete "${assessment.title}" and all its questions, submissions, and answers.',
-            style: GoogleFonts.inter(
-                color: const Color(0xFF8B9AB2), fontSize: 13)),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: Text('Cancel',
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) {
+          final messenger = ScaffoldMessenger.of(context);
+          return AlertDialog(
+            backgroundColor: _surface,
+            shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14)),
+            title: Text('Delete Assessment?',
                 style: GoogleFonts.inter(
-                    color: const Color(0xFF4B5E78))),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.red,
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8))),
-            onPressed: () async {
-              await provider.deleteAssessment(assessment.id!);
-              if (ctx.mounted) Navigator.pop(ctx);
-            },
-            child: Text('Delete',
-                style: GoogleFonts.inter(fontWeight: FontWeight.w700)),
-          ),
-        ],
+                    color: Colors.white, fontWeight: FontWeight.w700)),
+            content: Text(
+                'This will permanently delete "${assessment.title}" and all its questions, submissions, and answers.',
+                style: GoogleFonts.inter(
+                    color: const Color(0xFF8B9AB2), fontSize: 13)),
+            actions: [
+              TextButton(
+                onPressed: deleting ? null : () => Navigator.pop(ctx),
+                child: Text('Cancel',
+                    style: GoogleFonts.inter(
+                        color: const Color(0xFF4B5E78))),
+              ),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.red,
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8))),
+                onPressed: deleting
+                    ? null
+                    : () async {
+                        setDialogState(() => deleting = true);
+                        try {
+                          await provider.deleteAssessment(assessment.id!);
+                          if (ctx.mounted) Navigator.pop(ctx);
+                        } catch (e) {
+                          if (ctx.mounted) {
+                            setDialogState(() => deleting = false);
+                          }
+                          messenger.showSnackBar(
+                            SnackBar(
+                              backgroundColor: Colors.red,
+                              content: Text(
+                                'Could not delete "${assessment.title}". Please try again.',
+                                style:
+                                    GoogleFonts.inter(color: Colors.white),
+                              ),
+                            ),
+                          );
+                        }
+                      },
+                child: deleting
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2, color: Colors.white),
+                      )
+                    : Text('Delete',
+                        style:
+                            GoogleFonts.inter(fontWeight: FontWeight.w700)),
+              ),
+            ],
+          );
+        },
       ),
     );
   }

@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
-import 'dart:ui';
 import 'package:provider/provider.dart';
 import '../theme/theme_provider.dart';
 import '../providers/student_provider.dart';
+import '../widgets/common/glass_card.dart';
 import '../models/enrollment_model.dart';
 import 'student_modules_screen.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -44,7 +44,7 @@ class _QuizPageState extends State<QuizPage> {
         final enrollments = provider.enrollments;
 
         return SingleChildScrollView(
-          padding: const EdgeInsets.all(20),
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 110),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -174,33 +174,10 @@ class _QuizPageState extends State<QuizPage> {
         if (context.mounted) Navigator.pop(context);
         if (context.mounted) _showAssessmentsDialog(context, enrollment, isDark, color);
       },
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(16),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-          child: Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: isDark
-                  ? Colors.white.withValues(alpha: 0.04)
-                  : Colors.white,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(
-                color: isDark
-                    ? Colors.white.withValues(alpha: 0.08)
-                    : Colors.grey.shade200,
-              ),
-              boxShadow: isDark
-                  ? []
-                  : [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.02),
-                        blurRadius: 10,
-                        offset: const Offset(0, 4),
-                      )
-                    ],
-            ),
-            child: Row(
+      child: GlassCard(
+        padding: const EdgeInsets.all(16),
+        borderRadius: BorderRadius.circular(18),
+        child: Row(
               children: [
                 Container(
                   width: 48,
@@ -283,9 +260,7 @@ class _QuizPageState extends State<QuizPage> {
                 ),
               ],
             ),
-          ),
         ),
-      ),
     );
   }
 

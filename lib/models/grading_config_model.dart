@@ -65,19 +65,22 @@ class GradingConfig {
   bool get isValid =>
       (examPct + quizPct + attendancePct - 100.0).abs() < 0.01;
 
+  /// Start/end date range configured for each term of this subject.
+  /// Terms without configured dates are returned with `null` bounds.
+  Map<String, ({DateTime? start, DateTime? end})> get termRanges => {
+        'prelim': (start: prelimStart, end: prelimEnd),
+        'midterm': (start: midtermStart, end: midtermEnd),
+        if (termType == 'semester')
+          'semi_finals': (start: semiFinalsStart, end: semiFinalsEnd),
+        'finals': (start: finalsStart, end: finalsEnd),
+      };
+
   /// Returns the term ('prelim', 'midterm', 'semi_finals', 'finals') that the given date falls into.
   /// If the date doesn't fall into any configured term exactly, it finds the closest term,
   /// or defaults to 'prelim' if no dates are configured.
   String termForDate(DateTime date) {
-    final tType = termType;
-    
     // Create a list of available terms with their start/end dates
-    final ranges = <String, ({DateTime? start, DateTime? end})>{
-      'prelim': (start: prelimStart, end: prelimEnd),
-      'midterm': (start: midtermStart, end: midtermEnd),
-      if (tType == 'semester') 'semi_finals': (start: semiFinalsStart, end: semiFinalsEnd),
-      'finals': (start: finalsStart, end: finalsEnd),
-    };
+    final ranges = termRanges;
 
     // 1. Check if it falls exactly within a range
     for (final entry in ranges.entries) {

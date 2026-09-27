@@ -1,8 +1,13 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/cupertino.dart';
+import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
 import 'dart:ui';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../theme/theme_provider.dart';
+import '../providers/appearance_provider.dart';
+import '../widgets/common/app_background.dart';
+import '../widgets/common/glass_dialog.dart';
 import '../pages/overview_page.dart';
 import '../pages/courses_page.dart';
 import '../pages/quiz_page.dart';
@@ -50,12 +55,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
       _currentIndex = newIndex;
     });
 
+    final duration =
+        context.read<AppearanceProvider>().animateDuration(
+              const Duration(milliseconds: 300),
+            );
+
     Future.delayed(Duration.zero, () {
       if (_pageController != null && _pageController!.hasClients) {
         try {
           _pageController!.animateToPage(
             newIndex,
-            duration: const Duration(milliseconds: 300),
+            duration: duration,
             curve: Curves.easeInOut,
           );
         } catch (e) {
@@ -67,88 +77,90 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   Future<void> _checkVersionChanges() async {
     final prefs = await SharedPreferences.getInstance();
-    final hasSeen = prefs.getBool('hasSeenV1_4_Changes') ?? false;
+    final hasSeen = prefs.getBool('hasSeenV1_5_1_Changes') ?? false;
 
     if (!hasSeen && mounted) {
-      await prefs.setBool('hasSeenV1_4_Changes', true);
-      
-      showDialog(
+      await prefs.setBool('hasSeenV1_5_1_Changes', true);
+      // Clear older seen-flags so the fresh notice always shows.
+      await prefs.remove('hasSeenV1_5_Changes');
+      await prefs.remove('hasSeenV1_4_Changes');
+      if (!mounted) return;
+
+      showGlassDialog(
         context: context,
         barrierDismissible: false,
         builder: (BuildContext context) {
           final isDark = Theme.of(context).brightness == Brightness.dark;
-          return Dialog(
-            backgroundColor: isDark ? const Color(0xFF1E1E2C) : Colors.white,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(24),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.all(24.0),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF6366F1).withValues(alpha: 0.1),
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(
-                      Icons.new_releases_rounded,
-                      color: Color(0xFF6366F1),
-                      size: 40,
+          return GlassDialog(
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF6366F1).withValues(alpha: 0.15),
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: const Color(0xFF6366F1).withValues(alpha: 0.3),
                     ),
                   ),
-                  const SizedBox(height: 20),
-                  Text(
-                    'Welcome to Version 1.4! 🎉',
-                    style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                      color: isDark ? Colors.white : Colors.black87,
-                    ),
-                    textAlign: TextAlign.center,
+                  child: const Icon(
+                    Icons.new_releases_rounded,
+                    color: Color(0xFF6366F1),
+                    size: 40,
                   ),
-                  const SizedBox(height: 16),
-                  Text(
-                    'We\'ve made some exciting updates to improve your experience:',
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: isDark ? Colors.grey[400] : Colors.grey[600],
-                    ),
-                    textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 20),
+                Text(
+                  'Welcome to Version 1.5! 🚀',
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                    color: isDark ? Colors.white : Colors.black87,
                   ),
-                  const SizedBox(height: 20),
-                  _buildChangeItem(Icons.speed_rounded, 'Performance Boost', 'Faster load times across all screens.', isDark),
-                  const SizedBox(height: 12),
-                  _buildChangeItem(Icons.design_services_rounded, 'UI Enhancements', 'A cleaner, more modern aesthetic.', isDark),
-                  const SizedBox(height: 12),
-                  _buildChangeItem(Icons.bug_report_rounded, 'Bug Fixes', 'Squashed various bugs for a smoother ride.', isDark),
-                  const SizedBox(height: 28),
-                  SizedBox(
-                    width: double.infinity,
-                    height: 48,
-                    child: ElevatedButton(
-                      onPressed: () => Navigator.of(context).pop(),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF6366F1),
-                        foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        elevation: 0,
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  "What's new in this update:",
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: isDark ? Colors.grey[400] : Colors.grey[600],
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 20),
+                _buildChangeItem(Icons.bolt_rounded, 'Optimization', 'Faster, smoother performance across all screens.', isDark),
+                const SizedBox(height: 12),
+                _buildChangeItem(Icons.auto_awesome_rounded, 'Glassmorphism', 'A fresh iOS 27-style frosted glass design throughout the app.', isDark),
+                const SizedBox(height: 12),
+                _buildChangeItem(Icons.vibration_rounded, 'Haptics', 'Subtle tactile feedback on navigation and interactive elements.', isDark),
+                const SizedBox(height: 12),
+                _buildChangeItem(Icons.palette_rounded, 'Make It Yours', 'Adaptive colors, background, glass & animation — all in Profile → Appearance.', isDark),
+                const SizedBox(height: 28),
+                SizedBox(
+                  width: double.infinity,
+                  height: 48,
+                  child: ElevatedButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF6366F1),
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
                       ),
-                      child: const Text(
-                        'Awesome, Let\'s Go!',
-                        style: TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w700,
-                        ),
+                      elevation: 0,
+                    ),
+                    child: const Text(
+                      'Awesome, Let\'s Go!',
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
                       ),
                     ),
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
           );
         },
@@ -192,81 +204,136 @@ class _DashboardScreenState extends State<DashboardScreen> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final appearance = context.watch<AppearanceProvider>();
+    // Adaptive scaffold color: use the user's chosen background color if set,
+    // otherwise fall back to the theme default.
+    final bgColor = appearance.backgroundColor ??
+        (isDark ? const Color(0xFF0F172A) : const Color(0xFFFAFAFA));
 
     return Scaffold(
-      backgroundColor:
-          isDark ? const Color(0xFF0F172A) : const Color(0xFFFAFAFA),
-      body: SafeArea(
-        bottom: false,
-        child: PageView(
-          controller: _pageController,
-          onPageChanged: (index) {
-            setState(() {
-              _currentIndex = index;
-            });
-          },
-          children: [
-            OverviewPage(
-              email: widget.email,
-              themeProvider: widget.themeProvider,
+      extendBody: true,
+      backgroundColor: bgColor,
+      body: Stack(
+        children: [
+          // Customizable local-only background (color / wallpaper / drift).
+          const Positioned.fill(child: AppBackground()),
+          SafeArea(
+            bottom: false,
+            child: PageView(
+              controller: _pageController,
+              onPageChanged: (index) {
+                setState(() {
+                  _currentIndex = index;
+                });
+              },
+              children: [
+                OverviewPage(
+                  email: widget.email,
+                  themeProvider: widget.themeProvider,
+                ),
+                CoursesPage(
+                  themeProvider: widget.themeProvider,
+                ),
+                QuizPage(
+                  themeProvider: widget.themeProvider,
+                ),
+                CalendarPage(
+                  themeProvider: widget.themeProvider,
+                ),
+                GradesPage(
+                  themeProvider: widget.themeProvider,
+                ),
+                ProfilePage(
+                  email: widget.email,
+                  themeProvider: widget.themeProvider,
+                ),
+              ],
             ),
-            CoursesPage(
-              themeProvider: widget.themeProvider,
-            ),
-            QuizPage(
-              themeProvider: widget.themeProvider,
-            ),
-            if (!kIsWeb) CalendarPage(
-              themeProvider: widget.themeProvider,
-            ),
-            if (!kIsWeb) GradesPage(
-              themeProvider: widget.themeProvider,
-            ),
-            ProfilePage(
-              email: widget.email,
-              themeProvider: widget.themeProvider,
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
-      bottomNavigationBar: _buildModernBottomNav(isDark),
+      bottomNavigationBar: _buildModernBottomNav(isDark, appearance),
     );
   }
 
-  Widget _buildModernBottomNav(bool isDark) {
-    final items = [
-      {'icon': Icons.home_rounded, 'label': 'Home'},
-      {'icon': Icons.cast_for_education_rounded, 'label': 'Courses'},
-      {'icon': Icons.quiz_rounded, 'label': 'Quiz'},
-      if (!kIsWeb) {'icon': Icons.calendar_month_rounded, 'label': 'Calendar'},
-      if (!kIsWeb) {'icon': Icons.assessment_rounded, 'label': 'Grades'},
-      {'icon': Icons.person_rounded, 'label': 'Profile'},
+  /// Apple iOS 27 Liquid Island Dock — Icon-only design with frosted refraction.
+  /// The dock tint adapts to the user's chosen background color.
+  Widget _buildModernBottomNav(bool isDark, AppearanceProvider appearance) {
+    const items = [
+      (
+        activeIcon: CupertinoIcons.house_fill,
+        inactiveIcon: CupertinoIcons.house,
+        tooltip: 'Home',
+      ),
+      (
+        activeIcon: CupertinoIcons.book_fill,
+        inactiveIcon: CupertinoIcons.book,
+        tooltip: 'Courses',
+      ),
+      (
+        activeIcon: CupertinoIcons.pencil_circle_fill,
+        inactiveIcon: CupertinoIcons.pencil_circle,
+        tooltip: 'Quiz & Exams',
+      ),
+      (
+        activeIcon: CupertinoIcons.calendar,
+        inactiveIcon: CupertinoIcons.calendar_today,
+        tooltip: 'Calendar',
+      ),
+      (
+        activeIcon: CupertinoIcons.chart_bar_square_fill,
+        inactiveIcon: CupertinoIcons.chart_bar_square,
+        tooltip: 'Class Record',
+      ),
+      (
+        activeIcon: CupertinoIcons.person_crop_circle_fill,
+        inactiveIcon: CupertinoIcons.person_crop_circle,
+        tooltip: 'Profile',
+      ),
     ];
 
+    final opacity = appearance.glassOpacity;
+    final blur = appearance.glassBlur.clamp(20.0, 45.0);
+    // Adaptive dock tint: blend the chosen background color into the dock.
+    final Color dockBase = appearance.backgroundColor ??
+        (isDark ? const Color(0xFF0F172A) : Colors.white);
+
+    const activeColor = Color(0xFF6366F1);
+    final inactiveColor =
+        isDark ? const Color(0xFF8E9BAE) : const Color(0xFF64748B);
+
     return Container(
-      margin: const EdgeInsets.fromLTRB(14, 8, 14, 16),
+      margin: const EdgeInsets.fromLTRB(16, 0, 16, 22),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: BorderRadius.circular(36),
         child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+          filter: ImageFilter.blur(
+            sigmaX: blur,
+            sigmaY: blur,
+          ),
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
+            height: 64,
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
             decoration: BoxDecoration(
-              color: isDark
-                  ? const Color(0xFF1E293B).withValues(alpha: 0.85)
-                  : Colors.white.withValues(alpha: 0.85),
-              borderRadius: BorderRadius.circular(24),
+              color: dockBase.withValues(alpha: (opacity + 0.50).clamp(0.68, 0.92)),
+              borderRadius: BorderRadius.circular(36),
               border: Border.all(
                 color: isDark
-                    ? Colors.white.withValues(alpha: 0.12)
-                    : Colors.black.withValues(alpha: 0.08),
-                width: 1.5,
+                    ? Colors.white.withValues(alpha: 0.16)
+                    : Colors.white.withValues(alpha: 0.90),
+                width: 1.2,
               ),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withValues(alpha: isDark ? 0.35 : 0.08),
+                  color: Colors.black.withValues(alpha: isDark ? 0.40 : 0.12),
+                  blurRadius: 30,
+                  offset: const Offset(0, 10),
+                  spreadRadius: -2,
+                ),
+                BoxShadow(
+                  color: activeColor.withValues(alpha: isDark ? 0.15 : 0.08),
                   blurRadius: 20,
-                  offset: const Offset(0, 4),
+                  offset: const Offset(0, 2),
                 ),
               ],
             ),
@@ -276,14 +343,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 items.length,
                 (index) {
                   final isActive = _currentIndex == index;
+                  final item = items[index];
                   return Expanded(
-                    flex: isActive ? 5 : 2,
                     child: _buildNavItem(
-                      icon: items[index]['icon'] as IconData,
-                      label: items[index]['label'] as String,
+                      activeIcon: item.activeIcon,
+                      inactiveIcon: item.inactiveIcon,
+                      tooltip: item.tooltip,
                       isActive: isActive,
                       isDark: isDark,
-                      onTap: () => _updateIndex(index),
+                      activeColor: activeColor,
+                      inactiveColor: inactiveColor,
+                      onTap: () {
+                        HapticFeedback.lightImpact();
+                        _updateIndex(index);
+                      },
                     ),
                   );
                 },
@@ -296,83 +369,91 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Widget _buildNavItem({
-    required IconData icon,
-    required String label,
+    required IconData activeIcon,
+    required IconData inactiveIcon,
+    required String tooltip,
     required bool isActive,
     required bool isDark,
+    required Color activeColor,
+    required Color inactiveColor,
     required VoidCallback onTap,
   }) {
-    final activeColor = const Color(0xFF6366F1);
-    final inactiveColor =
-        isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B);
+    final duration = context
+        .watch<AppearanceProvider>()
+        .animateDuration(const Duration(milliseconds: 260));
 
-    return GestureDetector(
-      onTap: onTap,
-      behavior: HitTestBehavior.opaque,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeOutCubic,
-        margin: const EdgeInsets.symmetric(horizontal: 2),
-        padding: EdgeInsets.symmetric(
-          horizontal: isActive ? 12 : 6,
-          vertical: 10,
-        ),
-        decoration: BoxDecoration(
-          color: isActive
-              ? activeColor.withValues(alpha: isDark ? 0.2 : 0.12)
-              : Colors.transparent,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: isActive
-                ? activeColor.withValues(alpha: isDark ? 0.35 : 0.25)
-                : Colors.transparent,
-            width: 1.2,
-          ),
-          boxShadow: isActive
-              ? [
-                  BoxShadow(
-                    color: activeColor.withValues(alpha: isDark ? 0.25 : 0.15),
-                    blurRadius: 10,
-                    offset: const Offset(0, 2),
+    return Tooltip(
+      message: tooltip,
+      waitDuration: const Duration(milliseconds: 700),
+      child: GestureDetector(
+        onTap: onTap,
+        behavior: HitTestBehavior.opaque,
+        child: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              AnimatedContainer(
+                duration: duration,
+                curve: Curves.easeOutCubic,
+                width: 46,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: isActive
+                      ? activeColor.withValues(alpha: isDark ? 0.22 : 0.14)
+                      : Colors.transparent,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: isActive
+                        ? activeColor.withValues(alpha: isDark ? 0.42 : 0.30)
+                        : Colors.transparent,
+                    width: 1.0,
                   ),
-                ]
-              : [],
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            AnimatedScale(
-              scale: isActive ? 1.1 : 1.0,
-              duration: const Duration(milliseconds: 250),
-              child: Icon(
-                icon,
-                size: 20,
-                color: isActive ? activeColor : inactiveColor,
-              ),
-            ),
-            if (isActive) ...[
-              const SizedBox(width: 6),
-              Flexible(
-                child: AnimatedOpacity(
-                  duration: const Duration(milliseconds: 250),
-                  opacity: isActive ? 1.0 : 0.0,
-                  child: Text(
-                    label,
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                      color: activeColor,
-                      letterSpacing: 0.2,
+                  boxShadow: isActive
+                      ? [
+                          BoxShadow(
+                            color: activeColor.withValues(alpha: isDark ? 0.25 : 0.16),
+                            blurRadius: 10,
+                            offset: const Offset(0, 2),
+                          ),
+                        ]
+                      : null,
+                ),
+                child: Center(
+                  child: AnimatedScale(
+                    scale: isActive ? 1.12 : 1.0,
+                    duration: duration,
+                    curve: Curves.easeOutBack,
+                    child: Icon(
+                      isActive ? activeIcon : inactiveIcon,
+                      size: isActive ? 22 : 21,
+                      color: isActive ? activeColor : inactiveColor,
                     ),
-                    maxLines: 1,
-                    softWrap: false,
-                    overflow: TextOverflow.fade,
                   ),
                 ),
               ),
+              const SizedBox(height: 3),
+              AnimatedContainer(
+                duration: duration,
+                curve: Curves.easeOutCubic,
+                width: isActive ? 14 : 0,
+                height: 2.5,
+                decoration: BoxDecoration(
+                  color: isActive ? activeColor : Colors.transparent,
+                  borderRadius: BorderRadius.circular(2),
+                  boxShadow: isActive
+                      ? [
+                          BoxShadow(
+                            color: activeColor.withValues(alpha: 0.8),
+                            blurRadius: 4,
+                            offset: const Offset(0, 1),
+                          ),
+                        ]
+                      : null,
+                ),
+              ),
             ],
-          ],
+          ),
         ),
       ),
     );

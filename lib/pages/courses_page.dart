@@ -5,6 +5,7 @@ import 'package:mobile_scanner/mobile_scanner.dart';
 import '../theme/theme_provider.dart';
 import '../providers/student_provider.dart';
 import '../models/enrollment_model.dart';
+import '../widgets/common/glass_card.dart';
 
 class CoursesPage extends StatefulWidget {
   final ThemeProvider themeProvider;
@@ -98,7 +99,7 @@ class _CoursesPageState extends State<CoursesPage> {
           onRefresh: () => provider.loadEnrollments(),
           child: SingleChildScrollView(
             physics: const AlwaysScrollableScrollPhysics(),
-            padding: const EdgeInsets.all(20),
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 110),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -191,13 +192,11 @@ class _CoursesPageState extends State<CoursesPage> {
         ),
       ),
       const SizedBox(height: 10),
-      Container(
+      GlassCard(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-        decoration: BoxDecoration(
-          color: const Color(0xFF10B981).withValues(alpha: 0.08),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: const Color(0xFF10B981).withValues(alpha: 0.2)),
-        ),
+        borderRadius: BorderRadius.circular(12),
+        tint: const Color(0xFF10B981),
+        opacityScale: 0.6,
         child: Row(children: [
           const Icon(Icons.info_outline_rounded, color: Color(0xFF10B981), size: 16),
           const SizedBox(width: 8),
@@ -267,26 +266,11 @@ class _CoursesPageState extends State<CoursesPage> {
           padding: const EdgeInsets.only(bottom: 12),
           child: GestureDetector(
             onTap: () => _showCourseActionDialog(enrollment, color),
-            child: Container(
+            child: GlassCard(
               padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: isDark
-                    ? color.withValues(alpha: 0.08)
-                    : Colors.white,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(
-                  color: color.withValues(alpha: isDark ? 0.2 : 0.15),
-                ),
-                boxShadow: isDark
-                    ? []
-                    : [
-                        BoxShadow(
-                          color: color.withValues(alpha: 0.08),
-                          blurRadius: 12,
-                          offset: const Offset(0, 4),
-                        ),
-                      ],
-              ),
+              borderRadius: BorderRadius.circular(18),
+              tint: color,
+              opacityScale: 0.5,
               child: Row(
                 children: [
                   Container(

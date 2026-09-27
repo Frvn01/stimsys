@@ -16,6 +16,12 @@ class AttendanceRecord {
   final String? subjectCode;
   final String? subjectTitle;
 
+  // Joined fields used to derive the *expected* class dates for a subject
+  // (so days without an attendance record still count toward the total).
+  final String? subjectId;
+  final String? scheduleDay;   // e.g. "MWF", "TTH"
+  final DateTime? enrolledAt;
+
   // Extra joined fields for section grouping in tracker
   final String? studentCourse;
   final String? studentYearLevel;
@@ -36,6 +42,9 @@ class AttendanceRecord {
     this.studentUsn,
     this.subjectCode,
     this.subjectTitle,
+    this.subjectId,
+    this.scheduleDay,
+    this.enrolledAt,
     this.studentCourse,
     this.studentYearLevel,
     this.studentSection,
@@ -151,9 +160,16 @@ class AttendanceRecord {
     String? studentSection;
     String? studentLastName;
     String? studentFirstName;
+    String? subjectId;
+    String? scheduleDay;
+    DateTime? enrolledAt;
 
     if (map['enrollments'] != null) {
       final enrollment = map['enrollments'];
+      subjectId = enrollment['subject_id'];
+      enrolledAt = enrollment['enrolled_at'] != null
+          ? DateTime.tryParse(enrollment['enrolled_at'])
+          : null;
       if (enrollment['students'] != null) {
         final student = enrollment['students'];
         studentFirstName = student['first_name'];
@@ -168,6 +184,7 @@ class AttendanceRecord {
         final subject = enrollment['subjects'];
         subjectCode = subject['subject_code'];
         subjectTitle = subject['subject_title'];
+        scheduleDay = subject['schedule_day'];
       }
     }
 
@@ -188,6 +205,9 @@ class AttendanceRecord {
       studentUsn: studentUsn,
       subjectCode: subjectCode,
       subjectTitle: subjectTitle,
+      subjectId: subjectId,
+      scheduleDay: scheduleDay,
+      enrolledAt: enrolledAt,
       studentCourse: studentCourse,
       studentYearLevel: studentYearLevel,
       studentSection: studentSection,

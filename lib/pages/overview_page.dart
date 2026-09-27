@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/cupertino.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import '../theme/theme_provider.dart';
 import '../widgets/common/glass_card.dart';
@@ -25,12 +26,12 @@ class OverviewPage extends StatelessWidget {
     final enrollmentCount = provider.enrollments.length;
 
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.fromLTRB(20, 16, 20, 110),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _buildHeader(context, isDark, lastName),
-          const SizedBox(height: 32),
+          const SizedBox(height: 28),
           _buildAcademicOverview(isDark, enrollmentCount),
           const SizedBox(height: 24),
           _buildRecentActivity(isDark, provider),
@@ -43,25 +44,28 @@ class OverviewPage extends StatelessWidget {
   Widget _buildHeader(BuildContext context, bool isDark, String lastName) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
         Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Welcome Back, $lastName',
-              style: const TextStyle(
-                fontSize: 24,
+              DateFormat('EEEE, MMMM d').format(DateTime.now()).toUpperCase(),
+              style: GoogleFonts.inter(
+                fontSize: 11,
                 fontWeight: FontWeight.w700,
-                letterSpacing: -0.3,
+                letterSpacing: 1.1,
+                color: isDark ? const Color(0xFF818CF8) : const Color(0xFF6366F1),
               ),
             ),
             const SizedBox(height: 4),
             Text(
-              DateFormat('EEEE, MMM d').format(DateTime.now()),
-              style: TextStyle(
-                fontSize: 12,
-                color: isDark ? Colors.grey[500] : Colors.grey[600],
-                fontWeight: FontWeight.w500,
+              'Welcome, $lastName',
+              style: GoogleFonts.inter(
+                fontSize: 26,
+                fontWeight: FontWeight.w800,
+                letterSpacing: -0.6,
+                color: isDark ? Colors.white : const Color(0xFF0F172A),
               ),
             ),
           ],
@@ -69,22 +73,23 @@ class OverviewPage extends StatelessWidget {
         GestureDetector(
           onTap: () => themeProvider.toggleTheme(),
           child: Container(
-            padding: const EdgeInsets.all(10),
+            padding: const EdgeInsets.all(11),
             decoration: BoxDecoration(
               color: isDark
-                  ? Colors.white.withValues(alpha: 0.1)
+                  ? Colors.white.withValues(alpha: 0.08)
                   : Colors.black.withValues(alpha: 0.05),
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(16),
               border: Border.all(
                 color: isDark
-                    ? Colors.white.withValues(alpha: 0.1)
+                    ? Colors.white.withValues(alpha: 0.12)
                     : Colors.black.withValues(alpha: 0.08),
+                width: 1.0,
               ),
             ),
             child: Icon(
-              isDark ? Icons.light_mode : Icons.dark_mode,
-              size: 18,
-              color: isDark ? Colors.yellow[300] : Colors.orange[700],
+              isDark ? CupertinoIcons.sun_max_fill : CupertinoIcons.moon_stars_fill,
+              size: 19,
+              color: isDark ? Colors.amber[300] : const Color(0xFF6366F1),
             ),
           ),
         ),
@@ -94,24 +99,38 @@ class OverviewPage extends StatelessWidget {
 
   Widget _buildAcademicOverview(bool isDark, int enrollmentCount) {
     return GlassCard(
+      borderRadius: BorderRadius.circular(24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            'Academic Overview',
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-              color: isDark ? Colors.grey[300] : Colors.grey[700],
-              letterSpacing: 0.2,
-            ),
+          Row(
+            children: [
+              Container(
+                width: 7,
+                height: 7,
+                decoration: const BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Color(0xFF6366F1),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                'Academic Overview',
+                style: GoogleFonts.inter(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: isDark ? Colors.grey[300] : Colors.grey[700],
+                  letterSpacing: 0.3,
+                ),
+              ),
+            ],
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 18),
           _buildStatRow(isDark, 'Active Courses', '$enrollmentCount', const Color(0xFF6366F1)),
           const SizedBox(height: 12),
           _buildStatRow(isDark, 'Current GPA', '-', const Color(0xFFA855F7)),
-          if (!kIsWeb) const SizedBox(height: 12),
-          if (!kIsWeb) _buildStatRow(isDark, 'Attendance', '-', const Color(0xFF10B981)),
+          const SizedBox(height: 12),
+          _buildStatRow(isDark, 'Attendance', '-', const Color(0xFF10B981)),
         ],
       ),
     );
@@ -183,17 +202,15 @@ class OverviewPage extends StatelessWidget {
       }
     }
 
-    // 3. Attendance (hide on web)
-    if (!kIsWeb) {
-      for (var record in provider.attendanceRecords) {
-        final date = record.markedAt ?? record.date;
-        activities.add({
-          'title': 'Attendance Marked',
-          'description': '${record.statusLabel} for ${record.subjectTitle ?? record.subjectCode ?? "Subject"}',
-          'date': date,
-          'icon': Icons.how_to_reg_rounded,
-        });
-      }
+    // 3. Attendance
+    for (var record in provider.attendanceRecords) {
+      final date = record.markedAt ?? record.date;
+      activities.add({
+        'title': 'Attendance Marked',
+        'description': '${record.statusLabel} for ${record.subjectTitle ?? record.subjectCode ?? "Subject"}',
+        'date': date,
+        'icon': Icons.how_to_reg_rounded,
+      });
     }
 
     // Sort by date descending

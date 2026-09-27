@@ -6,6 +6,7 @@ import 'package:table_calendar/table_calendar.dart';
 import '../theme/theme_provider.dart';
 import '../providers/student_provider.dart';
 import '../models/announcement_model.dart';
+import '../widgets/common/glass_card.dart';
 
 class CalendarPage extends StatefulWidget {
   final ThemeProvider themeProvider;
@@ -42,7 +43,7 @@ class _CalendarPageState extends State<CalendarPage> {
     final upcoming = provider.upcomingAnnouncements;
 
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.fromLTRB(20, 16, 20, 110),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -87,24 +88,10 @@ class _CalendarPageState extends State<CalendarPage> {
   // CALENDAR WITH EVENT MARKERS
   // ═══════════════════════════════════════════════════════════════════
   Widget _buildCalendar(bool isDark, StudentProvider provider) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(14),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-        child: Container(
-          decoration: BoxDecoration(
-            color: isDark
-                ? Colors.white.withValues(alpha: 0.05)
-                : Colors.black.withValues(alpha: 0.02),
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(
-              color: isDark
-                  ? Colors.white.withValues(alpha: 0.1)
-                  : Colors.black.withValues(alpha: 0.08),
-            ),
-          ),
-          padding: const EdgeInsets.all(12),
-          child: TableCalendar(
+    return GlassCard(
+      borderRadius: BorderRadius.circular(18),
+      padding: const EdgeInsets.all(12),
+      child: TableCalendar(
             firstDay: DateTime.utc(2024, 1, 1),
             lastDay: DateTime.utc(2030, 12, 31),
             focusedDay: _focusedDay,
@@ -197,8 +184,6 @@ class _CalendarPageState extends State<CalendarPage> {
               ),
             ),
           ),
-        ),
-      ),
     );
   }
 

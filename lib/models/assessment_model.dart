@@ -207,6 +207,25 @@ class AssessmentQuestion {
   bool get isEnumeration => questionType == 'enumeration';
   bool get isEssay => questionType == 'essay';
 
+  /// Whether the blanks can be filled in any order (interchangeable).
+  /// Encoded as a `[IC]` prefix in [correctAnswer]: `[IC]Apple | Banana`.
+  bool get isInterchangeable =>
+      isIdentification && correctAnswer.trimLeft().startsWith('[IC]');
+
+  /// Returns the list of required blanks for an identification question,
+  /// stripping the optional [IC] prefix.
+  List<String> get identificationBlanks {
+    if (!isIdentification) return const [];
+    final raw = isInterchangeable
+        ? correctAnswer.trimLeft().substring(4) // strip '[IC]'
+        : correctAnswer;
+    return raw
+        .split('|')
+        .map((e) => e.trim())
+        .where((e) => e.isNotEmpty)
+        .toList();
+  }
+
   /// Check a student's answer against the correct answer.
   bool checkAnswer(String studentAnswer) {
     final sa = studentAnswer.trim().toLowerCase();
@@ -230,14 +249,34 @@ class AssessmentQuestion {
     }
 
     if (isIdentification) {
-      // Support pipe-separated ( | ) alternative correct answers so that
-      // multiple valid answers are all accepted.
-      final alternatives = correctAnswer
-          .split('|')
+      // Student answers are stored as '||'-separated values, one per blank.
+      final blanks = identificationBlanks;
+      if (blanks.isEmpty) return false;
+
+      final studentBlanks = studentAnswer
+          .split('||')
           .map((e) => e.trim().toLowerCase())
-          .where((e) => e.isNotEmpty)
           .toList();
-      return alternatives.contains(sa);
+
+      if (studentBlanks.length != blanks.length) return false;
+
+      if (isInterchangeable) {
+        // Order doesn't matter — each student blank must match some correct blank
+        // (one-to-one, no reuse).
+        final remaining = blanks.map((b) => b.toLowerCase()).toList();
+        for (final sb in studentBlanks) {
+          final idx = remaining.indexOf(sb);
+          if (idx == -1) return false;
+          remaining.removeAt(idx);
+        }
+        return true;
+      } else {
+        // Strict order: blank i must match answer i.
+        for (int i = 0; i < blanks.length; i++) {
+          if (studentBlanks[i] != blanks[i].toLowerCase()) return false;
+        }
+        return true;
+      }
     }
 
     return sa == correctAnswer.trim().toLowerCase();
@@ -258,6 +297,37 @@ class AssessmentQuestion {
       if (correctParts.isEmpty) return 0;
       final matches = correctParts.intersection(studentParts).length;
       return (matches / correctParts.length) * points;
+    }
+
+    // Partial credit for identification (per-blank scoring)
+    if (isIdentification) {
+      final blanks = identificationBlanks;
+      if (blanks.isEmpty) return 0;
+      final studentBlanks = studentAnswer
+          .split('||')
+          .map((e) => e.trim().toLowerCase())
+          .toList();
+
+      if (isInterchangeable) {
+        // Greedy match: count how many student blanks hit a unique correct blank
+        final remaining = blanks.map((b) => b.toLowerCase()).toList();
+        int correct = 0;
+        for (final sb in studentBlanks) {
+          final idx = remaining.indexOf(sb);
+          if (idx != -1) {
+            correct++;
+            remaining.removeAt(idx);
+          }
+        }
+        return (correct / blanks.length) * points;
+      } else {
+        int correct = 0;
+        for (int i = 0; i < blanks.length; i++) {
+          final studentVal = i < studentBlanks.length ? studentBlanks[i] : '';
+          if (studentVal == blanks[i].toLowerCase()) correct++;
+        }
+        return (correct / blanks.length) * points;
+      }
     }
 
     return 0;

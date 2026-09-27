@@ -13,6 +13,9 @@ import '../widgets/common/custom_text_field.dart';
 import '../widgets/common/custom_dropdown.dart';
 import '../screens/welcome_screen.dart';
 import '../providers/student_provider.dart';
+import '../providers/appearance_provider.dart';
+import '../widgets/common/glass_card.dart';
+import '../widgets/common/glass_dialog.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart'; 
 import 'package:flutter_animate/flutter_animate.dart';
@@ -341,22 +344,25 @@ class _ProfilePageState extends State<ProfilePage> {
 
     // Otherwise, if they have a saved remote image, ask for confirmation then delete from DB.
     if (student.profileImageUrl != null && student.profileImageUrl!.isNotEmpty) {
-      final confirm = await showDialog<bool>(
+      final confirm = await showGlassDialog<bool>(
         context: context,
-        builder: (ctx) => AlertDialog(
-          backgroundColor: Theme.of(context).brightness == Brightness.dark
-              ? const Color(0xFF1E293B)
-              : Colors.white,
-          title: const Text('Remove Photo', style: TextStyle(fontWeight: FontWeight.bold)),
+        builder: (ctx) => GlassDialog(
+          title: const Row(
+            children: [
+              Icon(Icons.delete_outline_rounded, color: Color(0xFFEF4444), size: 22),
+              SizedBox(width: 8),
+              Text('Remove Photo', style: TextStyle(fontWeight: FontWeight.bold)),
+            ],
+          ),
           content: const Text('Are you sure you want to remove your profile photo?'),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancel'),
+              child: const Text('Cancel', style: TextStyle(color: Colors.grey)),
             ),
             TextButton(
               onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Remove', style: TextStyle(color: Colors.red)),
+              child: const Text('Remove', style: TextStyle(color: Color(0xFFEF4444), fontWeight: FontWeight.w700)),
             ),
           ],
         ),
@@ -462,15 +468,13 @@ class _ProfilePageState extends State<ProfilePage> {
     bool isSaving = false;
     bool showPass = false;
 
-    showDialog(
+    showGlassDialog(
       context: context,
       barrierDismissible: false,
       builder: (ctx) => StatefulBuilder(
         builder: (context, setState) {
           final isDark = Theme.of(context).brightness == Brightness.dark;
-          return AlertDialog(
-            backgroundColor: isDark ? const Color(0xFF1E293B) : Colors.white,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          return GlassDialog(
             title: Row(
               children: [
                 const Icon(Icons.lock_reset_rounded, color: Color(0xFF6366F1), size: 28),
@@ -542,11 +546,14 @@ class _ProfilePageState extends State<ProfilePage> {
       return const Center(child: CircularProgressIndicator());
     }
 
-    final surfaceColor = isDark ? const Color(0xFF1E293B) : Colors.white;
-    final borderColor = isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0);
+    final appearance = context.watch<AppearanceProvider>();
+    final glassTint = appearance.glassTint;
+    final glassOpacity = appearance.glassOpacity;
+    final surfaceColor = glassTint.withValues(alpha: glassOpacity);
+    final borderColor = glassBorderColor(glassTint, glassOpacity, isDark);
 
     return SingleChildScrollView(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+      padding: const EdgeInsets.fromLTRB(20, 24, 20, 110),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -558,14 +565,46 @@ class _ProfilePageState extends State<ProfilePage> {
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    'Profile',
-                    style: TextStyle(
-                      fontSize: 26,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: -0.5,
-                      color: isDark ? Colors.white : const Color(0xFF0F172A),
-                    ),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      Text(
+                        'Profile',
+                        style: TextStyle(
+                          fontSize: 26,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: -0.5,
+                          color: isDark ? Colors.white : const Color(0xFF0F172A),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      // ── Beta badge ───────────────────────────────────────
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                        decoration: BoxDecoration(
+                          gradient: const LinearGradient(
+                            colors: [Color(0xFF6366F1), Color(0xFF8B5CF6)],
+                          ),
+                          borderRadius: BorderRadius.circular(6),
+                          boxShadow: [
+                            BoxShadow(
+                              color: const Color(0xFF6366F1).withValues(alpha: 0.35),
+                              blurRadius: 6,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                        child: const Text(
+                          'BETA',
+                          style: TextStyle(
+                            fontSize: 9,
+                            fontWeight: FontWeight.w800,
+                            color: Colors.white,
+                            letterSpacing: 0.8,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 2),
                   Text(
@@ -872,13 +911,9 @@ class _ProfilePageState extends State<ProfilePage> {
 
           // ── Personal Info Grouped Card / Edit Form ───────────────────────
           if (_isEditing)
-            Container(
+            GlassCard(
               padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                color: surfaceColor,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: borderColor),
-              ),
+              borderRadius: BorderRadius.circular(16),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -997,12 +1032,9 @@ class _ProfilePageState extends State<ProfilePage> {
               ),
             )
           else
-            Container(
-              decoration: BoxDecoration(
-                color: surfaceColor,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: borderColor),
-              ),
+            GlassCard(
+              padding: EdgeInsets.zero,
+              borderRadius: BorderRadius.circular(16),
               child: Column(
                 children: [
                   _minimalInfoTile('Full Name', student.fullName, Icons.person_outline_rounded, isDark, showDivider: true),
@@ -1024,13 +1056,9 @@ class _ProfilePageState extends State<ProfilePage> {
             ),
           if (_biometricAvailable) ...[
             const SizedBox(height: 16),
-            Container(
+            GlassCard(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              decoration: BoxDecoration(
-                color: surfaceColor,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: borderColor),
-              ),
+              borderRadius: BorderRadius.circular(16),
               child: Row(
                 children: [
                   Container(
@@ -1114,7 +1142,7 @@ class _ProfilePageState extends State<ProfilePage> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           const Text(
-                            'Version 1.4',
+                            'Version 1.5',
                             style: TextStyle(
                               fontWeight: FontWeight.w600,
                               color: Color(0xFF6366F1),
@@ -1193,6 +1221,10 @@ class _ProfilePageState extends State<ProfilePage> {
           ),
           const SizedBox(height: 16),
 
+          // ── Appearance (local-only customization) ────────────────────────
+          _buildAppearanceSection(context, isDark),
+          const SizedBox(height: 16),
+
           // ── Minimalist Logout Button ──────────────────────────────────────
           SizedBox(
             width: double.infinity,
@@ -1241,6 +1273,448 @@ class _ProfilePageState extends State<ProfilePage> {
         ],
       ),
     );
+  }
+
+  // ── Appearance (local-only background & glass customization) ────────────
+
+  static const List<Color> _bgSwatches = [
+    Color(0xFF6366F1),
+    Color(0xFF8B5CF6),
+    Color(0xFF0EA5E9),
+    Color(0xFF14B8A6),
+    Color(0xFFEC4899),
+    Color(0xFFF43F5E),
+    Color(0xFFF59E0B),
+    Color(0xFF10B981),
+    Color(0xFF1E293B),
+    Color(0xFF0F172A),
+  ];
+
+  static const List<Color> _tintSwatches = [
+    Colors.white,
+    Color(0xFFE2E8F0),
+    Color(0xFFC7D2FE),
+    Color(0xFFDDD6FE),
+    Color(0xFFFCE7F3),
+    Color(0xFF334155),
+    Color(0xFF0F172A),
+  ];
+
+  Widget _buildAppearanceSection(BuildContext context, bool isDark) {
+    final appearance = context.watch<AppearanceProvider>();
+    final textColor = isDark ? Colors.white : const Color(0xFF0F172A);
+
+    return GlassCard(
+      padding: const EdgeInsets.all(18),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF6366F1).withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(
+                    color: const Color(0xFF6366F1).withValues(alpha: 0.25),
+                  ),
+                ),
+                child: const Icon(
+                  Icons.palette_rounded,
+                  size: 18,
+                  color: Color(0xFF6366F1),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Text(
+                'Appearance',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                  color: textColor,
+                ),
+              ),
+              const Spacer(),
+              if (appearance.isCustomized)
+                GestureDetector(
+                  onTap: () => appearance.resetAll(),
+                  child: const Text(
+                    'Reset',
+                    style: TextStyle(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF6366F1),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Personalize your background, glass and animations. Saved on this device only.',
+            style: TextStyle(
+              fontSize: 12,
+              height: 1.4,
+              color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
+            ),
+          ),
+          const SizedBox(height: 18),
+
+          _appearanceLabel('BACKGROUND COLOR', isDark),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: [
+              _colorSwatch(
+                color: null,
+                selected: appearance.backgroundColor == null,
+                isDark: isDark,
+                onTap: () => appearance.setBackgroundColor(null),
+              ),
+              ..._bgSwatches.map(
+                (color) => _colorSwatch(
+                  color: color,
+                  selected: appearance.backgroundColor?.toARGB32() ==
+                      color.toARGB32(),
+                  isDark: isDark,
+                  onTap: () => appearance.setBackgroundColor(color),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 18),
+
+          if (!kIsWeb) ...[
+            _appearanceLabel('BACKGROUND IMAGE', isDark),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                if (appearance.backgroundImagePath != null) ...[
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(12),
+                    child: Image.file(
+                      File(appearance.backgroundImagePath!),
+                      width: 52,
+                      height: 52,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, _, _) => Container(
+                        width: 52,
+                        height: 52,
+                        color: Colors.black12,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                ],
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () => _pickBackgroundImage(appearance),
+                    icon: const Icon(Icons.image_outlined, size: 16),
+                    label: Text(
+                      appearance.backgroundImagePath == null
+                          ? 'Choose image'
+                          : 'Change image',
+                      style: const TextStyle(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: const Color(0xFF6366F1),
+                      side: BorderSide(
+                        color: const Color(0xFF6366F1).withValues(alpha: 0.35),
+                      ),
+                      backgroundColor:
+                          const Color(0xFF6366F1).withValues(alpha: 0.06),
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                  ),
+                ),
+                if (appearance.backgroundImagePath != null) ...[
+                  const SizedBox(width: 4),
+                  IconButton(
+                    onPressed: () => appearance.clearBackgroundImage(),
+                    tooltip: 'Remove image',
+                    icon: const Icon(
+                      Icons.delete_outline_rounded,
+                      size: 20,
+                      color: Color(0xFFEF4444),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+            const SizedBox(height: 18),
+          ],
+
+          _appearanceLabel('GLASS', isDark),
+          const SizedBox(height: 8),
+          // ── Beta notice for Glass effect ───────────────────────────────────
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [
+                  const Color(0xFF6366F1).withValues(alpha: 0.12),
+                  const Color(0xFF8B5CF6).withValues(alpha: 0.08),
+                ],
+              ),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(
+                color: const Color(0xFF6366F1).withValues(alpha: 0.22),
+              ),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFF6366F1), Color(0xFF8B5CF6)],
+                    ),
+                    borderRadius: BorderRadius.circular(5),
+                  ),
+                  child: const Text(
+                    'BETA',
+                    style: TextStyle(
+                      fontSize: 8.5,
+                      fontWeight: FontWeight.w800,
+                      color: Colors.white,
+                      letterSpacing: 0.8,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Glass customization is experimental. Some effects may vary by device.',
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      color: isDark ? const Color(0xFFa5b4fc) : const Color(0xFF4F46E5),
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 10),
+          _appearanceSlider(
+            icon: Icons.blur_on_rounded,
+            name: 'Blur',
+            value: appearance.glassBlur,
+            min: AppearanceProvider.minBlur,
+            max: AppearanceProvider.maxBlur,
+            display: '${appearance.glassBlur.round()} px',
+            isDark: isDark,
+            onChanged: appearance.setGlassBlur,
+          ),
+          _appearanceSlider(
+            icon: Icons.opacity_rounded,
+            name: 'Opacity',
+            value: appearance.glassOpacity,
+            min: AppearanceProvider.minOpacity,
+            max: AppearanceProvider.maxOpacity,
+            display: '${(appearance.glassOpacity * 100).round()}%',
+            isDark: isDark,
+            onChanged: appearance.setGlassOpacity,
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: _tintSwatches
+                .map(
+                  (color) => _colorSwatch(
+                    color: color,
+                    selected: appearance.glassTint.toARGB32() ==
+                        color.toARGB32(),
+                    isDark: isDark,
+                    onTap: () => appearance.setGlassTint(color),
+                  ),
+                )
+                .toList(),
+          ),
+          const SizedBox(height: 18),
+
+          _appearanceLabel('ANIMATION', isDark),
+          const SizedBox(height: 10),
+          _appearanceSlider(
+            icon: Icons.speed_rounded,
+            name: 'Intensity',
+            value: appearance.animationIntensity,
+            min: 0.0,
+            max: 1.0,
+            display: '${(appearance.animationIntensity * 100).round()}%',
+            isDark: isDark,
+            onChanged: appearance.setAnimationIntensity,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _appearanceLabel(String text, bool isDark) {
+    return Text(
+      text,
+      style: TextStyle(
+        fontSize: 11,
+        fontWeight: FontWeight.w700,
+        letterSpacing: 1.2,
+        color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
+      ),
+    );
+  }
+
+  Widget _colorSwatch({
+    required Color? color,
+    required bool selected,
+    required bool isDark,
+    required VoidCallback onTap,
+  }) {
+    final duration = context
+        .read<AppearanceProvider>()
+        .animateDuration(const Duration(milliseconds: 220));
+    final luminous = color != null && color.computeLuminance() > 0.55;
+
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: duration,
+        curve: Curves.easeOutCubic,
+        width: 38,
+        height: 38,
+        decoration: BoxDecoration(
+          color: color ??
+              (isDark
+                  ? Colors.white.withValues(alpha: 0.06)
+                  : Colors.black.withValues(alpha: 0.04)),
+          shape: BoxShape.circle,
+          border: Border.all(
+            color: selected
+                ? const Color(0xFF6366F1)
+                : (isDark
+                    ? Colors.white.withValues(alpha: 0.18)
+                    : Colors.black.withValues(alpha: 0.10)),
+            width: selected ? 2.4 : 1.4,
+          ),
+          boxShadow: selected
+              ? [
+                  BoxShadow(
+                    color: const Color(0xFF6366F1).withValues(alpha: 0.30),
+                    blurRadius: 10,
+                    spreadRadius: 1,
+                  ),
+                ]
+              : null,
+        ),
+        child: color == null
+            ? Icon(
+                Icons.brightness_auto_rounded,
+                size: 15,
+                color: isDark ? Colors.white70 : Colors.black45,
+              )
+            : selected
+                ? Icon(
+                    Icons.check_rounded,
+                    size: 16,
+                    color: luminous ? Colors.black87 : Colors.white,
+                  )
+                : null,
+      ),
+    );
+  }
+
+  Widget _appearanceSlider({
+    required IconData icon,
+    required String name,
+    required double value,
+    required double min,
+    required double max,
+    required String display,
+    required bool isDark,
+    required ValueChanged<double> onChanged,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(
+        children: [
+          Icon(icon, size: 16, color: const Color(0xFF6366F1)),
+          const SizedBox(width: 10),
+          SizedBox(
+            width: 72,
+            child: Text(
+              name,
+              style: TextStyle(
+                fontSize: 12.5,
+                fontWeight: FontWeight.w600,
+                color: isDark ? Colors.white70 : Colors.black87,
+              ),
+            ),
+          ),
+          Expanded(
+            child: SliderTheme(
+              data: SliderTheme.of(context).copyWith(
+                trackHeight: 4,
+                activeTrackColor: const Color(0xFF6366F1),
+                inactiveTrackColor:
+                    const Color(0xFF6366F1).withValues(alpha: 0.15),
+                thumbShape:
+                    const RoundSliderThumbShape(enabledThumbRadius: 7),
+                overlayShape: const RoundSliderOverlayShape(overlayRadius: 16),
+                thumbColor: const Color(0xFF6366F1),
+                overlayColor:
+                    const Color(0xFF6366F1).withValues(alpha: 0.15),
+              ),
+              child: Slider(
+                value: value.clamp(min, max),
+                min: min,
+                max: max,
+                onChanged: onChanged,
+              ),
+            ),
+          ),
+          SizedBox(
+            width: 52,
+            child: Text(
+              display,
+              textAlign: TextAlign.right,
+              style: const TextStyle(
+                fontSize: 11.5,
+                fontWeight: FontWeight.w700,
+                color: Color(0xFF6366F1),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _pickBackgroundImage(AppearanceProvider appearance) async {
+    try {
+      final picked = await _picker.pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 1920,
+        maxHeight: 1920,
+        imageQuality: 85,
+      );
+      if (picked == null) return;
+      final ok = await appearance.importBackgroundImage(picked.path);
+      if (!ok && mounted) {
+        _showSnackBar(
+          'Background images are not supported on this platform',
+          isError: true,
+        );
+      }
+    } catch (e) {
+      if (mounted) _showSnackBar('Failed to pick image: $e', isError: true);
+    }
   }
 
   Widget _discordBadge({

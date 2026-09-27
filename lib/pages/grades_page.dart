@@ -7,6 +7,9 @@ import '../models/attendance_model.dart';
 import '../models/grading_config_model.dart';
 import '../models/student_grade_model.dart';
 import '../models/student_grade_item_model.dart';
+import '../utils/attendance_utils.dart';
+import '../providers/appearance_provider.dart';
+import '../widgets/common/glass_card.dart';
 
 class GradesPage extends StatefulWidget {
   final ThemeProvider themeProvider;
@@ -23,11 +26,17 @@ class _GradesPageState extends State<GradesPage> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
       final provider = context.read<StudentProvider>();
       if (provider.attendanceRecords.isEmpty) {
         provider.loadAttendance();
       }
+      // Term ranges + cancelled days → needed to compute attendance from
+      // the expected class days rather than only the recorded ones, then
+      // bring the stored attendance scores in line with that calculation.
+      await provider.loadAttendanceContext();
+      if (!mounted) return;
+      await provider.refreshAttendanceGrades();
     });
   }
 
@@ -51,7 +60,7 @@ class _GradesPageState extends State<GradesPage> {
                 children: [
                   _buildHeader(isDark),
                   const SizedBox(height: 16),
-                  _buildAttendanceBanner(isDark, allAttendance, enrollments.length),
+                  _buildAttendanceBanner(isDark, allAttendance, enrollments, provider),
                   const SizedBox(height: 18),
                   _buildSubjectSelector(isDark, enrollments, provider),
                 ],
@@ -96,29 +105,95 @@ class _GradesPageState extends State<GradesPage> {
     );
   }
 
-  Widget _buildAttendanceBanner(
-      bool isDark, List<AttendanceRecord> all, int subjectCount) {
-    final present = all.where((r) => r.isPresent).length;
-    final late = all.where((r) => r.isLate).length;
-    final absent = all.where((r) => r.isAbsent).length;
-    final cancelled = all.where((r) => r.isCancelled).length;
-    final excused = all.where((r) => r.isExcused).length;
-    final effectiveTotal = all.length - cancelled;
-    final rate =
-        effectiveTotal == 0 ? 0.0 : (present + late + excused) / effectiveTotal;
+  /// Tally attendance across every enrolled subject using each subject's
+  /// *expected* class days (schedule ∩ term dates), so a class day the student
+  /// was never recorded for counts as an absence instead of vanishing from
+  /// the calculation.
+  ({
+    int present,
+    int late,
+    int absent,
+    int excused,
+    int total,
+  }) _attendanceTally(
+    List<AttendanceRecord> records,
+    List<Enrollment> enrollments,
+    StudentProvider provider,
+  ) {
+    final byEnrollment = <String, List<AttendanceRecord>>{};
+    for (final r in records) {
+      byEnrollment.putIfAbsent(r.enrollmentId, () => []).add(r);
+    }
 
-    return Container(
+    var present = 0, late = 0, absent = 0, excused = 0, total = 0;
+
+    void add(AttendanceSummary s) {
+      if (s.total == 0) return;
+      present += s.present;
+      late += s.late;
+      // Unrecorded days are absences as far as the student is concerned.
+      absent += s.absent + s.missing;
+      excused += s.excused;
+      total += s.total;
+    }
+
+    final covered = <String>{};
+    for (final e in enrollments) {
+      final id = e.id;
+      if (id == null) continue;
+      covered.add(id);
+      final recs = byEnrollment[id];
+      if (recs == null || recs.isEmpty) continue; // nothing recorded yet
+
+      final config = provider.gradingConfigFor(e.subjectId);
+      add(summarizeAttendance(
+        records: recs,
+        scheduleDay: e.scheduleDay ?? recs.first.scheduleDay,
+        rangeStart:
+            config?.prelimStart ?? e.enrolledAt ?? recs.first.enrolledAt,
+        rangeEnd: config?.finalsEnd,
+        cancelledDates: provider.cancelledDatesFor(e.subjectId),
+      ));
+    }
+
+    // Records for enrollments no longer in the list (dropped/withdrawn).
+    byEnrollment.forEach((id, recs) {
+      if (covered.contains(id) || recs.isEmpty) return;
+      add(summarizeAttendance(
+        records: recs,
+        scheduleDay: recs.first.scheduleDay,
+        rangeStart: recs.first.enrolledAt,
+      ));
+    });
+
+    return (
+      present: present,
+      late: late,
+      absent: absent,
+      excused: excused,
+      total: total,
+    );
+  }
+
+  Widget _buildAttendanceBanner(bool isDark, List<AttendanceRecord> all,
+      List<Enrollment> enrollments, StudentProvider provider) {
+    final tally = _attendanceTally(all, enrollments, provider);
+    final present = tally.present;
+    final late = tally.late;
+    final absent = tally.absent;
+    final rate =
+        tally.total == 0 ? 0.0 : (present + late + tally.excused) / tally.total;
+
+    return GlassCard(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: isDark
-              ? [
-                  const Color(0xFF6366F1).withValues(alpha: 0.22),
-                  const Color(0xFF8B5CF6).withValues(alpha: 0.12)
-                ]
-              : [const Color(0xFF6366F1), const Color(0xFF8B5CF6)],
-        ),
-        borderRadius: BorderRadius.circular(14),
+      borderRadius: BorderRadius.circular(16),
+      gradient: LinearGradient(
+        colors: isDark
+            ? [
+                const Color(0xFF6366F1).withValues(alpha: 0.55),
+                const Color(0xFF8B5CF6).withValues(alpha: 0.40)
+              ]
+            : [const Color(0xFF6366F1), const Color(0xFF8B5CF6)],
       ),
       child: Row(children: [
         Container(
@@ -184,6 +259,12 @@ class _GradesPageState extends State<GradesPage> {
       return const SizedBox.shrink();
     }
 
+    final appearance = context.watch<AppearanceProvider>();
+    final chipColor = appearance.glassTint;
+    final chipOpacity = appearance.glassOpacity;
+    final chipDuration =
+        appearance.animateDuration(const Duration(milliseconds: 220));
+
     return SizedBox(
       height: 36,
       child: ListView.separated(
@@ -201,21 +282,18 @@ class _GradesPageState extends State<GradesPage> {
               provider.loadGradesForSubject(e);
             },
             child: AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
+              duration: chipDuration,
               padding: const EdgeInsets.symmetric(horizontal: 14),
               decoration: BoxDecoration(
                 color: isSelected
                     ? color
-                    : (isDark
-                        ? Colors.white.withValues(alpha: 0.06)
-                        : Colors.grey.shade100),
-                borderRadius: BorderRadius.circular(8),
+                    : chipColor.withValues(alpha: chipOpacity),
+                borderRadius: BorderRadius.circular(18),
                 border: Border.all(
                   color: isSelected
                       ? color
-                      : (isDark
-                          ? Colors.white.withValues(alpha: 0.1)
-                          : Colors.grey.shade300),
+                      : chipColor.withValues(
+                          alpha: (chipOpacity + 0.2).clamp(0.0, 1.0)),
                 ),
                 boxShadow: isSelected
                     ? [
@@ -507,6 +585,7 @@ class _ClassRecordSheetState extends State<_ClassRecordSheet> {
         : const Color(0xFFF1F5F9);
 
     return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(0, 0, 0, 110),
       child: Column(children: [
         // ═══ EXAM SECTION ═══
         _sectionHeader('EXAM', Icons.school_rounded, _purple,
@@ -955,6 +1034,7 @@ class _ClassRecordSheetState extends State<_ClassRecordSheet> {
     final bdr = isDark ? _border : _borderLight;
 
     return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(0, 0, 0, 110),
       child: Column(children: [
         // Table header
         Container(
