@@ -1142,7 +1142,7 @@ class _ProfilePageState extends State<ProfilePage> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           const Text(
-                            'Version 1.5',
+                            'Version 1.6',
                             style: TextStyle(
                               fontWeight: FontWeight.w600,
                               color: Color(0xFF6366F1),
@@ -1178,6 +1178,24 @@ class _ProfilePageState extends State<ProfilePage> {
                           ),
                           Text(
                             '• Rens Joshua Cardaña (rensusama) - Collaborator',
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: isDark ? Colors.grey[400] : Colors.grey[600],
+                              height: 1.5,
+                            ),
+                          ),
+                          const SizedBox(height: 14),
+                          Text(
+                            'Special Thanks:',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 14,
+                              color: isDark ? Colors.white : Colors.black87,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            '• CJ Medina - Provided ACLC House Mascot Images',
                             style: TextStyle(
                               fontSize: 13,
                               color: isDark ? Colors.grey[400] : Colors.grey[600],
@@ -2326,6 +2344,27 @@ class _ProfilePageState extends State<ProfilePage> {
         break;
     }
 
+    // Map houseKey to image asset path
+    String imagePath;
+    switch (houseKey) {
+      case 'vierrdy':
+        imagePath = 'assets/houses/VIERRDY.jpg';
+        break;
+      case 'giallio':
+        imagePath = 'assets/houses/GALLIO.jpg';
+        break;
+      case 'roxxo':
+        imagePath = 'assets/houses/ROXXO.jpg';
+        break;
+      case 'cahel':
+        imagePath = 'assets/houses/CAHEL.jpg';
+        break;
+      case 'azul':
+      default:
+        imagePath = 'assets/houses/AZUL.jpg';
+        break;
+    }
+
     return Container(
       width: 260,
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
@@ -2349,13 +2388,19 @@ class _ProfilePageState extends State<ProfilePage> {
         mainAxisSize: MainAxisSize.min,
         children: [
           Container(
-            padding: const EdgeInsets.all(5),
+            width: 32,
+            height: 32,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               color: Colors.black.withValues(alpha: 0.4),
               border: Border.all(color: borderColor, width: 1.5),
             ),
-            child: Text(iconStr, style: const TextStyle(fontSize: 14)),
+            child: ClipOval(
+              child: Image.asset(
+                imagePath,
+                fit: BoxFit.cover,
+              ),
+            ),
           ),
           const SizedBox(width: 10),
           Expanded(
@@ -2378,6 +2423,28 @@ class _ProfilePageState extends State<ProfilePage> {
 
   Widget _houseSelectCard(String key, String title, String iconStr, List<Color> colors, StateSetter setModalState) {
     final isSelected = _selectedHouse == key;
+
+    // Map key to image asset path
+    String imagePath;
+    switch (key) {
+      case 'vierrdy':
+        imagePath = 'assets/houses/VIERRDY.jpg';
+        break;
+      case 'giallio':
+        imagePath = 'assets/houses/GALLIO.jpg';
+        break;
+      case 'roxxo':
+        imagePath = 'assets/houses/ROXXO.jpg';
+        break;
+      case 'cahel':
+        imagePath = 'assets/houses/CAHEL.jpg';
+        break;
+      case 'azul':
+      default:
+        imagePath = 'assets/houses/AZUL.jpg';
+        break;
+    }
+
     return GestureDetector(
       onTap: () {
         setModalState(() => _selectedHouse = key);
@@ -2399,7 +2466,21 @@ class _ProfilePageState extends State<ProfilePage> {
         ),
         child: Row(
           children: [
-            Text(iconStr, style: const TextStyle(fontSize: 18)),
+            Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: Colors.black.withValues(alpha: 0.3),
+                border: Border.all(color: Colors.white.withValues(alpha: 0.5), width: 1.5),
+              ),
+              child: ClipOval(
+                child: Image.asset(
+                  imagePath,
+                  fit: BoxFit.cover,
+                ),
+              ),
+            ),
             const SizedBox(width: 12),
             Expanded(
               child: Text(

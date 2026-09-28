@@ -1,0 +1,594 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="STIMSYS — Student Information Management System for ACLC. Download the app or access the web portal." />
+  <title>STIMSYS | Student Information Management System</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+  <style>
+    *, *::before, *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    :root {
+      --accent: #6366f1;
+      --accent-light: #818cf8;
+      --accent-glow: rgba(99, 102, 241, 0.35);
+      --bg: #0a0e1a;
+      --surface: rgba(255,255,255,0.04);
+      --border: rgba(255,255,255,0.10);
+      --text: #f1f5f9;
+      --text-muted: #94a3b8;
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background-color: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* ── Lucide icon sizing helpers ── */
+    .icon { display: flex; align-items: center; justify-content: center; }
+    .icon svg { stroke-width: 2; }
+    .icon-sm svg  { width: 16px; height: 16px; }
+    .icon-md svg  { width: 20px; height: 20px; }
+    .icon-lg svg  { width: 24px; height: 24px; }
+    .icon-xl svg  { width: 28px; height: 28px; }
+    .icon-card svg { width: 22px; height: 22px; }
+
+    /* ── Animated gradient background ── */
+    .bg-orbs {
+      position: fixed;
+      inset: 0;
+      z-index: 0;
+      pointer-events: none;
+      overflow: hidden;
+    }
+    .orb {
+      position: absolute;
+      border-radius: 50%;
+      filter: blur(90px);
+      opacity: 0.25;
+      animation: drift 18s ease-in-out infinite alternate;
+    }
+    .orb-1 { width: 600px; height: 600px; background: #6366f1; top: -200px; left: -150px; animation-delay: 0s; }
+    .orb-2 { width: 500px; height: 500px; background: #8b5cf6; bottom: -150px; right: -100px; animation-delay: -6s; }
+    .orb-3 { width: 350px; height: 350px; background: #06b6d4; top: 40%; left: 40%; animation-delay: -12s; }
+    @keyframes drift {
+      0%   { transform: translate(0, 0) scale(1); }
+      50%  { transform: translate(30px, -40px) scale(1.08); }
+      100% { transform: translate(-20px, 30px) scale(0.95); }
+    }
+
+    .noise {
+      position: fixed;
+      inset: 0;
+      z-index: 0;
+      pointer-events: none;
+      opacity: 0.03;
+    }
+
+    .wrapper {
+      position: relative;
+      z-index: 1;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ── Nav ── */
+    nav {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 20px 40px;
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      background: rgba(10,14,26,0.65);
+      border-bottom: 1px solid var(--border);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    .nav-logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      text-decoration: none;
+    }
+    .nav-logo-badge {
+      width: 36px;
+      height: 36px;
+      background: linear-gradient(135deg, var(--accent), #8b5cf6);
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 4px 16px var(--accent-glow);
+      color: #fff;
+    }
+    .nav-logo-badge svg { width: 18px; height: 18px; stroke-width: 2.5; }
+    .nav-logo-text {
+      font-size: 18px;
+      font-weight: 800;
+      background: linear-gradient(135deg, #fff 30%, var(--accent-light));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      letter-spacing: -0.3px;
+    }
+    .nav-pill {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(99,102,241,0.15);
+      border: 1px solid rgba(99,102,241,0.3);
+      color: var(--accent-light);
+      padding: 6px 14px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+    }
+    .nav-pill svg { width: 13px; height: 13px; stroke-width: 2.5; }
+
+    /* ── Hero ── */
+    .hero {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 80px 24px 60px;
+    }
+
+    .hero-eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: rgba(99,102,241,0.12);
+      border: 1px solid rgba(99,102,241,0.25);
+      padding: 7px 16px;
+      border-radius: 30px;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--accent-light);
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      margin-bottom: 32px;
+      animation: fadeUp 0.6s ease both;
+    }
+    .live-dot {
+      width: 6px;
+      height: 6px;
+      background: #22c55e;
+      border-radius: 50%;
+      box-shadow: 0 0 8px #22c55e;
+      flex-shrink: 0;
+      animation: pulse 2s ease-in-out infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.5; transform: scale(0.8); }
+    }
+
+    .hero-title {
+      font-size: clamp(48px, 8vw, 90px);
+      font-weight: 900;
+      line-height: 1.0;
+      letter-spacing: -2px;
+      margin-bottom: 24px;
+      animation: fadeUp 0.6s 0.1s ease both;
+    }
+    .gradient-text {
+      background: linear-gradient(135deg, #fff 0%, var(--accent-light) 50%, #c084fc 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .hero-subtitle {
+      font-size: clamp(16px, 2.5vw, 20px);
+      color: var(--text-muted);
+      max-width: 560px;
+      line-height: 1.65;
+      margin-bottom: 52px;
+      font-weight: 400;
+      animation: fadeUp 0.6s 0.2s ease both;
+    }
+
+    /* ── CTA buttons ── */
+    .cta-group {
+      display: flex;
+      gap: 16px;
+      flex-wrap: wrap;
+      justify-content: center;
+      animation: fadeUp 0.6s 0.3s ease both;
+      margin-bottom: 72px;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      padding: 16px 32px;
+      border-radius: 16px;
+      font-size: 15px;
+      font-weight: 700;
+      text-decoration: none;
+      cursor: pointer;
+      border: none;
+      transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+      position: relative;
+      overflow: hidden;
+      white-space: nowrap;
+    }
+    .btn::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: rgba(255,255,255,0.15);
+      opacity: 0;
+      transition: opacity 0.2s;
+    }
+    .btn:hover::after { opacity: 1; }
+    .btn:hover { transform: translateY(-3px) scale(1.03); }
+    .btn:active { transform: translateY(0) scale(0.98); }
+    .btn svg { width: 19px; height: 19px; stroke-width: 2.2; flex-shrink: 0; }
+
+    .btn-primary {
+      background: linear-gradient(135deg, var(--accent), #7c3aed);
+      color: #fff;
+      box-shadow: 0 8px 32px rgba(99,102,241,0.45), 0 2px 8px rgba(0,0,0,0.3);
+    }
+    .btn-primary:hover {
+      box-shadow: 0 16px 48px rgba(99,102,241,0.6), 0 4px 12px rgba(0,0,0,0.3);
+    }
+
+    .btn-secondary {
+      background: rgba(255,255,255,0.06);
+      color: var(--text);
+      border: 1px solid var(--border);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+    }
+    .btn-secondary:hover {
+      background: rgba(255,255,255,0.10);
+      border-color: rgba(255,255,255,0.25);
+    }
+
+    /* ── Feature cards ── */
+    .features {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 20px;
+      max-width: 1000px;
+      width: 100%;
+      padding: 0 24px;
+      margin: 0 auto;
+      animation: fadeUp 0.7s 0.4s ease both;
+    }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 28px 24px;
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      transition: all 0.25s ease;
+      position: relative;
+      overflow: hidden;
+    }
+    .card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.15), transparent);
+    }
+    .card:hover {
+      border-color: rgba(99,102,241,0.3);
+      transform: translateY(-4px);
+      box-shadow: 0 20px 60px rgba(0,0,0,0.3), 0 0 0 1px rgba(99,102,241,0.15);
+    }
+
+    .card-icon {
+      width: 48px;
+      height: 48px;
+      border-radius: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 16px;
+    }
+    .card-icon svg { width: 22px; height: 22px; stroke-width: 2; }
+    .card-icon.purple { background: rgba(99,102,241,0.15); border: 1px solid rgba(99,102,241,0.25); color: #818cf8; }
+    .card-icon.blue   { background: rgba(59,130,246,0.15); border: 1px solid rgba(59,130,246,0.25); color: #60a5fa; }
+    .card-icon.green  { background: rgba(34,197,94,0.15);  border: 1px solid rgba(34,197,94,0.25);  color: #4ade80; }
+    .card-icon.amber  { background: rgba(245,158,11,0.15); border: 1px solid rgba(245,158,11,0.25); color: #fbbf24; }
+
+    .card-title {
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--text);
+      margin-bottom: 8px;
+    }
+    .card-desc {
+      font-size: 14px;
+      color: var(--text-muted);
+      line-height: 1.6;
+    }
+
+    /* ── Download section ── */
+    .download-section {
+      margin: 80px auto 0;
+      max-width: 700px;
+      width: 100%;
+      padding: 0 24px 80px;
+      text-align: center;
+      animation: fadeUp 0.7s 0.5s ease both;
+    }
+
+    .download-card {
+      background: linear-gradient(135deg, rgba(99,102,241,0.12) 0%, rgba(124,58,237,0.08) 100%);
+      border: 1px solid rgba(99,102,241,0.2);
+      border-radius: 28px;
+      padding: 48px 40px;
+      position: relative;
+      overflow: hidden;
+    }
+    .download-card::before {
+      content: '';
+      position: absolute;
+      top: -60px;
+      right: -60px;
+      width: 220px;
+      height: 220px;
+      background: radial-gradient(circle, rgba(99,102,241,0.2), transparent 70%);
+      pointer-events: none;
+    }
+
+    .download-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(34,197,94,0.12);
+      border: 1px solid rgba(34,197,94,0.25);
+      color: #4ade80;
+      padding: 5px 14px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+      margin-bottom: 20px;
+    }
+    .download-badge svg { width: 13px; height: 13px; stroke-width: 2.5; }
+
+    .download-title {
+      font-size: 28px;
+      font-weight: 800;
+      margin-bottom: 12px;
+      letter-spacing: -0.5px;
+    }
+
+    .download-desc {
+      color: var(--text-muted);
+      font-size: 15px;
+      line-height: 1.6;
+      margin-bottom: 32px;
+    }
+
+    .version-info {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 20px;
+      margin-top: 24px;
+      flex-wrap: wrap;
+    }
+    .version-chip {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+    .version-chip svg { width: 14px; height: 14px; stroke-width: 2; }
+    .version-dot {
+      width: 4px;
+      height: 4px;
+      background: var(--text-muted);
+      border-radius: 50%;
+    }
+
+    /* ── Footer ── */
+    footer {
+      border-top: 1px solid var(--border);
+      padding: 24px 40px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 12px;
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+    .footer-brand { display: flex; align-items: center; gap: 6px; }
+    .footer-brand svg { width: 14px; height: 14px; stroke-width: 2; color: #f87171; }
+    footer a { color: var(--text-muted); text-decoration: none; transition: color 0.2s; }
+    footer a:hover { color: var(--text); }
+
+    /* ── Animations ── */
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(24px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    /* ── Responsive ── */
+    @media (max-width: 640px) {
+      nav { padding: 16px 20px; }
+      .hero { padding: 60px 20px 40px; }
+      .hero-title { letter-spacing: -1px; }
+      .cta-group { flex-direction: column; align-items: center; }
+      .btn { width: 100%; justify-content: center; max-width: 320px; }
+      .download-card { padding: 32px 24px; }
+      footer { flex-direction: column; text-align: center; }
+    }
+  </style>
+</head>
+<body>
+  <div class="bg-orbs">
+    <div class="orb orb-1"></div>
+    <div class="orb orb-2"></div>
+    <div class="orb orb-3"></div>
+  </div>
+  <div class="noise"></div>
+
+  <div class="wrapper">
+
+    <!-- ── Nav ── -->
+    <nav>
+      <a href="#" class="nav-logo" id="nav-logo-link">
+        <div class="nav-logo-badge">
+          <i data-lucide="graduation-cap"></i>
+        </div>
+        <span class="nav-logo-text">STIMSYS</span>
+      </a>
+      <span class="nav-pill">
+        <i data-lucide="building-2"></i>
+        ACLC COLLEGE
+      </span>
+    </nav>
+
+    <!-- ── Hero ── -->
+    <main class="hero" id="hero-section">
+      <div class="hero-eyebrow">
+        <span class="live-dot"></span>
+        Student Information Management System
+      </div>
+
+      <h1 class="hero-title">
+        <span class="gradient-text">ST1MSYS</span><br/>
+        <span style="font-size: 0.5em; font-weight: 600; color: var(--text-muted); letter-spacing: 0;">for ACLC Students</span>
+      </h1>
+
+      <p class="hero-subtitle">
+        Manage your grades, attendance, quizzes, modules, and more —
+        all in one place. Available on Android or right in your browser.
+      </p>
+
+      <div class="cta-group">
+        <a href="https://stimsys.pages.dev/home" id="open-web-btn" class="btn btn-primary" target="_blank" rel="noopener">
+          <i data-lucide="monitor"></i>
+          Open StimSys Web
+        </a>
+        <a href="#download" id="download-apk-btn" class="btn btn-secondary">
+          <i data-lucide="smartphone"></i>
+          Download Android APK
+        </a>
+      </div>
+
+      <!-- Feature cards -->
+      <div class="features">
+        <div class="card" id="card-grades">
+          <div class="card-icon purple">
+            <i data-lucide="bar-chart-2"></i>
+          </div>
+          <div class="card-title">Grades &amp; Records</div>
+          <div class="card-desc">View your class records, grade breakdowns, and academic performance at a glance.</div>
+        </div>
+        <div class="card" id="card-quiz">
+          <div class="card-icon blue">
+            <i data-lucide="pencil-line"></i>
+          </div>
+          <div class="card-title">Quizzes &amp; Exams</div>
+          <div class="card-desc">Take timed online quizzes and assessments assigned by your instructors.</div>
+        </div>
+        <div class="card" id="card-attendance">
+          <div class="card-icon green">
+            <i data-lucide="scan-qr-code"></i>
+          </div>
+          <div class="card-title">Attendance Tracking</div>
+          <div class="card-desc">QR-based attendance scanning with real-time status updates and calendar view.</div>
+        </div>
+        <div class="card" id="card-modules">
+          <div class="card-icon amber">
+            <i data-lucide="book-open"></i>
+          </div>
+          <div class="card-title">Modules &amp; Resources</div>
+          <div class="card-desc">Access course modules, PDF materials, and announcements from your teachers.</div>
+        </div>
+      </div>
+    </main>
+
+    <!-- ── Download section ── -->
+    <section class="download-section" id="download">
+      <div class="download-card">
+        <div class="download-badge">
+          <i data-lucide="badge-check"></i>
+          Latest Release &bull; v1.6
+        </div>
+        <div class="download-title">Get the Android App (v1.6)</div>
+        <p class="download-desc">
+          Download the official STIMSYS v1.6 APK featuring the new ACLC Houses mascots, glassmorphism UI, and system optimizations.
+          No Play Store required — just tap, install, and log in.
+        </p>
+        <a href="https://github.com/Frvn01/stimsys/releases/download/v1.6.0/stimsys-v1.6.apk" id="apk-download-btn" class="btn btn-primary" download="stimsys-v1.6.apk">
+          <i data-lucide="download"></i>
+          Download APK v1.6
+        </a>
+        <div class="version-info">
+          <span class="version-chip">
+            <i data-lucide="smartphone"></i>
+            Android 8.0+
+          </span>
+          <span class="version-dot"></span>
+          <span class="version-chip">
+            <i data-lucide="shield-check"></i>
+            v1.6 (Houses Update)
+          </span>
+          <span class="version-dot"></span>
+          <span class="version-chip">
+            <i data-lucide="hard-drive"></i>
+            87 MB
+          </span>
+          <span class="version-dot"></span>
+          <span class="version-chip">
+            <i data-lucide="zap"></i>
+            Verified Build
+          </span>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── Footer ── -->
+    <footer>
+      <span>&copy; 2026 STIMSYS &middot; ACLC College &middot; Special thanks to CJ Medina</span>
+      <span class="footer-brand">
+        Built with <i data-lucide="heart"></i> for ACLC Students
+      </span>
+    </footer>
+
+  </div>
+
+  <script>
+    // Initialize all Lucide icons
+    lucide.createIcons();
+  </script>
+</body>
+</html>

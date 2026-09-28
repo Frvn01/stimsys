@@ -77,11 +77,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   Future<void> _checkVersionChanges() async {
     final prefs = await SharedPreferences.getInstance();
-    final hasSeen = prefs.getBool('hasSeenV1_5_1_Changes') ?? false;
+    final hasSeen = prefs.getBool('hasSeenV1_6_Changes') ?? false;
 
     if (!hasSeen && mounted) {
-      await prefs.setBool('hasSeenV1_5_1_Changes', true);
+      await prefs.setBool('hasSeenV1_6_Changes', true);
       // Clear older seen-flags so the fresh notice always shows.
+      await prefs.remove('hasSeenV1_5_1_Changes');
       await prefs.remove('hasSeenV1_5_Changes');
       await prefs.remove('hasSeenV1_4_Changes');
       if (!mounted) return;
@@ -112,7 +113,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 ),
                 const SizedBox(height: 20),
                 Text(
-                  'Welcome to Version 1.5! 🚀',
+                  'Welcome to Version 1.6! 🚀',
                   style: TextStyle(
                     fontSize: 20,
                     fontWeight: FontWeight.bold,
@@ -130,6 +131,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 20),
+                _buildChangeItem(Icons.shield_rounded, 'ACLC Houses', 'Official house mascot logos now shown on your profile badge & selector.', isDark),
+                const SizedBox(height: 12),
                 _buildChangeItem(Icons.bolt_rounded, 'Optimization', 'Faster, smoother performance across all screens.', isDark),
                 const SizedBox(height: 12),
                 _buildChangeItem(Icons.auto_awesome_rounded, 'Glassmorphism', 'A fresh iOS 27-style frosted glass design throughout the app.', isDark),
@@ -137,7 +140,51 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 _buildChangeItem(Icons.vibration_rounded, 'Haptics', 'Subtle tactile feedback on navigation and interactive elements.', isDark),
                 const SizedBox(height: 12),
                 _buildChangeItem(Icons.palette_rounded, 'Make It Yours', 'Adaptive colors, background, glass & animation — all in Profile → Appearance.', isDark),
-                const SizedBox(height: 28),
+                const SizedBox(height: 24),
+                // ── Special Thanks ──
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF6366F1).withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: const Color(0xFF6366F1).withValues(alpha: 0.20),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(
+                        Icons.favorite_rounded,
+                        color: Color(0xFFF87171),
+                        size: 18,
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: RichText(
+                          text: TextSpan(
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: isDark ? Colors.grey[400] : Colors.grey[600],
+                            ),
+                            children: const [
+                              TextSpan(text: 'Special thanks to '),
+                              TextSpan(
+                                text: 'CJ Medina',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                  color: Color(0xFF818CF8),
+                                ),
+                              ),
+                              TextSpan(text: ' for providing the ACLC house mascot images!'),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 20),
                 SizedBox(
                   width: double.infinity,
                   height: 48,

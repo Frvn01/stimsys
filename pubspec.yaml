@@ -2,7 +2,7 @@ name: stimsys
 description: "STIMSYS - Student Information Management System"
 publish_to: 'none'
 
-version: 1.0.0+1
+version: 1.6.0+6
 
 environment:
   sdk: ^3.11.0
@@ -51,6 +51,11 @@ flutter:
   assets:
     - assets/ST1MSYS.jpg
     - assets/SIMSLOGO.png
+    - assets/houses/AZUL.jpg
+    - assets/houses/CAHEL.jpg
+    - assets/houses/GALLIO.jpg
+    - assets/houses/ROXXO.jpg
+    - assets/houses/VIERRDY.jpg
 
 flutter_icons:
   android: true
